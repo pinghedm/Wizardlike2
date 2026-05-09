@@ -18,7 +18,11 @@ def main():
     spells_config = load_spells_config()
 
     # Engine Setup
-    tileset = tcod.tileset.procedural_block_elements(shape=(16, 16))
+    tileset = tcod.tileset.load_tilesheet(
+        'data/dejavu10x10_gs_tc.png', 32, 8, tcod.tileset.CHARMAP_TCOD
+    )
+    # Add block characters to the tileset
+    tcod.tileset.procedural_block_elements(tileset=tileset)
     game_map, player_start, rooms = generate_dungeon(
         MAP_WIDTH, MAP_HEIGHT, 30, 6, 10, 2
     )
@@ -50,6 +54,8 @@ def main():
     with tcod.context.new(
         columns=SCREEN_WIDTH,
         rows=SCREEN_HEIGHT,
+        width=SCREEN_WIDTH * 20,
+        height=SCREEN_HEIGHT * 20,
         tileset=tileset,
         title='WizardLike',
         vsync=True,
