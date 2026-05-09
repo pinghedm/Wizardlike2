@@ -1,0 +1,13 @@
+ingredients:
+  - id: fire_crystal
+    name: Fire Crystal
+    char: "\u2588"
+    color: [255, 0, 0]
+  - id: ice_shard
+    name: Ice Shard
+    char: "\u2588"
+    color: [0, 255, 255]
+  - id: mystic_herb
+    name: Mystic Herb
+    char: "\u2588"
+    color: [0, 255, 0]

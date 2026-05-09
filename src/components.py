@@ -1,0 +1,45 @@
+from dataclasses import dataclass, field
+from typing import NamedTuple
+from data_loaders import _load_enum
+
+class Point(NamedTuple):
+    x: int
+    y: int
+
+ItemType = _load_enum('data/ingredients.yaml', 'ingredients', 'ItemType')
+SpellType = _load_enum('data/spells.yaml', 'spells', 'SpellType')
+
+@dataclass
+class Position:
+    x: int
+    y: int
+
+    @property
+    def point(self) -> Point:
+        return Point(self.x, self.y)
+
+@dataclass
+class Renderable:
+    char: str
+    color: tuple[int, int, int]
+
+@dataclass
+class Item:
+    type: ItemType
+
+@dataclass
+class Inventory:
+    items: dict[ItemType, int] = field(default_factory=dict)
+
+@dataclass
+class KnownRecipes:
+    # Maps a Spell to the set of ingredient combinations discovered for it
+    recipes: dict[SpellType, set[tuple[ItemType, ...]]] = field(default_factory=dict)
+
+@dataclass
+class SpellInventory:
+    # Tracks remaining uses of each spell
+    spells: dict[SpellType, int] = field(default_factory=dict)
+
+class PlayerTag:
+    pass

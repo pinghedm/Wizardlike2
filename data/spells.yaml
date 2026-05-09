@@ -1,0 +1,25 @@
+spells:
+  - id: fireball
+    name: Fireball
+    recipes:
+      - ingredients: [fire_crystal, fire_crystal]
+        charges: 3
+      - ingredients: [fire_crystal, fire_crystal, fire_crystal]
+        charges: 7
+  - id: ice_lance
+    name: Ice Lance
+    recipes:
+      - ingredients: [ice_shard, ice_shard]
+        charges: 5
+  - id: rejuvenation
+    name: Rejuvenation
+    recipes:
+      - ingredients: [mystic_herb, mystic_herb]
+        charges: 2
+  - id: steam_blast
+    name: Steam Blast
+    recipes:
+      - ingredients: [fire_crystal, ice_shard]
+        charges: 4
+      - ingredients: [fire_crystal, ice_shard, mystic_herb]
+        charges: 10
