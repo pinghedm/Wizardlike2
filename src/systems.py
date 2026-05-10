@@ -1,28 +1,34 @@
 import esper
 import tcod
-from components import Position, Renderable, PlayerTag
+from components import PlayerTag, Position, Renderable
 from map_objects import Map
-from states import DisplayMode
+from states import DisplayMode, GameState
+
 
 class RenderSystem(esper.Processor):
-    def __init__(self, console: tcod.console.Console, game_map: Map):
+    def __init__(self, console: tcod.console.Console, game_map: Map, asset_loader: 'AssetLoader'):
         self.console = console
         self.game_map = game_map
-        self.state = DisplayMode.EXPLORING
+        self.asset_loader = asset_loader
 
     def process(self):
-        if self.state != DisplayMode.EXPLORING:
+        game_state = esper.get_component(GameState)[0][1]
+        
+        if game_state.display_mode != DisplayMode.EXPLORING:
             return
 
         # 1. Render the map first
-        self.game_map.render(self.console)
+        self.game_map.render(self.console, self.asset_loader)
 
         # 2. Render all entities with Position and Renderable components
         for ent, (pos, rend) in esper.get_components(Position, Renderable):
+            codepoint = self.asset_loader.get_codepoint(rend.sprite_id)
+            
+            # Draw the entity using the assigned codepoint and stored color
             self.console.print(
                 x=pos.x,
                 y=pos.y,
-                string=rend.char,
+                string=chr(codepoint),
                 fg=rend.color
             )
 

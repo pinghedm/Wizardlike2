@@ -1,6 +1,8 @@
 from dataclasses import dataclass, field
-from typing import NamedTuple
+from typing import NamedTuple, Optional
+
 from data_loaders import _load_enum
+
 
 class Point(NamedTuple):
     x: int
@@ -20,8 +22,8 @@ class Position:
 
 @dataclass
 class Renderable:
-    char: str
-    color: tuple[int, int, int]
+    sprite_id: str
+    color: tuple[int, int, int] = (255, 255, 255)
 
 @dataclass
 class Item:

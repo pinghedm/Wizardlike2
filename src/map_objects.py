@@ -5,47 +5,16 @@ import tcod
 class Tile:
     walkable: bool
     transparent: bool
-    char: str
+    sprite_id: str
     fg: tuple[int, int, int]
     bg: tuple[int, int, int]
     is_exit: bool = False
 
-    @staticmethod
-    def wall() -> 'Tile':
-        return Tile(
-            walkable=False,
-            transparent=False,
-            char=' ',
-            fg=(255, 255, 255),
-            bg=(0, 0, 100),
-        )
-
-    @staticmethod
-    def floor() -> 'Tile':
-        return Tile(
-            walkable=True,
-            transparent=True,
-            char=' ',
-            fg=(255, 255, 255),
-            bg=(50, 50, 150),
-        )
-
-    @staticmethod
-    def exit() -> 'Tile':
-        return Tile(
-            walkable=True,
-            transparent=True,
-            char='\u2588',  # Full block
-            fg=(255, 255, 0),  # Yellow
-            bg=(50, 50, 150),
-            is_exit=True,
-        )
-
 class Map:
-    def __init__(self, width: int, height: int):
+    def __init__(self, width: int, height: int, default_tile: Tile):
         self.width = width
         self.height = height
-        self.tiles = [[Tile.wall() for _ in range(height)] for _ in range(width)]
+        self.tiles = [[default_tile for _ in range(height)] for _ in range(width)]
 
     def in_bounds(self, x: int, y: int) -> bool:
         return 0 <= x < self.width and 0 <= y < self.height
@@ -55,14 +24,15 @@ class Map:
             return False
         return self.tiles[x][y].walkable
 
-    def render(self, console: tcod.Console) -> None:
+    def render(self, console: tcod.Console, asset_loader: 'AssetLoader') -> None:
         for x in range(self.width):
             for y in range(self.height):
                 tile = self.tiles[x][y]
+                codepoint = asset_loader.get_codepoint(tile.sprite_id)
                 console.print(
                     x=x,
                     y=y,
-                    string=tile.char,
+                    string=chr(codepoint),
                     fg=tile.fg,
                     bg=tile.bg,
                 )

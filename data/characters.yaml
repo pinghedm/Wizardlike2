@@ -1,0 +1,7 @@
+characters:
+  - id: player
+    sprite:
+      path: data/People.png
+      type: REGION
+      region: [0, 0, 10, 10] # Example: clipping first char as player for now
+      scale: 1.0

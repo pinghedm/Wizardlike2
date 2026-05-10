@@ -1,10 +1,11 @@
+from dataclasses import dataclass
 import enum
 
 class DisplayMode(enum.Enum):
     EXPLORING = enum.auto()
     COMBINING = enum.auto()
 
+@dataclass
 class GameState:
-    def __init__(self, floor: int = 1):
-        self.display_mode = DisplayMode.EXPLORING
-        self.floor = floor
+    display_mode: DisplayMode = DisplayMode.EXPLORING
+    floor: int = 1

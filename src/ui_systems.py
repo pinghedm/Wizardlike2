@@ -1,19 +1,20 @@
 import esper
 import tcod
 from components import Inventory, KnownRecipes, SpellInventory, Stats
-from states import DisplayMode
+from states import DisplayMode, GameState
+
 
 class MenuSystem(esper.Processor):
-    def __init__(self, console: tcod.console.Console, player: int, spells_config: list, game_state: 'GameState'):
+    def __init__(self, console: tcod.console.Console, player: int, spells_config: list):
         self.console = console
         self.player = player
         self.spells_config = spells_config
-        self.game_state = game_state
         self.menu_cursor = 0
         self.selected_for_crafting = {}
 
     def process(self):
-        if self.game_state.display_mode != DisplayMode.COMBINING:
+        game_state = esper.get_component(GameState)[0][1]
+        if game_state.display_mode != DisplayMode.COMBINING:
             return
 
         self.console.clear(bg=(0, 0, 0))
@@ -63,13 +64,14 @@ class MenuSystem(esper.Processor):
                 y_offset += 1
 
 class HUDSystem(esper.Processor):
-    def __init__(self, console: tcod.console.Console, player: int, game_state: 'GameState'):
+    def __init__(self, console: tcod.console.Console, player: int):
         self.console = console
         self.player = player
-        self.game_state = game_state
 
     def process(self):
-        if self.game_state.display_mode != DisplayMode.EXPLORING:
+        game_state = esper.get_component(GameState)[0][1]
+
+        if game_state.display_mode != DisplayMode.EXPLORING:
             return
         
         stats = esper.component_for_entity(self.player, Stats)
@@ -92,4 +94,4 @@ class HUDSystem(esper.Processor):
             self.console.draw_rect(start_x, self.console.height - 2, filled_width, 1, ch=ord('\u2588'), fg=(255, 0, 0))
         
         # Render Floor
-        self.console.print(self.console.width - 15, self.console.height - 2, f'Floor: {self.game_state.floor}', fg=(255, 255, 255))
+        self.console.print(self.console.width - 15, self.console.height - 2, f'Floor: {game_state.floor}', fg=(255, 255, 255))
