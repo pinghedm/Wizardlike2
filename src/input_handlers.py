@@ -1,11 +1,11 @@
 import esper
 import tcod
 from components import Inventory, Item, KnownRecipes, Position, SpellInventory, SpellType
-from states import GameState
+from states import DisplayMode
 
 def handle_exploring_input(event, player, game_map, movement_system):
     if not isinstance(event, tcod.event.KeyDown):
-        return GameState.EXPLORING
+        return DisplayMode.EXPLORING
 
     dx, dy = 0, 0
     if event.sym == tcod.event.KeySym.UP: dy = -1
@@ -13,7 +13,7 @@ def handle_exploring_input(event, player, game_map, movement_system):
     elif event.sym == tcod.event.KeySym.LEFT: dx = -1
     elif event.sym == tcod.event.KeySym.RIGHT: dx = 1
     elif event.sym == tcod.event.KeySym.c:
-        return GameState.COMBINING
+        return DisplayMode.COMBINING
 
     if dx != 0 or dy != 0:
         movement_system.move_entity(player, dx, dy)
@@ -32,17 +32,17 @@ def handle_exploring_input(event, player, game_map, movement_system):
             print('Level Complete!')
             raise SystemExit()
 
-    return GameState.EXPLORING
+    return DisplayMode.EXPLORING
 
 def handle_combining_input(event, player, menu_system, spells_config):
     if not isinstance(event, tcod.event.KeyDown):
-        return GameState.COMBINING
+        return DisplayMode.COMBINING
 
     player_inv = esper.component_for_entity(player, Inventory)
     inv_list = sorted(player_inv.items.keys())
     
     if event.sym == tcod.event.KeySym.ESCAPE or event.sym == tcod.event.KeySym.c:
-        return GameState.EXPLORING
+        return DisplayMode.EXPLORING
     
     elif event.sym == tcod.event.KeySym.UP:
         if inv_list:
@@ -72,7 +72,7 @@ def handle_combining_input(event, player, menu_system, spells_config):
         flat_selection = tuple(sorted(flat_selection))
         
         if not flat_selection:
-            return GameState.COMBINING
+            return DisplayMode.COMBINING
 
         match_found = False
         for s_conf in spells_config:
@@ -97,10 +97,10 @@ def handle_combining_input(event, player, menu_system, spells_config):
                     
                     print(f'SUCCESS: Crafted {stype.name}! (+{charges} charges)')
                     match_found = True
-                    return GameState.EXPLORING
+                    return DisplayMode.EXPLORING
         
         if not match_found:
             print('The combination fizzles...')
             menu_system.selected_for_crafting = {}
 
-    return GameState.COMBINING
+    return DisplayMode.COMBINING

@@ -1,19 +1,19 @@
 import esper
 import tcod
-from components import Inventory, KnownRecipes, SpellInventory
-from states import GameState
+from components import Inventory, KnownRecipes, SpellInventory, Stats
+from states import DisplayMode
 
 class MenuSystem(esper.Processor):
-    def __init__(self, console: tcod.console.Console, player: int, spells_config: list):
+    def __init__(self, console: tcod.console.Console, player: int, spells_config: list, game_state: 'GameState'):
         self.console = console
         self.player = player
         self.spells_config = spells_config
-        self.state = GameState.EXPLORING
+        self.game_state = game_state
         self.menu_cursor = 0
         self.selected_for_crafting = {}
 
     def process(self):
-        if self.state != GameState.COMBINING:
+        if self.game_state.display_mode != DisplayMode.COMBINING:
             return
 
         self.console.clear(bg=(0, 0, 0))
@@ -61,3 +61,35 @@ class MenuSystem(esper.Processor):
                 recipe_str = ' + '.join(itype.name for itype in recipe)
                 self.console.print(42, y_offset, f'* {recipe_str}')
                 y_offset += 1
+
+class HUDSystem(esper.Processor):
+    def __init__(self, console: tcod.console.Console, player: int, game_state: 'GameState'):
+        self.console = console
+        self.player = player
+        self.game_state = game_state
+
+    def process(self):
+        if self.game_state.display_mode != DisplayMode.EXPLORING:
+            return
+        
+        stats = esper.component_for_entity(self.player, Stats)
+        
+        # Render HP Text
+        hp_text = f'HP: {stats.hp}/{stats.max_hp}'
+        self.console.print(2, self.console.height - 2, hp_text, fg=(255, 255, 255))
+        
+        # Render HP Bar
+        hp_bar_width = 20
+        # Position bar dynamically after the text
+        start_x = 2 + len(hp_text) + 1
+        ratio = stats.hp / stats.max_hp
+        filled_width = int(ratio * hp_bar_width)
+        
+        # Background of bar
+        self.console.draw_rect(start_x, self.console.height - 2, hp_bar_width, 1, ch=ord('\u2588'), fg=(50, 0, 0))
+        # Filled part
+        if filled_width > 0:
+            self.console.draw_rect(start_x, self.console.height - 2, filled_width, 1, ch=ord('\u2588'), fg=(255, 0, 0))
+        
+        # Render Floor
+        self.console.print(self.console.width - 15, self.console.height - 2, f'Floor: {self.game_state.floor}', fg=(255, 255, 255))

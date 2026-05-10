@@ -28,6 +28,11 @@ class Item:
     type: ItemType
 
 @dataclass
+class Stats:
+    hp: int
+    max_hp: int
+
+@dataclass
 class Inventory:
     items: dict[ItemType, int] = field(default_factory=dict)
 

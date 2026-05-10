@@ -2,16 +2,16 @@ import esper
 import tcod
 from components import Position, Renderable, PlayerTag
 from map_objects import Map
-from states import GameState
+from states import DisplayMode
 
 class RenderSystem(esper.Processor):
-    def __init__(self, console: tcod.Console, game_map: Map):
+    def __init__(self, console: tcod.console.Console, game_map: Map):
         self.console = console
         self.game_map = game_map
-        self.state = GameState.EXPLORING
+        self.state = DisplayMode.EXPLORING
 
     def process(self):
-        if self.state != GameState.EXPLORING:
+        if self.state != DisplayMode.EXPLORING:
             return
 
         # 1. Render the map first
