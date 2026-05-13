@@ -1,7 +1,7 @@
 import esper
 import tcod
 from components import Inventory, Item, KnownRecipes, Position, SpellInventory, SpellType
-from states import DisplayMode
+from states import MAIN_MENU_OPTIONS, DisplayMode, MenuOption
 
 def handle_exploring_input(event, player, game_map, movement_system):
     if not isinstance(event, tcod.event.KeyDown):
@@ -13,7 +13,7 @@ def handle_exploring_input(event, player, game_map, movement_system):
     elif event.sym == tcod.event.KeySym.LEFT: dx = -1
     elif event.sym == tcod.event.KeySym.RIGHT: dx = 1
     elif event.sym == tcod.event.KeySym.c:
-        return DisplayMode.COMBINING
+        return DisplayMode.MENU
 
     if dx != 0 or dy != 0:
         movement_system.move_entity(player, dx, dy)
@@ -33,6 +33,28 @@ def handle_exploring_input(event, player, game_map, movement_system):
             raise SystemExit()
 
     return DisplayMode.EXPLORING
+
+def handle_menu_input(event, menu_system):
+    if not isinstance(event, tcod.event.KeyDown):
+        return DisplayMode.MENU
+
+    if event.sym == tcod.event.KeySym.ESCAPE or event.sym == tcod.event.KeySym.c:
+        return DisplayMode.EXPLORING
+
+    elif event.sym == tcod.event.KeySym.UP:
+        menu_system.main_menu_cursor = (menu_system.main_menu_cursor - 1) % len(MAIN_MENU_OPTIONS)
+    
+    elif event.sym == tcod.event.KeySym.DOWN:
+        menu_system.main_menu_cursor = (menu_system.main_menu_cursor + 1) % len(MAIN_MENU_OPTIONS)
+    
+    elif event.sym == tcod.event.KeySym.RETURN:
+        selection = MAIN_MENU_OPTIONS[menu_system.main_menu_cursor]
+        if selection == MenuOption.COMBINE:
+            return DisplayMode.COMBINING
+        elif selection == MenuOption.QUIT:
+            raise SystemExit()
+
+    return DisplayMode.MENU
 
 def handle_combining_input(event, player, menu_system, spells_config):
     if not isinstance(event, tcod.event.KeyDown):

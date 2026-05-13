@@ -3,7 +3,17 @@ import enum
 
 class DisplayMode(enum.Enum):
     EXPLORING = enum.auto()
+    MENU = enum.auto()
     COMBINING = enum.auto()
+
+class MenuOption(enum.StrEnum):
+    COMBINE = "Combine"
+    QUIT = "Quit"
+
+MAIN_MENU_OPTIONS = [
+    MenuOption.COMBINE,
+    MenuOption.QUIT,
+]
 
 @dataclass
 class GameState:

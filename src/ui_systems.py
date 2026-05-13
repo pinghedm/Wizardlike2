@@ -1,7 +1,7 @@
 import esper
 import tcod
 from components import Inventory, KnownRecipes, SpellInventory, Stats
-from states import DisplayMode, GameState
+from states import DisplayMode, GameState, MAIN_MENU_OPTIONS
 
 
 class MenuSystem(esper.Processor):
@@ -9,16 +9,34 @@ class MenuSystem(esper.Processor):
         self.console = console
         self.player = player
         self.spells_config = spells_config
+        self.main_menu_cursor = 0
         self.menu_cursor = 0
         self.selected_for_crafting = {}
 
     def process(self):
         game_state = esper.get_component(GameState)[0][1]
-        if game_state.display_mode != DisplayMode.COMBINING:
-            return
+        
+        if game_state.display_mode == DisplayMode.MENU:
+            self.render_main_menu()
+        elif game_state.display_mode == DisplayMode.COMBINING:
+            self.render_combining_menu()
 
+    def render_main_menu(self):
         self.console.clear(bg=(0, 0, 0))
-        self.console.draw_frame(0, 0, self.console.width, self.console.height, title='Menu', fg=(255, 255, 255))
+        self.console.draw_frame(0, 0, self.console.width, self.console.height, title='Main Menu', fg=(255, 255, 255))
+        
+        for i, option in enumerate(MAIN_MENU_OPTIONS):
+            color = (255, 255, 0) if i == self.main_menu_cursor else (255, 255, 255)
+            self.console.print(
+                self.console.width // 2 - 5,
+                self.console.height // 2 - 1 + i,
+                f'{"> " if i == self.main_menu_cursor else "  "}{option}',
+                fg=color
+            )
+
+    def render_combining_menu(self):
+        self.console.clear(bg=(0, 0, 0))
+        self.console.draw_frame(0, 0, self.console.width, self.console.height, title='Combine Items', fg=(255, 255, 255))
 
         self.console.print(2, 2, 'SPELL COMBINING', fg=(255, 255, 0))
         player_inv = esper.component_for_entity(self.player, Inventory)

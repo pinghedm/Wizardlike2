@@ -5,7 +5,8 @@ from data_loaders import (AssetLoader, load_characters_config,
                           load_ingredients_config, load_spells_config,
                           load_tiles_config)
 from entities import create_game_state, create_player
-from input_handlers import handle_combining_input, handle_exploring_input
+from input_handlers import (handle_combining_input, handle_exploring_input,
+                            handle_menu_input)
 from procgen import generate_dungeon
 from states import DisplayMode, GameState
 from systems import MovementSystem, RenderSystem
@@ -80,6 +81,8 @@ def main():
                 old_mode = game_state.display_mode
                 if game_state.display_mode == DisplayMode.EXPLORING:
                     game_state.display_mode = handle_exploring_input(event, player, game_map, movement_system)
+                elif game_state.display_mode == DisplayMode.MENU:
+                    game_state.display_mode = handle_menu_input(event, menu_system)
                 elif game_state.display_mode == DisplayMode.COMBINING:
                     game_state.display_mode = handle_combining_input(event, player, menu_system, spells_config)
 
