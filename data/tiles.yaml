@@ -1,31 +1,33 @@
 tiles:
   - id: dungeon_wall
     type: wall
-    char: "#"
+    char: '#'
     fg: [100, 100, 100]
     bg: [20, 20, 20]
     depth: [1, 5]
   - id: mossy_wall
     type: wall
-    char: "#"
+    char: '#'
     fg: [80, 120, 80]
     bg: [15, 25, 15]
     depth: [3, 10]
   - id: dungeon_floor
     type: floor
-    char: "."
+    char: '.'
     fg: [60, 60, 60]
     bg: [15, 15, 15]
     depth: [1, 10]
   - id: stone_floor
     type: floor
-    char: "."
+    char: '.'
     fg: [80, 80, 80]
     bg: [25, 25, 25]
     depth: [5, 10]
   - id: stairs_down
     type: exit
-    char: ">"
-    fg: [255, 255, 255]
-    bg: [15, 15, 15]
     depth: [1, 10]
+    sprite:
+      path: data/Misc.png
+      type: REGION
+      region: [0, 70, 10, 10]
+      scale: 1.0

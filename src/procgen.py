@@ -89,8 +89,8 @@ def generate_dungeon(
             walkable=walkable,
             transparent=transparent,
             sprite_id=cfg['id'],
-            fg=tuple(cfg['fg']),
-            bg=tuple(cfg['bg']),
+            fg=tuple(cfg.get('fg', (255, 255, 255))),
+            bg=tuple(cfg.get('bg', (0, 0, 0))),
             is_exit=is_exit
         )
 

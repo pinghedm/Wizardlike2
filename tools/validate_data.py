@@ -88,6 +88,50 @@ def validate_data() -> bool:
                         print(f'ERROR: Spell "{sid}" recipe #{r_idx} uses unknown ingredient: "{ing_id}".')
                         errors += 1
 
+    # 3. Validate Tiles
+    tiles_file = data_dir / 'tiles.yaml'
+    if not tiles_file.exists():
+        print(f'Note: {tiles_file} not found, skipping tile validation.')
+    else:
+        print(f'Validating {tiles_file}...')
+        try:
+            with open(tiles_file, 'r') as f:
+                tiles_data = yaml.safe_load(f)
+        except Exception as e:
+            print(f'ERROR: Failed to parse tiles.yaml: {e}')
+            return False
+
+        tile_ids = set()
+        for i, tile in enumerate(tiles_data.get('tiles', [])):
+            if 'id' not in tile:
+                print(f'ERROR: Tile #{i} missing "id".')
+                errors += 1
+                continue
+            tid = tile['id']
+            if tid in tile_ids:
+                print(f'ERROR: Duplicate tile ID: "{tid}"')
+                errors += 1
+            tile_ids.add(tid)
+
+            for field in ['type', 'depth']:
+                if field not in tile:
+                    print(f'ERROR: Tile "{tid}" missing "{field}".')
+                    errors += 1
+            
+            # fg and bg are optional; if missing, engine provides defaults (White/Black)
+            for field in ['fg', 'bg']:
+                if field in tile:
+                    val = tile[field]
+                    if not isinstance(val, list) or len(val) != 3 or not all(isinstance(v, int) for v in val):
+                        print(f'ERROR: Tile "{tid}" {field} must be a list of 3 integers (RGB).')
+                        errors += 1
+
+            if 'depth' in tile:
+                depth = tile['depth']
+                if not isinstance(depth, list) or len(depth) != 2 or not all(isinstance(d, int) for d in depth):
+                    print(f'ERROR: Tile "{tid}" depth must be a list of 2 integers.')
+                    errors += 1
+
     if errors == 0:
         print('SUCCESS: All data files are valid.')
         return True
