@@ -2,7 +2,7 @@ import esper
 import tcod
 
 from components import Modal
-from constants import MAP_HEIGHT, MAP_WIDTH, SCREEN_HEIGHT, SCREEN_WIDTH
+from constants import SCREEN_HEIGHT, SCREEN_WIDTH
 from data_loaders import AssetLoader, get_game_configs
 from entities import create_game_state, create_player
 from input_handlers import handle_combining_input, handle_exploring_input, handle_menu_input, handle_modal_input
@@ -27,9 +27,15 @@ def main():
 
     # Generate Dungeon & Spawns
     game_map, player_start = generate_dungeon(
-        MAP_WIDTH, MAP_HEIGHT, 30, 6, 10, 2, configs['ingredients'], configs['tiles']
+        max_rooms=30,
+        room_min_size=6,
+        room_max_size=10,
+        max_items_per_room=2,
+        ingredients_config=configs['ingredients'],
+        tiles_config=configs['tiles'],
     )
     esper.create_entity(game_map)
+
 
     # ECS Entities
     player = create_player(player_start.x, player_start.y, configs['characters'])

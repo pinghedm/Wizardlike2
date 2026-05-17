@@ -30,8 +30,14 @@ def transition_to_next_floor():
 
     # 5. Generate new map
     new_map, player_start = generate_dungeon(
-        MAP_WIDTH, MAP_HEIGHT, max_rooms, 6, 10, max_items, configs['ingredients'], configs['tiles']
+        max_rooms=max_rooms,
+        room_min_size=6,
+        room_max_size=10,
+        max_items_per_room=max_items,
+        ingredients_config=configs['ingredients'],
+        tiles_config=configs['tiles'],
     )
+
 
     # 6. Update the Map entity in ECS
     for ent, _old_map in esper.get_component(Map):
@@ -94,8 +100,6 @@ def tunnel_between(start: Point, end: Point):
 
 
 def generate_dungeon(
-    map_width: int,
-    map_height: int,
     max_rooms: int,
     room_min_size: int,
     room_max_size: int,
@@ -131,9 +135,9 @@ def generate_dungeon(
     floor_tile = make_tile(floor_cfg, True, True)
     exit_tile = make_tile(exit_cfg, True, True, is_exit=True)
 
-    dungeon = Map(map_width, map_height, wall_tile)
+    dungeon = Map(MAP_WIDTH, MAP_HEIGHT, wall_tile)
     rooms: list[RectangularRoom] = []
-    player_start = Point(map_width // 2, map_height // 2)
+    player_start = Point(MAP_WIDTH // 2, MAP_HEIGHT // 2)
 
     item_types = list(ItemType)
 
