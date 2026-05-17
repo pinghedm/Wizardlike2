@@ -1,5 +1,11 @@
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
 import tcod
+
+if TYPE_CHECKING:
+    from data_loaders import AssetLoader
+
 
 @dataclass
 class Tile:
@@ -9,6 +15,7 @@ class Tile:
     fg: tuple[int, int, int]
     bg: tuple[int, int, int]
     is_exit: bool = False
+
 
 class Map:
     def __init__(self, width: int, height: int, default_tile: Tile):
@@ -24,7 +31,7 @@ class Map:
             return False
         return self.tiles[x][y].walkable
 
-    def render(self, console: tcod.Console, asset_loader: 'AssetLoader') -> None:
+    def render(self, console: tcod.Console, asset_loader: AssetLoader) -> None:
         for x in range(self.width):
             for y in range(self.height):
                 tile = self.tiles[x][y]

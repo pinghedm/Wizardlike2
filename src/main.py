@@ -1,31 +1,23 @@
 import esper
 import tcod
-from components import ItemType, SpellType
-from data_loaders import (AssetLoader, load_characters_config,
-                          load_ingredients_config, load_spells_config,
-                          load_tiles_config)
+
+from components import Modal
+from constants import MAP_HEIGHT, MAP_WIDTH, SCREEN_HEIGHT, SCREEN_WIDTH
+from data_loaders import AssetLoader, get_game_configs
 from entities import create_game_state, create_player
-from input_handlers import (handle_combining_input, handle_exploring_input,
-                            handle_menu_input)
+from input_handlers import handle_combining_input, handle_exploring_input, handle_menu_input, handle_modal_input
 from procgen import generate_dungeon
 from states import DisplayMode, GameState
-from systems import MovementSystem, RenderSystem
-from ui_systems import HUDSystem, MenuSystem
+from systems import RenderSystem
+from ui_systems import HUDSystem, MenuSystem, ModalSystem
 
 
 def main():
-    # Constants
-    SCREEN_WIDTH, SCREEN_HEIGHT = 80, 50
-    MAP_WIDTH, MAP_HEIGHT = 80, 45
-
     # Asset Loader
     asset_loader = AssetLoader()
 
-    # Load Configs
-    ingredients_config = load_ingredients_config(asset_loader)
-    spells_config = load_spells_config(asset_loader)
-    characters_config = load_characters_config(asset_loader)
-    tiles_config = load_tiles_config(asset_loader)
+    # Load Configs (memoized)
+    configs = get_game_configs(asset_loader)
 
     # State
     create_game_state(floor=1)
@@ -34,13 +26,13 @@ def main():
     tileset = asset_loader.build_tileset()
 
     # Generate Dungeon & Spawns
-    game_map, player_start = generate_dungeon(MAP_WIDTH, MAP_HEIGHT, 30, 6, 10, 2, ingredients_config, tiles_config)
+    game_map, player_start = generate_dungeon(
+        MAP_WIDTH, MAP_HEIGHT, 30, 6, 10, 2, configs['ingredients'], configs['tiles']
+    )
+    esper.create_entity(game_map)
 
     # ECS Entities
-    player = create_player(player_start.x, player_start.y, characters_config)
-
-    # Systems
-    movement_system = MovementSystem(game_map)
+    player = create_player(player_start.x, player_start.y, configs['characters'])
 
     with tcod.context.new(
         columns=SCREEN_WIDTH,
@@ -54,14 +46,17 @@ def main():
         root_console = tcod.console.Console(SCREEN_WIDTH, SCREEN_HEIGHT)
 
         # Add Rendering Processors
-        render_system = RenderSystem(root_console, game_map, asset_loader)
+        render_system = RenderSystem(root_console, asset_loader)
         esper.add_processor(render_system)
 
-        menu_system = MenuSystem(root_console, player, spells_config)
+        menu_system = MenuSystem(root_console, player, configs['spells'])
         esper.add_processor(menu_system)
 
         hud_system = HUDSystem(root_console, player)
         esper.add_processor(hud_system)
+
+        modal_system = ModalSystem(root_console)
+        esper.add_processor(modal_system)
 
         while True:
             root_console.clear()
@@ -78,18 +73,22 @@ def main():
                 if isinstance(event, tcod.event.Quit):
                     raise SystemExit()
 
+                # Prioritize Modal Input
+                if esper.get_component(Modal):
+                    handle_modal_input(event)
+                    continue
+
                 old_mode = game_state.display_mode
                 if game_state.display_mode == DisplayMode.EXPLORING:
-                    game_state.display_mode = handle_exploring_input(event, player, game_map, movement_system)
+                    game_state.display_mode = handle_exploring_input(event, player)
                 elif game_state.display_mode == DisplayMode.MENU:
                     game_state.display_mode = handle_menu_input(event, menu_system)
                 elif game_state.display_mode == DisplayMode.COMBINING:
-                    game_state.display_mode = handle_combining_input(event, player, menu_system, spells_config)
+                    game_state.display_mode = handle_combining_input(event, player, menu_system, configs['spells'])
 
                 # If the state changed, break the event loop to redraw immediately
                 if game_state.display_mode != old_mode:
                     break
-
 
 
 if __name__ == '__main__':

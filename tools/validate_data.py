@@ -1,22 +1,24 @@
 import sys
-import yaml
 from pathlib import Path
+
+import yaml
+
 
 def validate_data() -> bool:
     data_dir = Path('data')
     ingredients_file = data_dir / 'ingredients.yaml'
     spells_file = data_dir / 'spells.yaml'
-    
+
     errors = 0
 
     # 1. Validate Ingredients
     if not ingredients_file.exists():
         print(f'ERROR: {ingredients_file} not found.')
         return False
-        
+
     print(f'Validating {ingredients_file}...')
     try:
-        with open(ingredients_file, 'r') as f:
+        with open(ingredients_file) as f:
             ing_data = yaml.safe_load(f)
     except Exception as e:
         print(f'ERROR: Failed to parse ingredients.yaml: {e}')
@@ -33,7 +35,7 @@ def validate_data() -> bool:
             print(f'ERROR: Duplicate ingredient ID: "{iid}"')
             errors += 1
         ing_ids.add(iid)
-        
+
         for field in ['name', 'char', 'color']:
             if field not in ing:
                 print(f'ERROR: Ingredient "{iid}" missing "{field}".')
@@ -45,7 +47,7 @@ def validate_data() -> bool:
     else:
         print(f'Validating {spells_file}...')
         try:
-            with open(spells_file, 'r') as f:
+            with open(spells_file) as f:
                 spell_data = yaml.safe_load(f)
         except Exception as e:
             print(f'ERROR: Failed to parse spells.yaml: {e}')
@@ -78,7 +80,7 @@ def validate_data() -> bool:
                     print(f'ERROR: Spell "{sid}" recipe #{r_idx} missing "ingredients" or "charges".')
                     errors += 1
                     continue
-                
+
                 if not isinstance(recipe['charges'], int) or recipe['charges'] <= 0:
                     print(f'ERROR: Spell "{sid}" recipe #{r_idx} charges must be a positive integer.')
                     errors += 1
@@ -95,7 +97,7 @@ def validate_data() -> bool:
     else:
         print(f'Validating {tiles_file}...')
         try:
-            with open(tiles_file, 'r') as f:
+            with open(tiles_file) as f:
                 tiles_data = yaml.safe_load(f)
         except Exception as e:
             print(f'ERROR: Failed to parse tiles.yaml: {e}')
@@ -117,7 +119,7 @@ def validate_data() -> bool:
                 if field not in tile:
                     print(f'ERROR: Tile "{tid}" missing "{field}".')
                     errors += 1
-            
+
             # fg and bg are optional; if missing, engine provides defaults (White/Black)
             for field in ['fg', 'bg']:
                 if field in tile:
@@ -138,6 +140,7 @@ def validate_data() -> bool:
     else:
         print(f'FAILED: {errors} total errors found.')
         return False
+
 
 if __name__ == '__main__':
     if not validate_data():

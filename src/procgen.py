@@ -1,9 +1,48 @@
 import random
 
 import esper
-from components import Item, ItemType, Point, Position, Renderable
+
+from components import Item, ItemType, PlayerTag, Point, Position, Renderable
+from constants import MAP_HEIGHT, MAP_WIDTH
+from data_loaders import get_game_configs
 from map_objects import Map, Tile
 from states import GameState
+from systems import RenderSystem
+
+
+def transition_to_next_floor():
+    # 1. Increment Floor
+    game_state = esper.get_component(GameState)[0][1]
+    game_state.floor += 1
+
+    # 2. Get Configs (memoized)
+    # We find the RenderSystem to get its asset_loader
+    render_system = esper.get_processor(RenderSystem)
+    configs = get_game_configs(render_system.asset_loader)
+
+    # 3. Calculate floor-dependent parameters
+    max_rooms = 30 + (game_state.floor // 2)
+    max_items = 2 + (game_state.floor // 5)
+
+    # 4. Clear existing non-persistent entities (Items)
+    for ent, _ in esper.get_component(Item):
+        esper.delete_entity(ent)
+
+    # 5. Generate new map
+    new_map, player_start = generate_dungeon(
+        MAP_WIDTH, MAP_HEIGHT, max_rooms, 6, 10, max_items, configs['ingredients'], configs['tiles']
+    )
+
+    # 6. Update the Map entity in ECS
+    for ent, _old_map in esper.get_component(Map):
+        esper.delete_entity(ent)
+    esper.create_entity(new_map)
+
+    # 7. Update Player Position
+    for ent, _ in esper.get_component(PlayerTag):
+        pos = esper.component_for_entity(ent, Position)
+        pos.x = player_start.x
+        pos.y = player_start.y
 
 
 class RectangularRoom:
@@ -20,13 +59,8 @@ class RectangularRoom:
         center_y = int((self.y1 + self.y2) / 2)
         return Point(center_x, center_y)
 
-    def intersects(self, other: 'RectangularRoom') -> bool:
-        return (
-            self.x1 <= other.x2
-            and self.x2 >= other.x1
-            and self.y1 <= other.y2
-            and self.y2 >= other.y1
-        )
+    def intersects(self, other: RectangularRoom) -> bool:
+        return self.x1 <= other.x2 and self.x2 >= other.x1 and self.y1 <= other.y2 and self.y2 >= other.y1
 
     def spawn_items(self, ingredients_config: dict):
         """Create ECS entities for all items in this room."""
@@ -36,12 +70,13 @@ class RectangularRoom:
                 # The ID itself is now the sprite_id, as it's registered in AssetLoader
                 sprite_id = itype.value
                 color = tuple(item_config.get('color', (255, 255, 255)))
-                
+
                 esper.create_entity(
                     Position(p.x, p.y),
                     Renderable(sprite_id=sprite_id, color=color),
                     Item(itype),
                 )
+
 
 def tunnel_between(start: Point, end: Point):
     x1, y1 = start
@@ -57,6 +92,7 @@ def tunnel_between(start: Point, end: Point):
         for x in range(min(x1, x2), max(x1, x2) + 1):
             yield Point(x, y2)
 
+
 def generate_dungeon(
     map_width: int,
     map_height: int,
@@ -71,15 +107,12 @@ def generate_dungeon(
     try:
         game_state = esper.get_component(GameState)[0][1]
         floor_number = game_state.floor
-    except (IndexError, KeyError):
+    except IndexError, KeyError:
         floor_number = 1
 
     # 1. Select tiles for this floor based on depth
-    available_tiles = [
-        t for t in tiles_config 
-        if t['depth'][0] <= floor_number <= t['depth'][1]
-    ]
-    
+    available_tiles = [t for t in tiles_config if t['depth'][0] <= floor_number <= t['depth'][1]]
+
     wall_cfg = random.choice([t for t in available_tiles if t['type'] == 'wall'])
     floor_cfg = random.choice([t for t in available_tiles if t['type'] == 'floor'])
     exit_cfg = random.choice([t for t in available_tiles if t['type'] == 'exit'])
@@ -91,7 +124,7 @@ def generate_dungeon(
             sprite_id=cfg['id'],
             fg=tuple(cfg.get('fg', (255, 255, 255))),
             bg=tuple(cfg.get('bg', (0, 0, 0))),
-            is_exit=is_exit
+            is_exit=is_exit,
         )
 
     wall_tile = make_tile(wall_cfg, False, False)
@@ -124,7 +157,7 @@ def generate_dungeon(
         else:
             for p in tunnel_between(rooms[-1].center, new_room.center):
                 dungeon.tiles[p.x][p.y] = floor_tile
-            
+
             # Populate room item data
             num_items = random.randint(0, max_items_per_room)
             for _ in range(num_items):
