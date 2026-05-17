@@ -42,7 +42,27 @@ Always run the validation tool before committing changes to data files:
 
 ## Development Conventions
 
-- **Formatting:** Code must be formatted with `black` (line length 120, single quotes).
-- **Linting:** `ruff` is used for linting and formatting.
+- **Formatting & Linting:** Code must be formatted and linted with `ruff`.
 - **Type Safety:** Use Type Hints and `StrEnum` for ingredient/spell identifiers.
 - **Data Integrity:** All new items or recipes must be added to `data/ingredients.yaml` or `data/spells.yaml` and pass `tools/validate_data.py`.
+- **Function Calls:** Use explicit keyword arguments for functions with many parameters (e.g., `generate_dungeon`).
+- **Architectural Patterns:**
+    - **ECS Idiomatic**: Prefer ECS components for transient states (like Modals) over global flags in `GameState`.
+    - **Decoupling**: Keep systems decoupled by having them query the ECS for data rather than passing references.
+    - **Simplicity**: Favor direct function calls and module-level constants over complex global configuration objects.
+
+## Development Workflow
+
+- **Data Integrity:** Always run `./venv/bin/python tools/validate_data.py` before committing changes to any YAML data files.
+- **Code Quality:** Run `./venv/bin/python -m ruff check --fix . && ./venv/bin/python -m ruff format .` to maintain formatting and linting compliance.
+- **Verification:** Ensure the game runs and transitions through levels correctly after any changes to `procgen.py` or input logic.
+
+## Key Files
+- `src/main.py`: Entry point, main game loop, and system orchestration.
+- `src/components.py`: ECS component definitions.
+- `src/procgen.py`: Dungeon generation logic and level transition orchestration.
+- `src/input_handlers.py`: Translation of user input into game actions.
+- `src/ui_systems.py`: UI rendering processors, including the ModalSystem.
+- `src/states.py`: Game state definitions and navigation enums.
+- `src/constants.py`: Project-wide constants.
+- `data/`: YAML configuration for ingredients, spells, tiles, and characters.
