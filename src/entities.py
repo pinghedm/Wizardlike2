@@ -1,12 +1,26 @@
 import esper
 
-from components import Inventory, KnownRecipes, PlayerTag, Position, Renderable, SpellInventory, Stats
+from components import (
+    Inventory,
+    KnownRecipes,
+    MessageLog,
+    PlayerTag,
+    Position,
+    Renderable,
+    SpellInventory,
+    Stats,
+)
 from states import GameState
 
 
 def create_game_state(floor=1):
     """Create the singleton GameState entity."""
     return esper.create_entity(GameState(floor=floor))
+
+
+def create_message_log():
+    """Create the singleton MessageLog entity."""
+    return esper.create_entity(MessageLog())
 
 
 def create_player(x, y, characters_config):

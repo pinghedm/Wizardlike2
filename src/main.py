@@ -4,7 +4,7 @@ import tcod
 from components import Modal
 from constants import SCREEN_HEIGHT, SCREEN_WIDTH
 from data_loaders import AssetLoader, get_game_configs
-from entities import create_game_state, create_player
+from entities import create_game_state, create_message_log, create_player
 from input_handlers import handle_combining_input, handle_exploring_input, handle_menu_input, handle_modal_input
 from procgen import generate_dungeon
 from states import DisplayMode, GameState
@@ -21,6 +21,7 @@ def main():
 
     # State
     create_game_state(floor=1)
+    create_message_log()
 
     # BUILD the master tileset
     tileset = asset_loader.build_tileset()
@@ -35,7 +36,6 @@ def main():
         tiles_config=configs['tiles'],
     )
     esper.create_entity(game_map)
-
 
     # ECS Entities
     player = create_player(player_start.x, player_start.y, configs['characters'])

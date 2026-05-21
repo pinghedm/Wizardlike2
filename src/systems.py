@@ -13,7 +13,6 @@ if TYPE_CHECKING:
 
 class RenderSystem(esper.Processor):
     def __init__(self, console: tcod.console.Console, asset_loader: AssetLoader):
-
         self.console = console
         self.asset_loader = asset_loader
 

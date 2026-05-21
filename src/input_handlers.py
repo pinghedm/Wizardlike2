@@ -1,7 +1,7 @@
 import esper
 import tcod
 
-from components import Inventory, Item, KnownRecipes, Modal, Position, SpellInventory, SpellType
+from components import Inventory, Item, KnownRecipes, MessageLog, Modal, Position, SpellInventory, SpellType
 from map_objects import Map
 from procgen import transition_to_next_floor
 from states import MAIN_MENU_OPTIONS, DisplayMode, GameState, MenuOption
@@ -25,17 +25,24 @@ def handle_exploring_input(event, player):
         dx = 1
     elif event.sym == tcod.event.KeySym.c:
         return DisplayMode.MENU
+    elif event.sym == tcod.event.KeySym.PAGEUP:
+        log = esper.get_component(MessageLog)[0][1]
+        log.scroll_index += 1
+    elif event.sym == tcod.event.KeySym.PAGEDOWN:
+        log = esper.get_component(MessageLog)[0][1]
+        log.scroll_index -= 1
 
     if dx != 0 or dy != 0:
         move_entity(player, dx, dy)
         player_pos = esper.component_for_entity(player, Position)
         player_inv = esper.component_for_entity(player, Inventory)
+        log = esper.get_component(MessageLog)[0][1]
 
         # Pickup Logic
         for ent, (pos, item) in esper.get_components(Position, Item):
             if pos.x == player_pos.x and pos.y == player_pos.y:
                 player_inv.items[item.type] = player_inv.items.get(item.type, 0) + 1
-                print(f'Picked up {item.type.name}!')
+                log.add_simple_message(f'Picked up {item.type.name}!', color=(200, 200, 200))
                 esper.delete_entity(ent)
 
         # Check for exit
@@ -44,7 +51,7 @@ def handle_exploring_input(event, player):
             game_map = maps[0][1]
             if game_map.tiles[player_pos.x][player_pos.y].is_exit:
                 if game_state.floor >= 3:
-                    print('Level Complete!')
+                    log.add_simple_message('Level Complete!', color=(255, 255, 0))
                     raise SystemExit()
                 else:
                     esper.create_entity(
@@ -150,12 +157,20 @@ def handle_combining_input(event, player, menu_system, spells_config):
                     for itype, count in menu_system.selected_for_crafting.items():
                         player_inv.items[itype] -= count
 
-                    print(f'SUCCESS: Crafted {stype.name}! (+{charges} charges)')
+                    log = esper.get_component(MessageLog)[0][1]
+                    log.add_message(
+                        [
+                            ('SUCCESS: Crafted ', (255, 255, 255)),
+                            (stype.name, (0, 255, 255)),
+                            (f'! (+{charges} charges)', (255, 255, 255)),
+                        ]
+                    )
                     match_found = True
                     return DisplayMode.EXPLORING
 
         if not match_found:
-            print('The combination fizzles...')
+            log = esper.get_component(MessageLog)[0][1]
+            log.add_simple_message('The combination fizzles...', color=(255, 0, 0))
             menu_system.selected_for_crafting = {}
 
     return DisplayMode.COMBINING

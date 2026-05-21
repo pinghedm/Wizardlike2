@@ -2,7 +2,7 @@ import random
 
 import esper
 
-from components import Item, ItemType, PlayerTag, Point, Position, Renderable
+from components import Item, ItemType, MessageLog, PlayerTag, Point, Position, Renderable
 from constants import MAP_HEIGHT, MAP_WIDTH
 from data_loaders import get_game_configs
 from map_objects import Map, Tile
@@ -37,7 +37,6 @@ def transition_to_next_floor():
         ingredients_config=configs['ingredients'],
         tiles_config=configs['tiles'],
     )
-
 
     # 6. Update the Map entity in ECS
     for ent, _old_map in esper.get_component(Map):
@@ -182,5 +181,11 @@ def generate_dungeon(
     if rooms:
         exit_p = rooms[-1].center
         dungeon.tiles[exit_p.x][exit_p.y] = exit_tile
+
+    # Announce floor entry
+    logs = esper.get_component(MessageLog)
+    if logs:
+        log = logs[0][1]
+        log.add_simple_message(f'Entered level {floor_number}', color=(255, 255, 255))
 
     return dungeon, player_start

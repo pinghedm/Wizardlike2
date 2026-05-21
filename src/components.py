@@ -59,6 +59,20 @@ class SpellInventory:
 
 
 @dataclass
+class MessageLog:
+    # A list of messages, where each message is a list of (text, color) segments
+    messages: list[list[tuple[str, tuple[int, int, int]]]] = field(default_factory=list)
+    scroll_index: int = 0
+
+    def add_message(self, segments: list[tuple[str, tuple[int, int, int]]]):
+        self.messages.append(segments)
+        self.scroll_index = 0
+
+    def add_simple_message(self, text: str, color: tuple[int, int, int] = (255, 255, 255)):
+        self.add_message([(text, color)])
+
+
+@dataclass
 class Modal:
     message: str
     width: int = 40
