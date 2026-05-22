@@ -110,7 +110,7 @@ def generate_dungeon(
     try:
         game_state = esper.get_component(GameState)[0][1]
         floor_number = game_state.floor
-    except IndexError, KeyError:
+    except (IndexError, KeyError):
         floor_number = 1
 
     # 1. Select tiles for this floor based on depth
