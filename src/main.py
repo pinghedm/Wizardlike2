@@ -8,7 +8,7 @@ from entities import create_game_state, create_message_log, create_player
 from input_handlers import handle_combining_input, handle_exploring_input, handle_menu_input, handle_modal_input
 from procgen import generate_dungeon
 from states import DisplayMode, GameState
-from systems import RenderSystem
+from systems import FOVSystem, RenderSystem
 from ui_systems import HUDSystem, MenuSystem, ModalSystem
 
 
@@ -52,6 +52,9 @@ def main():
         root_console = tcod.console.Console(SCREEN_WIDTH, SCREEN_HEIGHT)
 
         # Add Rendering Processors
+        fov_system = FOVSystem()
+        esper.add_processor(fov_system)
+
         render_system = RenderSystem(root_console, asset_loader)
         esper.add_processor(render_system)
 

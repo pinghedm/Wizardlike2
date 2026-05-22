@@ -29,7 +29,7 @@ def _load_enum(file_path: str, root_key: str, enum_name: str):
             data = yaml.safe_load(f)
             names = {item['id'].upper(): item['id'] for item in data[root_key]}
             return StrEnum(enum_name, names)
-    except (FileNotFoundError, KeyError):
+    except FileNotFoundError, KeyError:
         return StrEnum(enum_name, {'NONE': 'none'})
 
 

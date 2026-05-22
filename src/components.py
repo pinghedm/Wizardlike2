@@ -15,6 +15,13 @@ SpellType = _load_enum('data/spells.yaml', 'spells', 'SpellType')
 
 
 @dataclass
+class FieldOfView:
+    visible_tiles: set[Point] = field(default_factory=set)
+    radius: int = 8
+    dirty: bool = True
+
+
+@dataclass
 class Position:
     x: int
     y: int

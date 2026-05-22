@@ -2,7 +2,7 @@ import random
 
 import esper
 
-from components import Item, ItemType, MessageLog, PlayerTag, Point, Position, Renderable
+from components import FieldOfView, Item, ItemType, MessageLog, PlayerTag, Point, Position, Renderable
 from constants import MAP_HEIGHT, MAP_WIDTH
 from data_loaders import get_game_configs
 from map_objects import Map, Tile
@@ -48,6 +48,8 @@ def transition_to_next_floor():
         pos = esper.component_for_entity(ent, Position)
         pos.x = player_start.x
         pos.y = player_start.y
+        if esper.has_component(ent, FieldOfView):
+            esper.component_for_entity(ent, FieldOfView).dirty = True
 
 
 class RectangularRoom:
@@ -110,7 +112,7 @@ def generate_dungeon(
     try:
         game_state = esper.get_component(GameState)[0][1]
         floor_number = game_state.floor
-    except (IndexError, KeyError):
+    except IndexError, KeyError:
         floor_number = 1
 
     # 1. Select tiles for this floor based on depth
@@ -188,4 +190,5 @@ def generate_dungeon(
         log = logs[0][1]
         log.add_simple_message(f'Entered level {floor_number}', color=(255, 255, 255))
 
+    dungeon.update_transparency()
     return dungeon, player_start

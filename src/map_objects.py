@@ -1,10 +1,10 @@
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-import tcod
+import numpy as np
 
 if TYPE_CHECKING:
-    from data_loaders import AssetLoader
+    pass
 
 
 @dataclass
@@ -22,6 +22,8 @@ class Map:
         self.width = width
         self.height = height
         self.tiles = [[default_tile for _ in range(height)] for _ in range(width)]
+        self.explored = np.zeros((width, height), dtype=bool, order='F')
+        self.transparent = np.ones((width, height), dtype=bool, order='F')
 
     def in_bounds(self, x: int, y: int) -> bool:
         return 0 <= x < self.width and 0 <= y < self.height
@@ -31,15 +33,7 @@ class Map:
             return False
         return self.tiles[x][y].walkable
 
-    def render(self, console: tcod.Console, asset_loader: AssetLoader) -> None:
+    def update_transparency(self) -> None:
         for x in range(self.width):
             for y in range(self.height):
-                tile = self.tiles[x][y]
-                codepoint = asset_loader.get_codepoint(tile.sprite_id)
-                console.print(
-                    x=x,
-                    y=y,
-                    string=chr(codepoint),
-                    fg=tile.fg,
-                    bg=tile.bg,
-                )
+                self.transparent[x, y] = self.tiles[x][y].transparent

@@ -1,6 +1,7 @@
 import esper
 
 from components import (
+    FieldOfView,
     Inventory,
     KnownRecipes,
     MessageLog,
@@ -30,6 +31,7 @@ def create_player(x, y, characters_config):
 
     return esper.create_entity(
         Position(x, y),
+        FieldOfView(radius=8),
         Renderable(sprite_id=sprite_id, color=(255, 255, 255)),
         Stats(hp=100, max_hp=100),
         Inventory(),
