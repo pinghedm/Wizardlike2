@@ -1,14 +1,16 @@
+import time
+
 import esper
 import tcod
 
 from components import Modal
-from constants import SCREEN_HEIGHT, SCREEN_WIDTH
+from constants import SCREEN_HEIGHT, SCREEN_WIDTH, TICKS_PER_SECOND
 from data_loaders import AssetLoader, get_game_configs
 from entities import create_game_state, create_message_log, create_player
 from input_handlers import handle_combining_input, handle_exploring_input, handle_menu_input, handle_modal_input
 from procgen import generate_dungeon
 from states import DisplayMode, GameState
-from systems import FOVSystem, RenderSystem
+from systems import ActionSystem, AISystem, DeathSystem, FOVSystem, RenderSystem
 from ui_systems import HUDSystem, MenuSystem, ModalSystem
 
 
@@ -51,39 +53,45 @@ def main():
     ) as context:
         root_console = tcod.console.Console(SCREEN_WIDTH, SCREEN_HEIGHT)
 
-        # Add Rendering Processors
-        fov_system = FOVSystem()
-        esper.add_processor(fov_system)
-
-        render_system = RenderSystem(root_console, asset_loader)
-        esper.add_processor(render_system)
+        # Add Processors
+        # Order matters: Death -> Action -> AI -> FOV -> Render -> UI
+        esper.add_processor(DeathSystem())
+        esper.add_processor(ActionSystem())
+        esper.add_processor(AISystem())
+        esper.add_processor(FOVSystem())
+        esper.add_processor(RenderSystem(root_console, asset_loader))
 
         menu_system = MenuSystem(root_console, player, configs['spells'])
         esper.add_processor(menu_system)
 
-        hud_system = HUDSystem(root_console, player)
-        esper.add_processor(hud_system)
+        esper.add_processor(HUDSystem(root_console, player))
+        esper.add_processor(ModalSystem(root_console))
 
-        modal_system = ModalSystem(root_console)
-        esper.add_processor(modal_system)
+        tick_rate = 1 / TICKS_PER_SECOND
 
         while True:
+            frame_start = time.perf_counter()
+
             root_console.clear()
+
+            # Fetch fresh game state
+            game_state = esper.get_component(GameState)[0][1]
+
+            # Update time_paused based on mode or modals
+            has_modal = bool(esper.get_component(Modal))
+            game_state.time_paused = (game_state.display_mode != DisplayMode.EXPLORING) or has_modal
 
             # Run all processors
             esper.process()
 
             context.present(root_console)
 
-            # Fetch fresh game state
-            game_state = esper.get_component(GameState)[0][1]
-
-            for event in tcod.event.wait():
+            for event in tcod.event.get():
                 if isinstance(event, tcod.event.Quit):
                     raise SystemExit()
 
                 # Prioritize Modal Input
-                if esper.get_component(Modal):
+                if has_modal:
                     handle_modal_input(event)
                     continue
 
@@ -98,6 +106,12 @@ def main():
                 # If the state changed, break the event loop to redraw immediately
                 if game_state.display_mode != old_mode:
                     break
+
+            # Precise timing
+            elapsed = time.perf_counter() - frame_start
+            remaining = tick_rate - elapsed
+            if remaining > 0:
+                time.sleep(remaining)
 
 
 if __name__ == '__main__':

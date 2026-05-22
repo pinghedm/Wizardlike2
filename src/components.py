@@ -1,3 +1,4 @@
+import enum
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import NamedTuple
@@ -8,6 +9,12 @@ from data_loaders import _load_enum
 class Point(NamedTuple):
     x: int
     y: int
+
+
+class BehaviorType(enum.Enum):
+    CHASE = enum.auto()
+    PATROL = enum.auto()
+    FLEE = enum.auto()
 
 
 ItemType = _load_enum('data/ingredients.yaml', 'ingredients', 'ItemType')
@@ -85,6 +92,31 @@ class Modal:
     width: int = 40
     height: int = 10
     on_close: Callable[[], None] | None = None
+
+
+@dataclass
+class Actor:
+    """Component for entities that can take actions based on cooldowns."""
+
+    cooldown: int = 0
+    speed: int = 100  # Number of ticks between actions
+
+
+@dataclass
+class AI:
+    """Basic AI component."""
+
+    behavior: BehaviorType = BehaviorType.CHASE
+    last_known_player_position: Point | None = None
+
+
+@dataclass
+class Enemy:
+    """Component for enemy-specific properties."""
+
+    attack_damage: int = 15
+    bump_damage: int = 5
+    blocks_movement: bool = False
 
 
 class PlayerTag:

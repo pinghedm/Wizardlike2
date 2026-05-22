@@ -24,6 +24,7 @@ class Map:
         self.tiles = [[default_tile for _ in range(height)] for _ in range(width)]
         self.explored = np.zeros((width, height), dtype=bool, order='F')
         self.transparent = np.ones((width, height), dtype=bool, order='F')
+        self.walkable = np.ones((width, height), dtype=bool, order='F')
 
     def in_bounds(self, x: int, y: int) -> bool:
         return 0 <= x < self.width and 0 <= y < self.height
@@ -37,3 +38,4 @@ class Map:
         for x in range(self.width):
             for y in range(self.height):
                 self.transparent[x, y] = self.tiles[x][y].transparent
+                self.walkable[x, y] = self.tiles[x][y].walkable

@@ -23,3 +23,4 @@ MAIN_MENU_OPTIONS = [
 class GameState:
     display_mode: DisplayMode = DisplayMode.EXPLORING
     floor: int = 1
+    time_paused: bool = False

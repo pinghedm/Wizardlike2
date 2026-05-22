@@ -2,7 +2,21 @@ import random
 
 import esper
 
-from components import FieldOfView, Item, ItemType, MessageLog, PlayerTag, Point, Position, Renderable
+from components import (
+    AI,
+    Actor,
+    BehaviorType,
+    Enemy,
+    FieldOfView,
+    Item,
+    ItemType,
+    MessageLog,
+    PlayerTag,
+    Point,
+    Position,
+    Renderable,
+    Stats,
+)
 from constants import MAP_HEIGHT, MAP_WIDTH
 from data_loaders import get_game_configs
 from map_objects import Map, Tile
@@ -24,8 +38,10 @@ def transition_to_next_floor():
     max_rooms = 30 + (game_state.floor // 2)
     max_items = 2 + (game_state.floor // 5)
 
-    # 4. Clear existing non-persistent entities (Items)
+    # 4. Clear existing non-persistent entities (Items/Enemies)
     for ent, _ in esper.get_component(Item):
+        esper.delete_entity(ent)
+    for ent, _ in esper.get_component(Enemy):
         esper.delete_entity(ent)
 
     # 5. Generate new map
@@ -69,12 +85,12 @@ class RectangularRoom:
     def intersects(self, other: RectangularRoom) -> bool:
         return self.x1 <= other.x2 and self.x2 >= other.x1 and self.y1 <= other.y2 and self.y2 >= other.y1
 
-    def spawn_items(self, ingredients_config: dict):
-        """Create ECS entities for all items in this room."""
+    def spawn_entities(self, ingredients_config: dict, spawn_enemies: bool = True):
+        """Create ECS entities for all items and enemies in this room."""
+        # Items
         for p, item_list in self.items.items():
             for itype in item_list:
                 item_config = ingredients_config.get(itype.value, {})
-                # The ID itself is now the sprite_id, as it's registered in AssetLoader
                 sprite_id = itype.value
                 color = tuple(item_config.get('color', (255, 255, 255)))
 
@@ -83,6 +99,20 @@ class RectangularRoom:
                     Renderable(sprite_id=sprite_id, color=color),
                     Item(itype),
                 )
+
+        # Enemies
+        if spawn_enemies:
+            x = random.randint(self.x1 + 1, self.x2 - 1)
+            y = random.randint(self.y1 + 1, self.y2 - 1)
+            esper.create_entity(
+                Position(x, y),
+                Renderable(sprite_id='enemy_test', color=(255, 128, 0)),
+                Actor(speed=25),
+                AI(behavior=BehaviorType.CHASE),
+                Enemy(attack_damage=15, bump_damage=5),
+                Stats(hp=50, max_hp=50),
+                FieldOfView(radius=8),
+            )
 
 
 def tunnel_between(start: Point, end: Point):
@@ -175,9 +205,10 @@ def generate_dungeon(
 
         rooms.append(new_room)
 
-    # Spawn all items
-    for room in rooms:
-        room.spawn_items(ingredients_config)
+    # Spawn all items/enemies
+    for i, room in enumerate(rooms):
+        # Don't spawn enemies in the player's starting room (the first room)
+        room.spawn_entities(ingredients_config, spawn_enemies=(i > 0))
 
     # Place exit
     if rooms:
