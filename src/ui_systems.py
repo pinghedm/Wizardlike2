@@ -1,3 +1,5 @@
+import math
+
 import esper
 import tcod
 
@@ -8,8 +10,11 @@ from components import (
     KnownRecipes,
     MessageLog,
     Modal,
+    PlayerTag,
+    Position,
     SpellInventory,
     Stats,
+    TargetingReticle,
     UIState,
 )
 from states import MAIN_MENU_OPTIONS, DisplayMode, GameState
@@ -215,8 +220,30 @@ class TargetingOverlaySystem(esper.Processor):
         self.console = console
 
     def process(self):
-        # ... (implementation remains same)
-        pass
+        reticles = esper.get_component(TargetingReticle)
+        if not reticles:
+            return
+
+        _ent, reticle = reticles[0]
+        player_entities = esper.get_components(Position, PlayerTag)
+        if not player_entities:
+            return
+        _player, (player_pos, _tag) = player_entities[0]
+
+        # Highlight Range and AOE
+        for y in range(self.console.height):
+            for x in range(self.console.width):
+                dist_to_reticle = math.sqrt((x - reticle.x) ** 2 + (y - reticle.y) ** 2)
+                dist_to_player = math.sqrt((x - player_pos.x) ** 2 + (y - player_pos.y) ** 2)
+
+                if dist_to_reticle <= reticle.radius:
+                    self.console.rgb[y, x]['bg'] = (100, 0, 0)
+                elif dist_to_player <= reticle.range:
+                    self.console.rgb[y, x]['bg'] = (0, 0, 50)
+
+        # Draw yellow reticle X
+        if 0 <= reticle.x < self.console.width and 0 <= reticle.y < self.console.height:
+            self.console.print(reticle.x, reticle.y, 'X', fg=(255, 255, 0))
 
 
 class ModalSystem(esper.Processor):
