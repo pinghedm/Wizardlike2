@@ -3,7 +3,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import NamedTuple
 
-from data_loaders import _load_enum
+from data_utils import load_str_enum_from_yaml
 
 
 class Point(NamedTuple):
@@ -17,12 +17,18 @@ class BehaviorType(enum.Enum):
     FLEE = enum.auto()
 
 
-class StatusType(enum.Enum):
-    SLOW = enum.auto()
+class StatusType(enum.StrEnum):
+    SLOW = 'slow'
 
 
-ItemType = _load_enum('data/ingredients.yaml', 'ingredients', 'ItemType')
-SpellType = _load_enum('data/spells.yaml', 'spells', 'SpellType')
+class EffectType(enum.StrEnum):
+    DAMAGE = 'damage'
+    HEAL = 'heal'
+    SLOW = 'slow'
+
+
+ItemType = load_str_enum_from_yaml('ItemType', 'data/ingredients.yaml', 'ingredients')
+SpellType = load_str_enum_from_yaml('SpellType', 'data/spells.yaml', 'spells')
 
 
 @dataclass

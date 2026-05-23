@@ -1,10 +1,12 @@
 from dataclasses import dataclass
-from enum import Enum, StrEnum, auto
+from enum import Enum, auto
 from functools import lru_cache
 
 import numpy as np
 import tcod
 import yaml
+
+from components import EffectType, ItemType
 
 
 class AssetType(Enum):
@@ -23,16 +25,6 @@ class SpriteDefinition:
     codepoint: int | None = None
 
 
-def _load_enum(file_path: str, root_key: str, enum_name: str):
-    try:
-        with open(file_path) as f:
-            data = yaml.safe_load(f)
-            names = {item['id'].upper(): item['id'] for item in data[root_key]}
-            return StrEnum(enum_name, names)
-    except FileNotFoundError, KeyError:
-        return StrEnum(enum_name, {'NONE': 'none'})
-
-
 def load_ingredients_config(asset_loader: AssetLoader):
     with open('data/ingredients.yaml') as f:
         data = yaml.safe_load(f)['ingredients']
@@ -48,12 +40,13 @@ def load_ingredients_config(asset_loader: AssetLoader):
 
 
 def load_spells_config(asset_loader: AssetLoader):
-    from components import ItemType
-
     with open('data/spells.yaml') as f:
         data = yaml.safe_load(f)['spells']
-        spells = {}
         for spell in data:
+            # Map effect strings to Enums
+            for effect in spell.get('effects', []):
+                effect['type'] = EffectType(effect['type'])
+
             processed_recipes = []
             for r_data in spell['recipes']:
                 processed_recipes.append(
@@ -63,7 +56,6 @@ def load_spells_config(asset_loader: AssetLoader):
                     }
                 )
             spell['recipes'] = processed_recipes
-            spells[spell['id']] = spell
 
             if 'sprite' in spell:
                 asset_loader.register_sprite(spell['id'], spell['sprite'])

@@ -16,6 +16,7 @@ from components import (
     Position,
     Renderable,
     Stats,
+    StatusEffects,
 )
 from constants import MAP_HEIGHT, MAP_WIDTH
 from data_loaders import get_game_configs
@@ -111,6 +112,7 @@ class RectangularRoom:
                 AI(behavior=BehaviorType.CHASE),
                 Enemy(attack_damage=15, bump_damage=5),
                 Stats(hp=50, max_hp=50),
+                StatusEffects(),
                 FieldOfView(radius=8),
             )
 

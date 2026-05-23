@@ -12,6 +12,7 @@ from components import (
     Renderable,
     SpellInventory,
     Stats,
+    StatusEffects,
     UIState,
 )
 from states import GameState
@@ -58,5 +59,6 @@ def create_player(x, y, characters_config):
         Inventory(),
         KnownRecipes(),
         SpellInventory(),
+        StatusEffects(),
         PlayerTag(),
     )

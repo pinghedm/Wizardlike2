@@ -312,6 +312,13 @@ def handle_targeting_input(event):
         new_x = reticle.x + dx
         new_y = reticle.y + dy
 
+        # Check for map bounds and walkability
+        maps = esper.get_component(Map)
+        if maps:
+            game_map = maps[0][1]
+            if not game_map.is_walkable(new_x, new_y):
+                return DisplayMode.TARGETING
+
         # Clamp to range
         dist = math.sqrt((new_x - player_pos.x) ** 2 + (new_y - player_pos.y) ** 2)
         if dist <= reticle.range:

@@ -3,6 +3,10 @@ from pathlib import Path
 
 import yaml
 
+# Add src to path to import project components
+sys.path.append(str(Path(__file__).parent.parent / 'src'))
+from components import EffectType
+
 
 def validate_data() -> bool:
     data_dir = Path('data')
@@ -82,27 +86,33 @@ def validate_data() -> bool:
                 print(f'ERROR: Spell "{sid}" must have a non-empty list of "effects".')
                 errors += 1
             else:
-                valid_effect_types = {
-                    'damage': ['power'],
-                    'slow': ['duration'],
-                    'heal': ['power'],
+                # Use EffectType enum to determine valid types
+                valid_effect_info = {
+                    EffectType.DAMAGE: ['power'],
+                    EffectType.SLOW: ['duration'],
+                    EffectType.HEAL: ['power'],
                 }
+                valid_effect_type_names = [e.value for e in valid_effect_info.keys()]
+
                 for eff_idx, effect in enumerate(effects):
-                    etype = effect.get('type')
-                    if not etype:
+                    etype_str = effect.get('type')
+                    if not etype_str:
                         print(f'ERROR: Spell "{sid}" effect #{eff_idx} missing "type".')
                         errors += 1
                         continue
 
-                    if etype not in valid_effect_types:
-                        print(f'ERROR: Spell "{sid}" effect #{eff_idx} has invalid type: "{etype}".')
+                    if etype_str not in valid_effect_type_names:
+                        print(f'ERROR: Spell "{sid}" effect #{eff_idx} has invalid type: "{etype_str}".')
                         errors += 1
                         continue
 
-                    for req_field in valid_effect_types[etype]:
+                    # Map string back to Enum for logic
+                    etype = EffectType(etype_str)
+
+                    for req_field in valid_effect_info[etype]:
                         if req_field not in effect:
                             print(
-                                f'ERROR: Spell "{sid}" effect #{eff_idx} ({etype}) '
+                                f'ERROR: Spell "{sid}" effect #{eff_idx} ({etype_str}) '
                                 f'missing required field "{req_field}".'
                             )
                             errors += 1

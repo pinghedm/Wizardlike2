@@ -12,6 +12,7 @@ from components import (
     Actor,
     BehaviorType,
     Configuration,
+    EffectType,
     Enemy,
     FieldOfView,
     MessageLog,
@@ -23,6 +24,8 @@ from components import (
     SpellInventory,
     SpellType,
     Stats,
+    StatusEffects,
+    StatusType,
 )
 from map_objects import Map
 from states import DisplayMode, GameState
@@ -32,18 +35,26 @@ if TYPE_CHECKING:
 
 
 class DeathSystem(esper.Processor):
-    """Checks for player death."""
+    """Handles death for all entities with Stats."""
 
     def process(self):
-        for _ent, (stats, _tag) in esper.get_components(Stats, PlayerTag):
+        log_entities = esper.get_component(MessageLog)
+        log = log_entities[0][1] if log_entities else None
+
+        for ent, stats in esper.get_component(Stats):
             if stats.hp <= 0:
-                if not esper.get_component(Modal):
-                    esper.create_entity(
-                        Modal(
-                            message='You have died! Press Enter to quit.',
-                            on_close=lambda: exit(),
+                if esper.has_component(ent, PlayerTag):
+                    if not esper.get_component(Modal):
+                        esper.create_entity(
+                            Modal(
+                                message="You have died! Press Enter to quit.",
+                                on_close=lambda: exit(),
+                            )
                         )
-                    )
+                else:
+                    if log:
+                        log.add_simple_message("The enemy dies!", color=(255, 255, 0))
+                    esper.delete_entity(ent)
 
 
 class ActionSystem(esper.Processor):
@@ -62,6 +73,22 @@ class ActionSystem(esper.Processor):
         for _ent, actor in esper.get_component(Actor):
             if actor.cooldown > 0:
                 actor.cooldown -= 1
+
+
+class StatusSystem(esper.Processor):
+    """Manages duration of active status effects."""
+
+    def process(self):
+        game_state = esper.get_component(GameState)[0][1]
+        if game_state.time_paused:
+            return
+
+        for _ent, status in esper.get_component(StatusEffects):
+            for effect_type in list(status.active.keys()):
+                if status.active[effect_type] > 0:
+                    status.active[effect_type] -= 1
+                else:
+                    del status.active[effect_type]
 
 
 class AISystem(esper.Processor):
@@ -87,7 +114,9 @@ class AISystem(esper.Processor):
         targets_to_compute = set()
         active_enemies = []
 
-        for ent, (pos, actor, ai, enemy, fov) in esper.get_components(Position, Actor, AI, Enemy, FieldOfView):
+        for ent, (pos, actor, ai, enemy, fov) in esper.get_components(
+            Position, Actor, AI, Enemy, FieldOfView
+        ):
             if actor.cooldown > 0:
                 continue
 
@@ -132,8 +161,10 @@ class AISystem(esper.Processor):
                         player_stats.hp -= enemy.attack_damage
                         logs = esper.get_component(MessageLog)
                         if logs:
-                            logs[0][1].add_simple_message('The enemy hits you!', color=(255, 0, 0))
-                    actor.cooldown = actor.speed
+                            logs[0][1].add_simple_message(
+                                "The enemy hits you!", color=(255, 0, 0)
+                            )
+                    actor.cooldown = get_cooldown(ent, actor.speed)
                 else:
                     # Reached last known but no player
                     ai.last_known_player_position = None
@@ -149,8 +180,14 @@ class AISystem(esper.Processor):
 
                 # Manual collision check to prevent enemies overlapping
                 occupied = False
-                for other_ent, (other_pos, _actor) in esper.get_components(Position, Actor):
-                    if other_ent != ent and other_pos.x == move_x and other_pos.y == move_y:
+                for other_ent, (other_pos, _actor) in esper.get_components(
+                    Position, Actor
+                ):
+                    if (
+                        other_ent != ent
+                        and other_pos.x == move_x
+                        and other_pos.y == move_y
+                    ):
                         occupied = True
                         break
                 if not occupied and player_pos.x == move_x and player_pos.y == move_y:
@@ -159,7 +196,7 @@ class AISystem(esper.Processor):
                 if not occupied:
                     move_entity(ent, dx, dy)
 
-                actor.cooldown = actor.speed
+                actor.cooldown = get_cooldown(ent, actor.speed)
             else:
                 # Path blocked or reached
                 if target != player_pos.point:
@@ -207,7 +244,11 @@ class RenderSystem(esper.Processor):
     def process(self):
         game_state = esper.get_component(GameState)[0][1]
 
-        if game_state.display_mode not in [DisplayMode.EXPLORING, DisplayMode.CASTING, DisplayMode.TARGETING]:
+        if game_state.display_mode not in [
+            DisplayMode.EXPLORING,
+            DisplayMode.CASTING,
+            DisplayMode.TARGETING,
+        ]:
             return
 
         # 1. Get the Map and Player FOV
@@ -224,7 +265,9 @@ class RenderSystem(esper.Processor):
         # 2. Render the map
         for x in range(game_map.width):
             for y in range(game_map.height):
-                is_visible = player_fov is not None and Point(x, y) in player_fov.visible_tiles
+                is_visible = (
+                    player_fov is not None and Point(x, y) in player_fov.visible_tiles
+                )
                 is_explored = game_map.explored[x, y]
 
                 if not is_visible and not is_explored:
@@ -269,7 +312,9 @@ def move_entity(entity: int, dx: int, dy: int):
         for other_ent, (other_pos, _actor) in esper.get_components(Position, Actor):
             if other_ent != entity and other_pos.x == new_x and other_pos.y == new_y:
                 # If player bumps into enemy
-                if esper.has_component(entity, PlayerTag) and esper.has_component(other_ent, Enemy):
+                if esper.has_component(entity, PlayerTag) and esper.has_component(
+                    other_ent, Enemy
+                ):
                     player_entities = esper.get_components(Stats, PlayerTag)
                     if player_entities:
                         _player_ent, (player_stats, _tag) = player_entities[0]
@@ -277,7 +322,10 @@ def move_entity(entity: int, dx: int, dy: int):
                         player_stats.hp -= enemy.bump_damage
                         logs = esper.get_component(MessageLog)
                         if logs:
-                            logs[0][1].add_simple_message('You bump into an enemy and take damage!', color=(255, 0, 0))
+                            logs[0][1].add_simple_message(
+                                "You bump into an enemy and take damage!",
+                                color=(255, 0, 0),
+                            )
 
                     if enemy.blocks_movement:
                         return
@@ -301,14 +349,52 @@ def move_entity(entity: int, dx: int, dy: int):
             fov.dirty = True
 
 
+def get_cooldown(entity: int, base_speed: int) -> int:
+    """Calculate cooldown based on status effects."""
+    if esper.has_component(entity, StatusEffects):
+        status = esper.component_for_entity(entity, StatusEffects)
+        if StatusType.SLOW in status.active:
+            return base_speed * 2
+    return max(0, base_speed)
+
+
+def apply_effect(target_ent: int, effect_data: dict, log: MessageLog):
+    """Apply a single spell effect to a target entity."""
+    stats = esper.component_for_entity(target_ent, Stats)
+    status = esper.component_for_entity(target_ent, StatusEffects)
+    is_player = esper.has_component(target_ent, PlayerTag)
+    target_name = "You" if is_player else "The enemy"
+
+    etype = effect_data["type"]
+
+    if etype == EffectType.DAMAGE:
+        power = effect_data["power"]
+        stats.hp -= power
+        log.add_simple_message(
+            f"{target_name} took {power} damage!", color=(255, 100, 0)
+        )
+
+    elif etype == EffectType.HEAL:
+        power = effect_data["power"]
+        stats.hp = min(stats.max_hp, stats.hp + power)
+        log.add_simple_message(
+            f"{target_name} healed for {power} HP!", color=(0, 255, 0)
+        )
+
+    elif etype == EffectType.SLOW:
+        duration = effect_data["duration"]
+        status.active[StatusType.SLOW] = duration
+        log.add_simple_message(f"{target_name} is slowed!", color=(100, 100, 255))
+
+
 def cast_spell(spell_id: str, target_x: int, target_y: int):
     log = esper.get_component(MessageLog)[0][1]
 
     # Query for player
-    player_ents = esper.get_components(SpellInventory, PlayerTag)
+    player_ents = esper.get_components(SpellInventory, Actor, PlayerTag)
     if not player_ents:
         return
-    _player, (player_spell_inv, _tag) = player_ents[0]
+    player, (player_spell_inv, player_actor, _tag) = player_ents[0]
 
     stype = SpellType(spell_id)
 
@@ -320,38 +406,32 @@ def cast_spell(spell_id: str, target_x: int, target_y: int):
     spells_config = configs.spells
 
     # Find config
-    s_conf = next((s for s in spells_config if s['id'] == spell_id), None)
+    s_conf = next((s for s in spells_config if s["id"] == spell_id), None)
     if not s_conf:
         return
 
     log.add_simple_message(f'You cast {s_conf["name"]}!', color=(0, 255, 255))
 
-    radius = s_conf.get('radius', 0)
+    # Set player cooldown (Base move/cast cost of 10)
+    player_actor.cooldown = get_cooldown(player, 10)
 
-    # Find all entities in impact zone
+    radius = s_conf.get("radius", 0)
+
+    # Find all entities in impact zone using Euclidean distance
     targets = []
     for ent, (pos, _stats) in esper.get_components(Position, Stats):
-        if abs(pos.x - target_x) <= radius and abs(pos.y - target_y) <= radius:
+        if not esper.has_component(ent, StatusEffects):
+            continue
+
+        dx = pos.x - target_x
+        dy = pos.y - target_y
+        if dx**2 + dy**2 <= radius**2:
             targets.append(ent)
 
     if not targets:
-        log.add_simple_message('The spell hits nothing.', color=(150, 150, 150))
+        log.add_simple_message("The spell hits nothing.", color=(150, 150, 150))
         return
 
     for target in targets:
-        stats = esper.component_for_entity(target, Stats)
-        is_player = esper.has_component(target, PlayerTag)
-        target_name = 'You' if is_player else 'The enemy'
-
-        for effect in s_conf['effects']:
-            etype = effect['type']
-
-            if etype == 'damage':
-                power = effect['power']
-                stats.hp -= power
-                log.add_simple_message(f'{target_name} took {power} damage!', color=(255, 100, 0))
-
-            elif etype == 'heal':
-                power = effect['power']
-                stats.hp = min(stats.max_hp, stats.hp + power)
-                log.add_simple_message(f'{target_name} healed for {power} HP!', color=(0, 255, 0))
+        for effect in s_conf["effects"]:
+            apply_effect(target, effect, log)
