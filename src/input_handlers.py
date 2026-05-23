@@ -7,6 +7,7 @@ from components import (
     Configuration,
     Inventory,
     Item,
+    Keybindings,
     KnownRecipes,
     MessageLog,
     Modal,
@@ -23,8 +24,21 @@ from states import MAIN_MENU_OPTIONS, DisplayMode, GameState, MenuOption
 from systems import cast_spell, move_entity
 
 
+def handle_modal_input(event):
+    if not isinstance(event, tcod.event.KeyDown):
+        return
+
+    modals = esper.get_component(Modal)
+    if modals:
+        ent, modal = modals[0]
+        if modal.on_close:
+            modal.on_close()
+        esper.delete_entity(ent)
+
+
 def handle_exploring_input(event):
     game_state = esper.get_component(GameState)[0][1]
+    keybindings = esper.get_component(Keybindings)[0][1]
 
     if not isinstance(event, tcod.event.KeyDown):
         return DisplayMode.EXPLORING
@@ -35,19 +49,19 @@ def handle_exploring_input(event):
     player, (player_pos, _tag) = player_entities[0]
 
     dx, dy = 0, 0
-    if event.sym == tcod.event.KeySym.UP:
+    if event.sym == keybindings.bindings['MOVE_UP']:
         dy = -1
-    elif event.sym == tcod.event.KeySym.DOWN:
+    elif event.sym == keybindings.bindings['MOVE_DOWN']:
         dy = 1
-    elif event.sym == tcod.event.KeySym.LEFT:
+    elif event.sym == keybindings.bindings['MOVE_LEFT']:
         dx = -1
-    elif event.sym == tcod.event.KeySym.RIGHT:
+    elif event.sym == keybindings.bindings['MOVE_RIGHT']:
         dx = 1
-    elif event.sym == tcod.event.KeySym.ESCAPE:
+    elif event.sym == keybindings.bindings['CANCEL']:
         return DisplayMode.MENU
-    elif event.sym == tcod.event.KeySym.c:
+    elif event.sym == keybindings.bindings['OPEN_CRAFTING']:
         return DisplayMode.COMBINING
-    elif event.sym == tcod.event.KeySym.s:
+    elif event.sym == keybindings.bindings['OPEN_CASTING']:
         return DisplayMode.CASTING
     elif event.sym == tcod.event.KeySym.PAGEUP:
         log = esper.get_component(MessageLog)[0][1]
@@ -88,16 +102,34 @@ def handle_exploring_input(event):
     return DisplayMode.EXPLORING
 
 
-def handle_modal_input(event):
+def handle_settings_input(event):
     if not isinstance(event, tcod.event.KeyDown):
-        return
+        return DisplayMode.SETTINGS
 
-    modals = esper.get_component(Modal)
-    if modals:
-        ent, modal = modals[0]
-        if modal.on_close:
-            modal.on_close()
-        esper.delete_entity(ent)
+    ui_state = esper.get_component(UIState)[0][1]
+    kb_ent, keybindings = esper.get_component(Keybindings)[0]
+
+    actions = list(keybindings.bindings.keys())
+
+    if ui_state.remapping_action:
+        # We are waiting for a new key
+        keybindings.bindings[ui_state.remapping_action] = event.sym
+        ui_state.remapping_action = None
+        return DisplayMode.SETTINGS
+
+    if event.sym == keybindings.bindings['CANCEL']:
+        return DisplayMode.MENU
+
+    elif event.sym == keybindings.bindings['MOVE_UP']:
+        ui_state.settings_cursor = (ui_state.settings_cursor - 1) % len(actions)
+
+    elif event.sym == keybindings.bindings['MOVE_DOWN']:
+        ui_state.settings_cursor = (ui_state.settings_cursor + 1) % len(actions)
+
+    elif event.sym == keybindings.bindings['CONFIRM']:
+        ui_state.remapping_action = actions[ui_state.settings_cursor]
+
+    return DisplayMode.SETTINGS
 
 
 def handle_menu_input(event):
@@ -119,6 +151,8 @@ def handle_menu_input(event):
         selection = MAIN_MENU_OPTIONS[ui_state.main_menu_cursor]
         if selection == MenuOption.QUIT:
             raise SystemExit()
+        elif selection == MenuOption.SETTINGS:
+            return DisplayMode.SETTINGS
 
     return DisplayMode.MENU
 
@@ -128,6 +162,7 @@ def handle_combining_input(event):
         return DisplayMode.COMBINING
 
     ui_state = esper.get_component(UIState)[0][1]
+    keybindings = esper.get_component(Keybindings)[0][1]
 
     player_entities = esper.get_components(Inventory, PlayerTag)
     if not player_entities:
@@ -141,30 +176,30 @@ def handle_combining_input(event):
     else:
         ui_state.crafting_cursor = 0
 
-    if event.sym == tcod.event.KeySym.ESCAPE or event.sym == tcod.event.KeySym.c:
+    if event.sym == keybindings.bindings['CANCEL'] or event.sym == keybindings.bindings['OPEN_CRAFTING']:
         return DisplayMode.EXPLORING
 
-    elif event.sym == tcod.event.KeySym.UP:
+    elif event.sym == keybindings.bindings['MOVE_UP']:
         if inv_list:
             ui_state.crafting_cursor = (ui_state.crafting_cursor - 1) % len(inv_list)
 
-    elif event.sym == tcod.event.KeySym.DOWN:
+    elif event.sym == keybindings.bindings['MOVE_DOWN']:
         if inv_list:
             ui_state.crafting_cursor = (ui_state.crafting_cursor + 1) % len(inv_list)
 
-    elif event.sym == tcod.event.KeySym.RIGHT:
+    elif event.sym == keybindings.bindings['MOVE_RIGHT']:
         if inv_list:
             itype = inv_list[ui_state.crafting_cursor]
             if ui_state.selected_for_crafting.get(itype, 0) < player_inv.items[itype]:
                 ui_state.selected_for_crafting[itype] = ui_state.selected_for_crafting.get(itype, 0) + 1
 
-    elif event.sym == tcod.event.KeySym.LEFT:
+    elif event.sym == keybindings.bindings['MOVE_LEFT']:
         if inv_list:
             itype = inv_list[ui_state.crafting_cursor]
             if ui_state.selected_for_crafting.get(itype, 0) > 0:
                 ui_state.selected_for_crafting[itype] -= 1
 
-    elif event.sym == tcod.event.KeySym.RETURN:
+    elif event.sym == keybindings.bindings['CONFIRM']:
         # Try Combining
         flat_selection = []
         for itype, count in ui_state.selected_for_crafting.items():
@@ -224,6 +259,7 @@ def handle_casting_input(event):
         return DisplayMode.CASTING
 
     ui_state = esper.get_component(UIState)[0][1]
+    keybindings = esper.get_component(Keybindings)[0][1]
 
     player_entities = esper.get_components(SpellInventory, PlayerTag)
     if not player_entities:
@@ -241,18 +277,18 @@ def handle_casting_input(event):
     else:
         ui_state.casting_cursor = 0
 
-    if event.sym == tcod.event.KeySym.ESCAPE or event.sym == tcod.event.KeySym.s:
+    if event.sym == keybindings.bindings['CANCEL'] or event.sym == keybindings.bindings['OPEN_CASTING']:
         return DisplayMode.EXPLORING
 
-    elif event.sym == tcod.event.KeySym.UP:
+    elif event.sym == keybindings.bindings['MOVE_UP']:
         if available_spells:
             ui_state.casting_cursor = (ui_state.casting_cursor - 1) % len(available_spells)
 
-    elif event.sym == tcod.event.KeySym.DOWN:
+    elif event.sym == keybindings.bindings['MOVE_DOWN']:
         if available_spells:
             ui_state.casting_cursor = (ui_state.casting_cursor + 1) % len(available_spells)
 
-    elif event.sym == tcod.event.KeySym.RETURN:
+    elif event.sym == keybindings.bindings['CONFIRM']:
         if available_spells:
             stype = available_spells[ui_state.casting_cursor]
 
@@ -286,6 +322,7 @@ def handle_targeting_input(event):
         return DisplayMode.TARGETING
 
     ui_state = esper.get_component(UIState)[0][1]
+    keybindings = esper.get_component(Keybindings)[0][1]
     reticles = esper.get_component(TargetingReticle)
     if not reticles:
         return DisplayMode.EXPLORING
@@ -297,19 +334,19 @@ def handle_targeting_input(event):
         return DisplayMode.EXPLORING
     _player, (player_pos, _tag) = player_entities[0]
 
-    if event.sym == tcod.event.KeySym.ESCAPE:
+    if event.sym == keybindings.bindings['CANCEL']:
         esper.delete_entity(ret_ent)
         ui_state.active_targeting_spell_id = None
         return DisplayMode.CASTING
 
     dx, dy = 0, 0
-    if event.sym == tcod.event.KeySym.UP:
+    if event.sym == keybindings.bindings['MOVE_UP']:
         dy = -1
-    elif event.sym == tcod.event.KeySym.DOWN:
+    elif event.sym == keybindings.bindings['MOVE_DOWN']:
         dy = 1
-    elif event.sym == tcod.event.KeySym.LEFT:
+    elif event.sym == keybindings.bindings['MOVE_LEFT']:
         dx = -1
-    elif event.sym == tcod.event.KeySym.RIGHT:
+    elif event.sym == keybindings.bindings['MOVE_RIGHT']:
         dx = 1
 
     if dx != 0 or dy != 0:
@@ -329,7 +366,7 @@ def handle_targeting_input(event):
             reticle.x = new_x
             reticle.y = new_y
 
-    elif event.sym == tcod.event.KeySym.RETURN:
+    elif event.sym == keybindings.bindings['CONFIRM']:
         # EXECUTE SPELL
         cast_spell(
             spell_id=ui_state.active_targeting_spell_id,

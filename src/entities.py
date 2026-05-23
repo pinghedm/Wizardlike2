@@ -1,10 +1,12 @@
 import esper
+import tcod
 
 from components import (
     Actor,
     Configuration,
     FieldOfView,
     Inventory,
+    Keybindings,
     KnownRecipes,
     MessageLog,
     PlayerTag,
@@ -43,6 +45,24 @@ def create_configuration(configs):
 def create_ui_state():
     """Create the singleton UIState entity."""
     return esper.create_entity(UIState())
+
+
+def create_keybindings():
+    """Create the singleton Keybindings entity."""
+    return esper.create_entity(
+        Keybindings(
+            bindings={
+                'MOVE_UP': tcod.event.KeySym.UP,
+                'MOVE_DOWN': tcod.event.KeySym.DOWN,
+                'MOVE_LEFT': tcod.event.KeySym.LEFT,
+                'MOVE_RIGHT': tcod.event.KeySym.RIGHT,
+                'OPEN_CRAFTING': tcod.event.KeySym.c,
+                'OPEN_CASTING': tcod.event.KeySym.s,
+                'CONFIRM': tcod.event.KeySym.RETURN,
+                'CANCEL': tcod.event.KeySym.ESCAPE,
+            }
+        )
+    )
 
 
 def create_player(x, y, characters_config):

@@ -3,6 +3,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, NamedTuple
 
+import tcod
+
 from data_utils import load_str_enum_from_yaml
 
 
@@ -78,12 +80,21 @@ class Configuration:
 
 
 @dataclass
+class Keybindings:
+    """Singleton component to hold gameplay keybindings."""
+
+    bindings: dict[str, tcod.event.KeySym]
+
+
+@dataclass
 class UIState:
     """Component to store transient UI state like cursors and selections."""
 
     main_menu_cursor: int = 0
     crafting_cursor: int = 0
     casting_cursor: int = 0
+    settings_cursor: int = 0
+    remapping_action: str | None = None
     selected_for_crafting: dict[ItemType, int] = field(default_factory=dict)
     active_targeting_spell_id: str | None = None
 

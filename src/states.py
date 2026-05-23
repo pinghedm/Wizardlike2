@@ -8,13 +8,16 @@ class DisplayMode(enum.Enum):
     COMBINING = enum.auto()
     CASTING = enum.auto()
     TARGETING = enum.auto()
+    SETTINGS = enum.auto()
 
 
 class MenuOption(enum.StrEnum):
     QUIT = 'Quit'
+    SETTINGS = 'Settings'
 
 
 MAIN_MENU_OPTIONS = [
+    MenuOption.SETTINGS,
     MenuOption.QUIT,
 ]
 

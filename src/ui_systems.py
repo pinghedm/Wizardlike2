@@ -4,6 +4,7 @@ import tcod
 from components import (
     Configuration,
     Inventory,
+    Keybindings,
     KnownRecipes,
     MessageLog,
     Modal,
@@ -28,6 +29,8 @@ class MenuSystem(esper.Processor):
             self.render_combining_menu()
         elif game_state.display_mode == DisplayMode.CASTING:
             self.render_casting_menu()
+        elif game_state.display_mode == DisplayMode.SETTINGS:
+            self.render_settings_menu()
 
     def render_main_menu(self):
         ui_state = esper.get_component(UIState)[0][1]
@@ -164,6 +167,45 @@ class MenuSystem(esper.Processor):
             x + 2,
             y + height - 2,
             'Arrows: Select | Enter: Target | S/Esc: Cancel',
+            fg=(200, 200, 200),
+        )
+
+    def render_settings_menu(self):
+        ui_state = esper.get_component(UIState)[0][1]
+        keybindings = esper.get_component(Keybindings)[0][1]
+        actions = list(keybindings.bindings.keys())
+
+        width = 40
+        height = 15
+        x = (self.console.width - width) // 2
+        y = (self.console.height - height) // 2
+
+        self.console.draw_frame(
+            x,
+            y,
+            width,
+            height,
+            title='Settings',
+            fg=(255, 255, 255),
+            bg=(0, 0, 0),
+        )
+
+        for i, action in enumerate(actions):
+            color = (255, 255, 0) if i == ui_state.settings_cursor else (255, 255, 255)
+            key_name = keybindings.bindings[action].name
+
+            text = f'{"> " if i == ui_state.settings_cursor else "  "}{action}: '
+            if ui_state.remapping_action == action:
+                text += '[Press any key...]'
+            else:
+                text += f'[{key_name}]'
+
+            self.console.print(x + 2, y + 2 + i, text, fg=color)
+
+        self.console.print(
+            x + 2,
+            y + height - 2,
+            'Arrows: Select | Enter: Remap | Esc: Back',
             fg=(200, 200, 200),
         )
 

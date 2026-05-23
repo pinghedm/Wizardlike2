@@ -9,6 +9,7 @@ from data_loaders import AssetLoader, get_game_configs
 from entities import (
     create_configuration,
     create_game_state,
+    create_keybindings,
     create_message_log,
     create_player,
     create_ui_state,
@@ -19,6 +20,7 @@ from input_handlers import (
     handle_exploring_input,
     handle_menu_input,
     handle_modal_input,
+    handle_settings_input,
     handle_targeting_input,
 )
 from procgen import generate_dungeon
@@ -46,6 +48,7 @@ def main():
     create_message_log()
     create_configuration(configs)
     create_ui_state()
+    create_keybindings()
 
     # BUILD the master tileset
     tileset = asset_loader.build_tileset()
@@ -130,6 +133,8 @@ def main():
                     game_state.display_mode = handle_casting_input(event)
                 elif game_state.display_mode == DisplayMode.TARGETING:
                     game_state.display_mode = handle_targeting_input(event)
+                elif game_state.display_mode == DisplayMode.SETTINGS:
+                    game_state.display_mode = handle_settings_input(event)
 
                 # If the state changed, break the event loop to redraw immediately
                 if game_state.display_mode != old_mode:
