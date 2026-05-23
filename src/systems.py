@@ -11,6 +11,7 @@ from components import (
     AI,
     Actor,
     BehaviorType,
+    Configuration,
     Enemy,
     FieldOfView,
     MessageLog,
@@ -19,6 +20,8 @@ from components import (
     Point,
     Position,
     Renderable,
+    SpellInventory,
+    SpellType,
     Stats,
 )
 from map_objects import Map
@@ -46,10 +49,15 @@ class DeathSystem(esper.Processor):
 class ActionSystem(esper.Processor):
     """Manages cooldowns for all actors."""
 
+    def __init__(self):
+        self.tick_parity = 0
+
     def process(self):
         game_state = esper.get_component(GameState)[0][1]
         if game_state.time_paused:
             return
+
+        self.tick_parity = (self.tick_parity + 1) % 2
 
         for _ent, actor in esper.get_component(Actor):
             if actor.cooldown > 0:
@@ -73,7 +81,7 @@ class AISystem(esper.Processor):
         player_entities = esper.get_components(Position, PlayerTag)
         if not player_entities:
             return
-        player_ent, (player_pos, _tag) = player_entities[0]
+        _player_ent, (player_pos, _tag) = player_entities[0]
 
         # 1. Update FOV/Detection and targets
         targets_to_compute = set()
@@ -118,11 +126,13 @@ class AISystem(esper.Processor):
             if dist_sq <= 2:  # Adjacent (including diagonal)
                 if target == player_pos.point:
                     # Attack player
-                    stats = esper.component_for_entity(player_ent, Stats)
-                    stats.hp -= enemy.attack_damage
-                    logs = esper.get_component(MessageLog)
-                    if logs:
-                        logs[0][1].add_simple_message('The enemy hits you!', color=(255, 0, 0))
+                    player_entities = esper.get_components(Stats, PlayerTag)
+                    if player_entities:
+                        _player_ent, (player_stats, _tag) = player_entities[0]
+                        player_stats.hp -= enemy.attack_damage
+                        logs = esper.get_component(MessageLog)
+                        if logs:
+                            logs[0][1].add_simple_message('The enemy hits you!', color=(255, 0, 0))
                     actor.cooldown = actor.speed
                 else:
                     # Reached last known but no player
@@ -197,7 +207,7 @@ class RenderSystem(esper.Processor):
     def process(self):
         game_state = esper.get_component(GameState)[0][1]
 
-        if game_state.display_mode != DisplayMode.EXPLORING:
+        if game_state.display_mode not in [DisplayMode.EXPLORING, DisplayMode.CASTING, DisplayMode.TARGETING]:
             return
 
         # 1. Get the Map and Player FOV
@@ -260,12 +270,14 @@ def move_entity(entity: int, dx: int, dy: int):
             if other_ent != entity and other_pos.x == new_x and other_pos.y == new_y:
                 # If player bumps into enemy
                 if esper.has_component(entity, PlayerTag) and esper.has_component(other_ent, Enemy):
-                    stats = esper.component_for_entity(entity, Stats)
-                    enemy = esper.component_for_entity(other_ent, Enemy)
-                    stats.hp -= enemy.bump_damage
-                    logs = esper.get_component(MessageLog)
-                    if logs:
-                        logs[0][1].add_simple_message('You bump into an enemy and take damage!', color=(255, 0, 0))
+                    player_entities = esper.get_components(Stats, PlayerTag)
+                    if player_entities:
+                        _player_ent, (player_stats, _tag) = player_entities[0]
+                        enemy = esper.component_for_entity(other_ent, Enemy)
+                        player_stats.hp -= enemy.bump_damage
+                        logs = esper.get_component(MessageLog)
+                        if logs:
+                            logs[0][1].add_simple_message('You bump into an enemy and take damage!', color=(255, 0, 0))
 
                     if enemy.blocks_movement:
                         return
@@ -287,3 +299,59 @@ def move_entity(entity: int, dx: int, dy: int):
         if esper.has_component(entity, FieldOfView):
             fov = esper.component_for_entity(entity, FieldOfView)
             fov.dirty = True
+
+
+def cast_spell(spell_id: str, target_x: int, target_y: int):
+    log = esper.get_component(MessageLog)[0][1]
+
+    # Query for player
+    player_ents = esper.get_components(SpellInventory, PlayerTag)
+    if not player_ents:
+        return
+    _player, (player_spell_inv, _tag) = player_ents[0]
+
+    stype = SpellType(spell_id)
+
+    # Consume charge
+    player_spell_inv.spells[stype] -= 1
+
+    # Query for config
+    configs = esper.get_component(Configuration)[0][1]
+    spells_config = configs.spells
+
+    # Find config
+    s_conf = next((s for s in spells_config if s['id'] == spell_id), None)
+    if not s_conf:
+        return
+
+    log.add_simple_message(f'You cast {s_conf["name"]}!', color=(0, 255, 255))
+
+    radius = s_conf.get('radius', 0)
+
+    # Find all entities in impact zone
+    targets = []
+    for ent, (pos, _stats) in esper.get_components(Position, Stats):
+        if abs(pos.x - target_x) <= radius and abs(pos.y - target_y) <= radius:
+            targets.append(ent)
+
+    if not targets:
+        log.add_simple_message('The spell hits nothing.', color=(150, 150, 150))
+        return
+
+    for target in targets:
+        stats = esper.component_for_entity(target, Stats)
+        is_player = esper.has_component(target, PlayerTag)
+        target_name = 'You' if is_player else 'The enemy'
+
+        for effect in s_conf['effects']:
+            etype = effect['type']
+
+            if etype == 'damage':
+                power = effect['power']
+                stats.hp -= power
+                log.add_simple_message(f'{target_name} took {power} damage!', color=(255, 100, 0))
+
+            elif etype == 'heal':
+                power = effect['power']
+                stats.hp = min(stats.max_hp, stats.hp + power)
+                log.add_simple_message(f'{target_name} healed for {power} HP!', color=(0, 255, 0))

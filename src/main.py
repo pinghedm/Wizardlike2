@@ -6,12 +6,25 @@ import tcod
 from components import Modal
 from constants import SCREEN_HEIGHT, SCREEN_WIDTH, TICKS_PER_SECOND
 from data_loaders import AssetLoader, get_game_configs
-from entities import create_game_state, create_message_log, create_player
-from input_handlers import handle_combining_input, handle_exploring_input, handle_menu_input, handle_modal_input
+from entities import (
+    create_configuration,
+    create_game_state,
+    create_message_log,
+    create_player,
+    create_ui_state,
+)
+from input_handlers import (
+    handle_casting_input,
+    handle_combining_input,
+    handle_exploring_input,
+    handle_menu_input,
+    handle_modal_input,
+    handle_targeting_input,
+)
 from procgen import generate_dungeon
 from states import DisplayMode, GameState
 from systems import ActionSystem, AISystem, DeathSystem, FOVSystem, RenderSystem
-from ui_systems import HUDSystem, MenuSystem, ModalSystem
+from ui_systems import HUDSystem, MenuSystem, ModalSystem, TargetingOverlaySystem
 
 
 def main():
@@ -24,6 +37,8 @@ def main():
     # State
     create_game_state(floor=1)
     create_message_log()
+    create_configuration(configs)
+    create_ui_state()
 
     # BUILD the master tileset
     tileset = asset_loader.build_tileset()
@@ -61,11 +76,12 @@ def main():
         esper.add_processor(FOVSystem())
         esper.add_processor(RenderSystem(root_console, asset_loader))
 
-        menu_system = MenuSystem(root_console, player, configs['spells'])
+        menu_system = MenuSystem(root_console, player)
         esper.add_processor(menu_system)
 
         esper.add_processor(HUDSystem(root_console, player))
         esper.add_processor(ModalSystem(root_console))
+        esper.add_processor(TargetingOverlaySystem(root_console))
 
         tick_rate = 1 / TICKS_PER_SECOND
 
@@ -97,11 +113,15 @@ def main():
 
                 old_mode = game_state.display_mode
                 if game_state.display_mode == DisplayMode.EXPLORING:
-                    game_state.display_mode = handle_exploring_input(event, player)
+                    game_state.display_mode = handle_exploring_input(event)
                 elif game_state.display_mode == DisplayMode.MENU:
-                    game_state.display_mode = handle_menu_input(event, menu_system)
+                    game_state.display_mode = handle_menu_input(event)
                 elif game_state.display_mode == DisplayMode.COMBINING:
-                    game_state.display_mode = handle_combining_input(event, player, menu_system, configs['spells'])
+                    game_state.display_mode = handle_combining_input(event)
+                elif game_state.display_mode == DisplayMode.CASTING:
+                    game_state.display_mode = handle_casting_input(event)
+                elif game_state.display_mode == DisplayMode.TARGETING:
+                    game_state.display_mode = handle_targeting_input(event)
 
                 # If the state changed, break the event loop to redraw immediately
                 if game_state.display_mode != old_mode:

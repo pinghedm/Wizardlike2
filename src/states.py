@@ -6,6 +6,8 @@ class DisplayMode(enum.Enum):
     EXPLORING = enum.auto()
     MENU = enum.auto()
     COMBINING = enum.auto()
+    CASTING = enum.auto()
+    TARGETING = enum.auto()
 
 
 class MenuOption(enum.StrEnum):

@@ -69,6 +69,50 @@ def validate_data() -> bool:
                 print(f'ERROR: Spell "{sid}" missing "name".')
                 errors += 1
 
+            for field in ['range', 'radius']:
+                if field not in spell:
+                    print(f'ERROR: Spell "{sid}" missing "{field}".')
+                    errors += 1
+                elif not isinstance(spell[field], int) or spell[field] < 0:
+                    print(f'ERROR: Spell "{sid}" {field} must be a non-negative integer.')
+                    errors += 1
+
+            effects = spell.get('effects', [])
+            if not isinstance(effects, list) or not effects:
+                print(f'ERROR: Spell "{sid}" must have a non-empty list of "effects".')
+                errors += 1
+            else:
+                valid_effect_types = {
+                    'damage': ['power'],
+                    'slow': ['duration'],
+                    'heal': ['power'],
+                }
+                for eff_idx, effect in enumerate(effects):
+                    etype = effect.get('type')
+                    if not etype:
+                        print(f'ERROR: Spell "{sid}" effect #{eff_idx} missing "type".')
+                        errors += 1
+                        continue
+
+                    if etype not in valid_effect_types:
+                        print(f'ERROR: Spell "{sid}" effect #{eff_idx} has invalid type: "{etype}".')
+                        errors += 1
+                        continue
+
+                    for req_field in valid_effect_types[etype]:
+                        if req_field not in effect:
+                            print(
+                                f'ERROR: Spell "{sid}" effect #{eff_idx} ({etype}) '
+                                f'missing required field "{req_field}".'
+                            )
+                            errors += 1
+                        elif not isinstance(effect[req_field], int) or effect[req_field] <= 0:
+                            print(
+                                f'ERROR: Spell "{sid}" effect #{eff_idx} '
+                                f'field "{req_field}" must be a positive integer.'
+                            )
+                            errors += 1
+
             recipes = spell.get('recipes', [])
             if not isinstance(recipes, list) or not recipes:
                 print(f'ERROR: Spell "{sid}" must have a non-empty list of "recipes".')

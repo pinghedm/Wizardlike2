@@ -1,6 +1,11 @@
 spells:
   - id: fireball
     name: Fireball
+    range: 6
+    radius: 1
+    effects:
+      - type: damage
+        power: 25
     recipes:
       - ingredients: [fire_crystal, fire_crystal]
         charges: 3
@@ -8,16 +13,33 @@ spells:
         charges: 7
   - id: ice_lance
     name: Ice Lance
+    range: 8
+    radius: 0
+    effects:
+      - type: damage
+        power: 15
+      - type: slow
+        duration: 90
     recipes:
       - ingredients: [ice_shard, ice_shard]
         charges: 5
   - id: rejuvenation
     name: Rejuvenation
+    range: 0
+    radius: 0
+    effects:
+      - type: heal
+        power: 30
     recipes:
       - ingredients: [mystic_herb, mystic_herb]
         charges: 2
   - id: steam_blast
     name: Steam Blast
+    range: 4
+    radius: 1
+    effects:
+      - type: damage
+        power: 15
     recipes:
       - ingredients: [fire_crystal, ice_shard]
         charges: 4

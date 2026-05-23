@@ -17,6 +17,10 @@ class BehaviorType(enum.Enum):
     FLEE = enum.auto()
 
 
+class StatusType(enum.Enum):
+    SLOW = enum.auto()
+
+
 ItemType = _load_enum('data/ingredients.yaml', 'ingredients', 'ItemType')
 SpellType = _load_enum('data/spells.yaml', 'spells', 'SpellType')
 
@@ -47,6 +51,27 @@ class Renderable:
 @dataclass
 class Item:
     type: ItemType
+
+
+@dataclass
+class Configuration:
+    """Singleton component to hold game configurations."""
+
+    ingredients: dict
+    spells: list
+    characters: dict
+    tiles: list
+
+
+@dataclass
+class UIState:
+    """Component to store transient UI state like cursors and selections."""
+
+    main_menu_cursor: int = 0
+    crafting_cursor: int = 0
+    casting_cursor: int = 0
+    selected_for_crafting: dict[ItemType, int] = field(default_factory=dict)
+    active_targeting_spell_id: str | None = None
 
 
 @dataclass
@@ -117,6 +142,23 @@ class Enemy:
     attack_damage: int = 15
     bump_damage: int = 5
     blocks_movement: bool = False
+
+
+@dataclass
+class TargetingReticle:
+    """Component to track the position of a spell targeting reticle."""
+
+    x: int
+    y: int
+    range: int
+    radius: int
+
+
+@dataclass
+class StatusEffects:
+    """Component to track active status effects on an entity."""
+
+    active: dict[StatusType, int] = field(default_factory=dict)
 
 
 class PlayerTag:

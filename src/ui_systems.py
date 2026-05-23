@@ -1,18 +1,28 @@
+import math
+
 import esper
 import tcod
 
-from components import Inventory, KnownRecipes, MessageLog, Modal, SpellInventory, Stats
+from components import (
+    Configuration,
+    Inventory,
+    KnownRecipes,
+    MessageLog,
+    Modal,
+    PlayerTag,
+    Position,
+    SpellInventory,
+    Stats,
+    TargetingReticle,
+    UIState,
+)
 from states import MAIN_MENU_OPTIONS, DisplayMode, GameState
 
 
 class MenuSystem(esper.Processor):
-    def __init__(self, console: tcod.console.Console, player: int, spells_config: list):
+    def __init__(self, console: tcod.console.Console, player: int):
         self.console = console
         self.player = player
-        self.spells_config = spells_config
-        self.main_menu_cursor = 0
-        self.menu_cursor = 0
-        self.selected_for_crafting = {}
 
     def process(self):
         game_state = esper.get_component(GameState)[0][1]
@@ -21,21 +31,25 @@ class MenuSystem(esper.Processor):
             self.render_main_menu()
         elif game_state.display_mode == DisplayMode.COMBINING:
             self.render_combining_menu()
+        elif game_state.display_mode == DisplayMode.CASTING:
+            self.render_casting_menu()
 
     def render_main_menu(self):
+        ui_state = esper.get_component(UIState)[0][1]
         self.console.clear(bg=(0, 0, 0))
         self.console.draw_frame(0, 0, self.console.width, self.console.height, title='Main Menu', fg=(255, 255, 255))
 
         for i, option in enumerate(MAIN_MENU_OPTIONS):
-            color = (255, 255, 0) if i == self.main_menu_cursor else (255, 255, 255)
+            color = (255, 255, 0) if i == ui_state.main_menu_cursor else (255, 255, 255)
             self.console.print(
                 self.console.width // 2 - 5,
                 self.console.height // 2 - 1 + i,
-                f'{"> " if i == self.main_menu_cursor else "  "}{option}',
+                f'{"> " if i == ui_state.main_menu_cursor else "  "}{option}',
                 fg=color,
             )
 
     def render_combining_menu(self):
+        ui_state = esper.get_component(UIState)[0][1]
         self.console.clear(bg=(0, 0, 0))
         self.console.draw_frame(
             0, 0, self.console.width, self.console.height, title='Combine Items', fg=(255, 255, 255)
@@ -46,13 +60,13 @@ class MenuSystem(esper.Processor):
         inv_list = sorted(player_inv.items.keys())
 
         for i, itype in enumerate(inv_list):
-            color = (255, 255, 255) if i == self.menu_cursor else (100, 100, 100)
+            color = (255, 255, 255) if i == ui_state.crafting_cursor else (100, 100, 100)
             count = player_inv.items[itype]
-            selected = self.selected_for_crafting.get(itype, 0)
+            selected = ui_state.selected_for_crafting.get(itype, 0)
             self.console.print(
                 2,
                 4 + (i * 2),
-                f'{"> " if i == self.menu_cursor else "  "}{itype.name}: {count} (Selected: {selected})',
+                f'{"> " if i == ui_state.crafting_cursor else "  "}{itype.name}: {count} (Selected: {selected})',
                 fg=color,
             )
 
@@ -82,6 +96,80 @@ class MenuSystem(esper.Processor):
                 recipe_str = ' + '.join(itype.name for itype in recipe)
                 self.console.print(42, y_offset, f'* {recipe_str}')
                 y_offset += 1
+
+    def render_casting_menu(self):
+        ui_state = esper.get_component(UIState)[0][1]
+        configs = esper.get_component(Configuration)[0][1]
+
+        width = 50
+        height = 15
+        x = (self.console.width - width) // 2
+        y = (self.console.height - height) // 2
+
+        self.console.draw_frame(x, y, width, height, title='Select Spell to Cast', fg=(255, 255, 255), bg=(0, 0, 0))
+
+        player_spell_inv = esper.component_for_entity(self.player, SpellInventory)
+        available_spells = sorted(
+            [s for s in player_spell_inv.spells if player_spell_inv.spells[s] > 0], key=lambda x: x.name
+        )
+
+        if not available_spells:
+            self.console.print(x + width // 2 - 10, y + height // 2, 'No spells with charges!', fg=(255, 0, 0))
+        else:
+            for i, stype in enumerate(available_spells):
+                color = (255, 255, 0) if i == ui_state.casting_cursor else (255, 255, 255)
+                charges = player_spell_inv.spells[stype]
+
+                # Find metadata
+                s_conf = next((s for s in configs.spells if s['id'] == stype.value), {})
+                info = f' (Range: {s_conf.get("range", 0)}, Radius: {s_conf.get("radius", 0)})'
+
+                self.console.print(
+                    x + 2,
+                    y + 2 + (i * 2),
+                    f'{"> " if i == ui_state.casting_cursor else "  "}{stype.name}: {charges} charges{info}',
+                    fg=color,
+                )
+
+        self.console.print(x + 2, y + height - 2, 'Arrows: Select | Enter: Target | S/Esc: Cancel', fg=(200, 200, 200))
+
+
+class TargetingOverlaySystem(esper.Processor):
+    def __init__(self, console: tcod.console.Console):
+        self.console = console
+
+    def process(self):
+        game_state = esper.get_component(GameState)[0][1]
+        if game_state.display_mode != DisplayMode.TARGETING:
+            return
+
+        player_entities = esper.get_components(Position, PlayerTag)
+        if not player_entities:
+            return
+        _player, (player_pos, _tag) = player_entities[0]
+
+        for _ent, reticle in esper.get_component(TargetingReticle):
+            # Render Range Visualization
+            if reticle.range > 0:
+                for rx in range(player_pos.x - reticle.range, player_pos.x + reticle.range + 1):
+                    for ry in range(player_pos.y - reticle.range, player_pos.y + reticle.range + 1):
+                        if 0 <= rx < self.console.width and 0 <= ry < self.console.height:
+                            dist = math.sqrt((rx - player_pos.x) ** 2 + (ry - player_pos.y) ** 2)
+                            if dist <= reticle.range:
+                                # Subtle blue highlight for valid range
+                                self.console.rgb['bg'][ry, rx] = (0, 0, 40)
+
+            # Render AOE if radius > 0
+            if reticle.radius > 0:
+                for rx in range(reticle.x - reticle.radius, reticle.x + reticle.radius + 1):
+                    for ry in range(reticle.y - reticle.radius, reticle.y + reticle.radius + 1):
+                        if 0 <= rx < self.console.width and 0 <= ry < self.console.height:
+                            # Highlight AOE with a semi-transparent or subtle bg
+                            # Console.rgb is indexed as [y, x]
+                            self.console.rgb['bg'][ry, rx] = (64, 0, 0)
+
+            # Render Reticle cursor
+            self.console.print(reticle.x, reticle.y, 'X', fg=(255, 255, 0))
 
 
 class ModalSystem(esper.Processor):
@@ -134,7 +222,7 @@ class HUDSystem(esper.Processor):
     def process(self):
         game_state = esper.get_component(GameState)[0][1]
 
-        if game_state.display_mode != DisplayMode.EXPLORING:
+        if game_state.display_mode not in [DisplayMode.EXPLORING, DisplayMode.CASTING, DisplayMode.TARGETING]:
             return
 
         self.render_hp_bar()
