@@ -1,7 +1,7 @@
 import enum
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
 
 from data_utils import load_str_enum_from_yaml
 
@@ -27,8 +27,16 @@ class EffectType(enum.StrEnum):
     SLOW = 'slow'
 
 
-ItemType = load_str_enum_from_yaml('ItemType', 'data/ingredients.yaml', 'ingredients')
-SpellType = load_str_enum_from_yaml('SpellType', 'data/spells.yaml', 'spells')
+if TYPE_CHECKING:
+
+    class ItemType(enum.StrEnum):
+        pass
+
+    class SpellType(enum.StrEnum):
+        pass
+else:
+    ItemType = load_str_enum_from_yaml('ItemType', 'data/ingredients.yaml', 'ingredients')
+    SpellType = load_str_enum_from_yaml('SpellType', 'data/spells.yaml', 'spells')
 
 
 @dataclass

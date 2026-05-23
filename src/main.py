@@ -56,13 +56,13 @@ def main():
         room_min_size=6,
         room_max_size=10,
         max_items_per_room=2,
-        ingredients_config=configs["ingredients"],
-        tiles_config=configs["tiles"],
+        ingredients_config=configs['ingredients'],
+        tiles_config=configs['tiles'],
     )
     esper.create_entity(game_map)
 
     # ECS Entities
-    player = create_player(player_start.x, player_start.y, configs["characters"])
+    player = create_player(player_start.x, player_start.y, configs['characters'])
 
     with tcod.context.new(
         columns=SCREEN_WIDTH,
@@ -70,7 +70,7 @@ def main():
         width=SCREEN_WIDTH * 20,
         height=SCREEN_HEIGHT * 20,
         tileset=tileset,
-        title="WizardLike",
+        title='WizardLike',
         vsync=True,
     ) as context:
         root_console = tcod.console.Console(SCREEN_WIDTH, SCREEN_HEIGHT)
@@ -96,16 +96,14 @@ def main():
         while True:
             frame_start = time.perf_counter()
 
-            root_console.clear()
-
             # Fetch fresh game state
             game_state = esper.get_component(GameState)[0][1]
 
             # Update time_paused based on mode or modals
             has_modal = bool(esper.get_component(Modal))
-            game_state.time_paused = (
-                game_state.display_mode != DisplayMode.EXPLORING
-            ) or has_modal
+            game_state.time_paused = (game_state.display_mode != DisplayMode.EXPLORING) or has_modal
+
+            root_console.clear()
 
             # Run all processors
             esper.process()
@@ -144,5 +142,5 @@ def main():
                 time.sleep(remaining)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

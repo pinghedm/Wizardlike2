@@ -43,8 +43,10 @@ def handle_exploring_input(event):
         dx = -1
     elif event.sym == tcod.event.KeySym.RIGHT:
         dx = 1
-    elif event.sym == tcod.event.KeySym.c:
+    elif event.sym == tcod.event.KeySym.ESCAPE:
         return DisplayMode.MENU
+    elif event.sym == tcod.event.KeySym.c:
+        return DisplayMode.COMBINING
     elif event.sym == tcod.event.KeySym.s:
         return DisplayMode.CASTING
     elif event.sym == tcod.event.KeySym.PAGEUP:
@@ -77,7 +79,10 @@ def handle_exploring_input(event):
                     raise SystemExit()
                 else:
                     esper.create_entity(
-                        Modal(message='You descend deeper into the dungeon...', on_close=transition_to_next_floor)
+                        Modal(
+                            message='You descend deeper into the dungeon...',
+                            on_close=transition_to_next_floor,
+                        )
                     )
 
     return DisplayMode.EXPLORING
@@ -112,9 +117,7 @@ def handle_menu_input(event):
 
     elif event.sym == tcod.event.KeySym.RETURN:
         selection = MAIN_MENU_OPTIONS[ui_state.main_menu_cursor]
-        if selection == MenuOption.COMBINE:
-            return DisplayMode.COMBINING
-        elif selection == MenuOption.QUIT:
+        if selection == MenuOption.QUIT:
             raise SystemExit()
 
     return DisplayMode.MENU
@@ -229,7 +232,8 @@ def handle_casting_input(event):
 
     # Filter spells to only those with charges
     available_spells = sorted(
-        [s for s in player_spell_inv.spells if player_spell_inv.spells[s] > 0], key=lambda x: x.name
+        [s for s in player_spell_inv.spells if player_spell_inv.spells[s] > 0],
+        key=lambda x: x.name,
     )
 
     if available_spells:

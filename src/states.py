@@ -11,12 +11,10 @@ class DisplayMode(enum.Enum):
 
 
 class MenuOption(enum.StrEnum):
-    COMBINE = 'Combine'
     QUIT = 'Quit'
 
 
 MAIN_MENU_OPTIONS = [
-    MenuOption.COMBINE,
     MenuOption.QUIT,
 ]
 
