@@ -3,10 +3,10 @@ import time
 import esper
 import tcod
 
-from components import Modal
-from constants import SCREEN_HEIGHT, SCREEN_WIDTH, TICKS_PER_SECOND
-from data_loaders import AssetLoader, get_game_configs
-from entities import (
+from src.components import Modal
+from src.constants import SCREEN_HEIGHT, SCREEN_WIDTH, TICKS_PER_SECOND
+from src.data_loaders import AssetLoader, get_game_configs
+from src.entities import (
     create_configuration,
     create_game_state,
     create_keybindings,
@@ -14,7 +14,7 @@ from entities import (
     create_player,
     create_ui_state,
 )
-from input_handlers import (
+from src.input_handlers import (
     handle_casting_input,
     handle_combining_input,
     handle_exploring_input,
@@ -23,9 +23,9 @@ from input_handlers import (
     handle_settings_input,
     handle_targeting_input,
 )
-from procgen import generate_dungeon
-from states import DisplayMode, GameState
-from systems import (
+from src.procgen import generate_dungeon
+from src.states import DisplayMode, GameState
+from src.systems import (
     ActionSystem,
     AISystem,
     DeathSystem,
@@ -33,18 +33,12 @@ from systems import (
     RenderSystem,
     StatusSystem,
 )
-from ui_systems import HUDSystem, MenuSystem, ModalSystem, TargetingOverlaySystem
+from src.ui_systems import HUDSystem, MenuSystem, ModalSystem, TargetingOverlaySystem
 
 
-def main():
-    # Asset Loader
-    asset_loader = AssetLoader()
-
+def init_game_world(asset_loader: AssetLoader):
     # Load Configs (memoized)
     configs = get_game_configs(asset_loader)
-
-    # BUILD the master tileset
-    tileset = asset_loader.build_tileset()
 
     # State
     create_game_state(floor=1)
@@ -65,6 +59,52 @@ def main():
 
     # ECS Entities
     player = create_player(player_start.x, player_start.y, configs['characters'])
+    return player
+
+
+def add_logic_systems():
+    # Order matters: Death -> Action -> AI -> FOV
+    esper.add_processor(DeathSystem())
+    esper.add_processor(ActionSystem())
+    esper.add_processor(StatusSystem())
+    esper.add_processor(AISystem())
+    esper.add_processor(FOVSystem())
+
+
+def add_render_systems(root_console, asset_loader, player):
+    esper.add_processor(RenderSystem(root_console, asset_loader))
+    esper.add_processor(MenuSystem(root_console, player))
+    esper.add_processor(HUDSystem(root_console, player))
+    esper.add_processor(ModalSystem(root_console))
+    esper.add_processor(TargetingOverlaySystem(root_console))
+
+
+def dispatch_input(event: tcod.event.Event, game_state: GameState):
+    if game_state.display_mode == DisplayMode.EXPLORING:
+        game_state.display_mode = handle_exploring_input(event)
+    elif game_state.display_mode == DisplayMode.MENU:
+        game_state.display_mode = handle_menu_input(event)
+    elif game_state.display_mode == DisplayMode.COMBINING:
+        game_state.display_mode = handle_combining_input(event)
+    elif game_state.display_mode == DisplayMode.CASTING:
+        game_state.display_mode = handle_casting_input(event)
+    elif game_state.display_mode == DisplayMode.TARGETING:
+        game_state.display_mode = handle_targeting_input(event)
+    elif game_state.display_mode == DisplayMode.SETTINGS:
+        game_state.display_mode = handle_settings_input(event)
+
+
+def main():
+    # Asset Loader
+    asset_loader = AssetLoader()
+
+    # Load Configs (memoized) to register sprites/chars
+    get_game_configs(asset_loader)
+
+    # BUILD the master tileset
+    tileset = asset_loader.build_tileset()
+
+    player = init_game_world(asset_loader)
 
     with tcod.context.new(
         columns=SCREEN_WIDTH,
@@ -77,21 +117,8 @@ def main():
     ) as context:
         root_console = tcod.console.Console(SCREEN_WIDTH, SCREEN_HEIGHT)
 
-        # Add Processors
-        # Order matters: Death -> Action -> AI -> FOV -> Render -> UI
-        esper.add_processor(DeathSystem())
-        esper.add_processor(ActionSystem())
-        esper.add_processor(StatusSystem())
-        esper.add_processor(AISystem())
-        esper.add_processor(FOVSystem())
-        esper.add_processor(RenderSystem(root_console, asset_loader))
-
-        menu_system = MenuSystem(root_console, player)
-        esper.add_processor(menu_system)
-
-        esper.add_processor(HUDSystem(root_console, player))
-        esper.add_processor(ModalSystem(root_console))
-        esper.add_processor(TargetingOverlaySystem(root_console))
+        add_logic_systems()
+        add_render_systems(root_console, asset_loader, player)
 
         tick_rate = 1 / TICKS_PER_SECOND
 
@@ -122,18 +149,7 @@ def main():
                     continue
 
                 old_mode = game_state.display_mode
-                if game_state.display_mode == DisplayMode.EXPLORING:
-                    game_state.display_mode = handle_exploring_input(event)
-                elif game_state.display_mode == DisplayMode.MENU:
-                    game_state.display_mode = handle_menu_input(event)
-                elif game_state.display_mode == DisplayMode.COMBINING:
-                    game_state.display_mode = handle_combining_input(event)
-                elif game_state.display_mode == DisplayMode.CASTING:
-                    game_state.display_mode = handle_casting_input(event)
-                elif game_state.display_mode == DisplayMode.TARGETING:
-                    game_state.display_mode = handle_targeting_input(event)
-                elif game_state.display_mode == DisplayMode.SETTINGS:
-                    game_state.display_mode = handle_settings_input(event)
+                dispatch_input(event, game_state)
 
                 # If the state changed, break the event loop to redraw immediately
                 if game_state.display_mode != old_mode:

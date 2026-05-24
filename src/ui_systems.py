@@ -3,7 +3,7 @@ import math
 import esper
 import tcod
 
-from components import (
+from src.components import (
     Configuration,
     Inventory,
     Keybindings,
@@ -17,7 +17,7 @@ from components import (
     TargetingReticle,
     UIState,
 )
-from states import MAIN_MENU_OPTIONS, DisplayMode, GameState
+from src.states import MAIN_MENU_OPTIONS, DisplayMode, GameState
 
 
 class MenuSystem(esper.Processor):

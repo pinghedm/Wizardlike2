@@ -2,8 +2,8 @@ import random
 
 import esper
 
-from ai_behaviors import ChaseBehavior, FleeBehavior, PatrolBehavior
-from components import (
+from src.ai_behaviors import ChaseBehavior, FleeBehavior, PatrolBehavior
+from src.components import (
     AI,
     Actor,
     Configuration,
@@ -19,11 +19,11 @@ from components import (
     Stats,
     StatusEffects,
 )
-from constants import MAP_HEIGHT, MAP_WIDTH
-from data_loaders import get_game_configs
-from map_objects import Map, Tile
-from states import GameState
-from systems import RenderSystem
+from src.constants import MAP_HEIGHT, MAP_WIDTH
+from src.data_loaders import get_game_configs
+from src.map_objects import Map, Tile
+from src.states import GameState
+from src.systems import RenderSystem
 
 
 def transition_to_next_floor():

@@ -1,7 +1,7 @@
 import esper
 import tcod
 
-from components import (
+from src.components import (
     Configuration,
     CraftingModal,
     Inventory,

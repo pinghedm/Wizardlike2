@@ -3,7 +3,7 @@ import math
 import esper
 import tcod
 
-from components import (
+from src.components import (
     Configuration,
     Inventory,
     Item,
@@ -18,10 +18,10 @@ from components import (
     TargetingReticle,
     UIState,
 )
-from map_objects import Map
-from procgen import transition_to_next_floor
-from states import MAIN_MENU_OPTIONS, DisplayMode, GameState, MenuOption
-from systems import cast_spell, move_entity
+from src.map_objects import Map
+from src.procgen import transition_to_next_floor
+from src.states import MAIN_MENU_OPTIONS, DisplayMode, GameState, MenuOption
+from src.systems import cast_spell, move_entity
 
 
 def handle_modal_input(event):

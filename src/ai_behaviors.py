@@ -4,7 +4,7 @@ import esper
 import numpy as np
 import tcod
 
-from components import (
+from src.components import (
     AI,
     Actor,
     FieldOfView,
@@ -12,8 +12,8 @@ from components import (
     Point,
     Position,
 )
-from map_objects import Map
-from systems import get_cooldown, move_entity
+from src.map_objects import Map
+from src.systems import get_cooldown, move_entity
 
 
 class AIBehavior(ABC):

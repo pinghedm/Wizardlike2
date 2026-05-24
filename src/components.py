@@ -4,11 +4,11 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, NamedTuple
 
 if TYPE_CHECKING:
-    from ai_behaviors import AIBehavior
+    from src.ai_behaviors import AIBehavior
 
 import tcod
 
-from data_utils import load_str_enum_from_yaml
+from src.data_utils import load_str_enum_from_yaml
 
 
 class Point(NamedTuple):

@@ -3,9 +3,7 @@ from pathlib import Path
 
 import yaml
 
-# Add src to path to import project components
-sys.path.append(str(Path(__file__).parent.parent / 'src'))
-from components import EffectType
+from src.components import EffectType
 
 
 def validate_data() -> bool:

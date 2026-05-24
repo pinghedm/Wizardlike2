@@ -1,7 +1,7 @@
 import esper
 import tcod
 
-from components import (
+from src.components import (
     Actor,
     Configuration,
     FieldOfView,
@@ -17,7 +17,7 @@ from components import (
     StatusEffects,
     UIState,
 )
-from states import GameState
+from src.states import GameState
 
 
 def create_game_state(floor=1):

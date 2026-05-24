@@ -6,7 +6,7 @@ import numpy as np
 import tcod
 import yaml
 
-from components import EffectType, ItemType
+from src.components import EffectType, ItemType
 
 
 class AssetType(Enum):

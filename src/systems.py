@@ -7,7 +7,7 @@ import tcod.map
 import tcod.path
 from tcod import libtcodpy
 
-from components import (
+from src.components import (
     AI,
     Actor,
     Configuration,
@@ -26,11 +26,11 @@ from components import (
     StatusEffects,
     StatusType,
 )
-from map_objects import Map
-from states import DisplayMode, GameState
+from src.map_objects import Map
+from src.states import DisplayMode, GameState
 
 if TYPE_CHECKING:
-    from data_loaders import AssetLoader
+    from src.data_loaders import AssetLoader
 
 
 class DeathSystem(esper.Processor):
@@ -305,6 +305,11 @@ def move_entity(entity: int, dx: int, dy: int):
         if esper.has_component(entity, FieldOfView):
             fov = esper.component_for_entity(entity, FieldOfView)
             fov.dirty = True
+
+        # Player cooldown on move (Base move cost of 10)
+        if esper.has_component(entity, PlayerTag):
+            actor = esper.component_for_entity(entity, Actor)
+            actor.cooldown = get_cooldown(entity, 10)
 
 
 def get_cooldown(entity: int, base_speed: int) -> int:

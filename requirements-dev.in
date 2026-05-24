@@ -1,2 +1,5 @@
 pip-tools==7.5.3
 ruff==0.15.12
+pytest
+pytest-mock
+pytest-cov
