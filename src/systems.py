@@ -10,7 +10,6 @@ from tcod import libtcodpy
 from components import (
     AI,
     Actor,
-    BehaviorType,
     Configuration,
     EffectType,
     Enemy,
@@ -53,7 +52,10 @@ class DeathSystem(esper.Processor):
                         )
                 else:
                     if log:
-                        log.add_simple_message('The enemy dies!', color=(255, 255, 0))
+                        name = 'enemy'
+                        if esper.has_component(ent, Renderable):
+                            name = esper.component_for_entity(ent, Renderable).sprite_id
+                        log.add_simple_message(f'The {name} dies!', color=(255, 255, 0))
                     esper.delete_entity(ent)
 
 
@@ -104,94 +106,55 @@ class AISystem(esper.Processor):
             return
         game_map = maps[0][1]
 
-        # Get player position
-        player_entities = esper.get_components(Position, PlayerTag)
-        if not player_entities:
+        player_ents = esper.get_components(Position, PlayerTag)
+        if not player_ents:
             return
-        _player_ent, (player_pos, _tag) = player_entities[0]
+        player_ent, (player_pos, _tag) = player_ents[0]
+        player_stats = esper.component_for_entity(player_ent, Stats)
 
-        # 1. Update FOV/Detection and targets
+        # 1. Collect unique targets to precompute pathfinders
         targets_to_compute = set()
-        active_enemies = []
+        for ent, ai in esper.get_component(AI):
+            target = ai.behavior.get_target(ent)
+            if target:
+                targets_to_compute.add(target)
 
-        for ent, (pos, actor, ai, enemy, fov) in esper.get_components(Position, Actor, AI, Enemy, FieldOfView):
-            if actor.cooldown > 0:
-                continue
-
-            # Can I see the player?
-            if player_pos.point in fov.visible_tiles:
-                ai.last_known_player_position = player_pos.point
-
-            if ai.behavior == BehaviorType.CHASE and ai.last_known_player_position:
-                targets_to_compute.add(ai.last_known_player_position)
-                active_enemies.append((ent, pos, actor, ai, enemy))
-
-        if not active_enemies:
-            return
-
-        # 2. Compute Dijkstra pathfinders for all unique targets
-        # cost grid: 1 for walkable, 0 for blocked
         cost = game_map.walkable.astype(np.int32)
-        dijkstra_pfs = {}
-
+        pathfinding_context = {}
         for target in targets_to_compute:
-            # Dijkstra pathfinder from target
             pf = tcod.path.Dijkstra(cost, diagonal=1.41)
             pf.set_goal(target.x, target.y)
-            dijkstra_pfs[target] = pf
+            pathfinding_context[target] = pf
 
-        # 3. Move enemies
-        for ent, pos, actor, ai, enemy in active_enemies:
-            target = ai.last_known_player_position
-            pf = dijkstra_pfs[target]
+        # 2. Dispatch behavior
+        for ent, (pos, ai) in esper.get_components(Position, AI):
+            # Cooldown check applies to all actions
+            if esper.has_component(ent, Actor):
+                actor = esper.component_for_entity(ent, Actor)
+                if actor.cooldown > 0:
+                    continue
 
-            # Distance check
-            dx = target.x - pos.x
-            dy = target.y - pos.y
-            dist_sq = dx**2 + dy**2
+            # Attack if adjacent
+            if esper.has_component(ent, Enemy):
+                dx = player_pos.x - pos.x
+                dy = player_pos.y - pos.y
+                if abs(dx) <= 1 and abs(dy) <= 1:
+                    enemy = esper.component_for_entity(ent, Enemy)
+                    player_stats.hp -= enemy.attack_damage
+                    logs = esper.get_component(MessageLog)
+                    if logs:
+                        name = 'enemy'
+                        if esper.has_component(ent, Renderable):
+                            name = esper.component_for_entity(ent, Renderable).sprite_id
+                        logs[0][1].add_simple_message(f'The {name} hits you!', color=(255, 0, 0))
 
-            if dist_sq <= 2:  # Adjacent (including diagonal)
-                if target == player_pos.point:
-                    # Attack player
-                    player_entities = esper.get_components(Stats, PlayerTag)
-                    if player_entities:
-                        _player_ent, (player_stats, _tag) = player_entities[0]
-                        player_stats.hp -= enemy.attack_damage
-                        logs = esper.get_component(MessageLog)
-                        if logs:
-                            logs[0][1].add_simple_message('The enemy hits you!', color=(255, 0, 0))
-                    actor.cooldown = get_cooldown(ent, actor.speed)
-                else:
-                    # Reached last known but no player
-                    ai.last_known_player_position = None
-                continue
+                    if esper.has_component(ent, Actor):
+                        actor = esper.component_for_entity(ent, Actor)
+                        actor.cooldown = get_cooldown(ent, actor.speed)
+                    continue
 
-            # Move towards target using Dijkstra pathfinder
-            path = pf.get_path(pos.x, pos.y)
-
-            if len(path) > 1:
-                # Next step is the second to last element in the reversed path
-                move_x, move_y = path[-2]
-                dx, dy = move_x - pos.x, move_y - pos.y
-
-                # Manual collision check to prevent enemies overlapping
-                occupied = False
-                for other_ent, (other_pos, _actor) in esper.get_components(Position, Actor):
-                    if other_ent != ent and other_pos.x == move_x and other_pos.y == move_y:
-                        occupied = True
-                        break
-                if not occupied and player_pos.x == move_x and player_pos.y == move_y:
-                    occupied = True
-
-                if not occupied:
-                    move_entity(ent, dx, dy)
-
-                actor.cooldown = get_cooldown(ent, actor.speed)
-            else:
-                # Path blocked or reached
-                if target != player_pos.point:
-                    ai.last_known_player_position = None
-                actor.cooldown = 10  # Try again soon
+            # Move if not attacking
+            ai.behavior.update(ent, pathfinding_context)
 
 
 class FOVSystem(esper.Processor):
@@ -296,6 +259,11 @@ def move_entity(entity: int, dx: int, dy: int):
         if not game_map.is_walkable(new_x, new_y):
             return
 
+        # Check for exit tile collision (for enemies)
+        if not esper.has_component(entity, PlayerTag):
+            if game_map.tiles[new_x][new_y].is_exit:
+                return
+
         # Check for entity collision (with Actors or Player)
         # Check for Actors
         for other_ent, (other_pos, _actor) in esper.get_components(Position, Actor):
@@ -309,8 +277,11 @@ def move_entity(entity: int, dx: int, dy: int):
                         player_stats.hp -= enemy.bump_damage
                         logs = esper.get_component(MessageLog)
                         if logs:
+                            name = 'enemy'
+                            if esper.has_component(other_ent, Renderable):
+                                name = esper.component_for_entity(other_ent, Renderable).sprite_id
                             logs[0][1].add_simple_message(
-                                'You bump into an enemy and take damage!',
+                                f'You bump into a {name} and take damage!',
                                 color=(255, 0, 0),
                             )
 
@@ -350,7 +321,14 @@ def apply_effect(target_ent: int, effect_data: dict, log: MessageLog):
     stats = esper.component_for_entity(target_ent, Stats)
     status = esper.component_for_entity(target_ent, StatusEffects)
     is_player = esper.has_component(target_ent, PlayerTag)
-    target_name = 'You' if is_player else 'The enemy'
+
+    if is_player:
+        target_name = 'You'
+    else:
+        name = 'enemy'
+        if esper.has_component(target_ent, Renderable):
+            name = esper.component_for_entity(target_ent, Renderable).sprite_id
+        target_name = f'The {name}'
 
     etype = effect_data['type']
 

@@ -43,6 +43,9 @@ def main():
     # Load Configs (memoized)
     configs = get_game_configs(asset_loader)
 
+    # BUILD the master tileset
+    tileset = asset_loader.build_tileset()
+
     # State
     create_game_state(floor=1)
     create_message_log()
@@ -50,16 +53,12 @@ def main():
     create_ui_state()
     create_keybindings()
 
-    # BUILD the master tileset
-    tileset = asset_loader.build_tileset()
-
     # Generate Dungeon & Spawns
     game_map, player_start = generate_dungeon(
         max_rooms=30,
         room_min_size=6,
         room_max_size=10,
         max_items_per_room=2,
-        ingredients_config=configs['ingredients'],
         tiles_config=configs['tiles'],
     )
     esper.create_entity(game_map)

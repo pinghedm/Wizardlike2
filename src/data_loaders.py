@@ -81,6 +81,22 @@ def load_characters_config(asset_loader: AssetLoader):
         return {}
 
 
+def load_enemies_config(asset_loader: AssetLoader):
+    try:
+        with open('data/enemies.yaml') as f:
+            data = yaml.safe_load(f)['enemies']
+            enemies = {enemy['id']: enemy for enemy in data}
+            for eid, config in enemies.items():
+                if 'sprite' in config:
+                    asset_loader.register_sprite(eid, config['sprite'])
+                else:
+                    char = config.get('char', '?')
+                    asset_loader.register_char(eid, char)
+            return enemies
+    except FileNotFoundError:
+        return {}
+
+
 def load_tiles_config(asset_loader: AssetLoader):
     try:
         with open('data/tiles.yaml') as f:
@@ -107,6 +123,7 @@ def get_game_configs(asset_loader: AssetLoader):
         'spells': load_spells_config(asset_loader),
         'characters': load_characters_config(asset_loader),
         'tiles': load_tiles_config(asset_loader),
+        'enemies': load_enemies_config(asset_loader),
     }
 
 

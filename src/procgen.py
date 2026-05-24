@@ -2,10 +2,11 @@ import random
 
 import esper
 
+from ai_behaviors import ChaseBehavior, FleeBehavior, PatrolBehavior
 from components import (
     AI,
     Actor,
-    BehaviorType,
+    Configuration,
     Enemy,
     FieldOfView,
     Item,
@@ -51,7 +52,6 @@ def transition_to_next_floor():
         room_min_size=6,
         room_max_size=10,
         max_items_per_room=max_items,
-        ingredients_config=configs['ingredients'],
         tiles_config=configs['tiles'],
     )
 
@@ -70,12 +70,13 @@ def transition_to_next_floor():
 
 
 class RectangularRoom:
-    def __init__(self, x: int, y: int, width: int, height: int):
+    def __init__(self, x: int, y: int, width: int, height: int, dungeon: Map):
         self.x1 = x
         self.y1 = y
         self.x2 = x + width
         self.y2 = y + height
         self.items: dict[Point, list[ItemType]] = {}
+        self.dungeon = dungeon
 
     @property
     def center(self) -> Point:
@@ -86,12 +87,14 @@ class RectangularRoom:
     def intersects(self, other: RectangularRoom) -> bool:
         return self.x1 <= other.x2 and self.x2 >= other.x1 and self.y1 <= other.y2 and self.y2 >= other.y1
 
-    def spawn_entities(self, ingredients_config: dict, spawn_enemies: bool = True):
+    def spawn_entities(self, rooms: list[RectangularRoom], spawn_enemies: bool = True):
         """Create ECS entities for all items and enemies in this room."""
+        configs = esper.get_component(Configuration)[0][1]
+
         # Items
         for p, item_list in self.items.items():
             for itype in item_list:
-                item_config = ingredients_config.get(itype.value, {})
+                item_config = configs.ingredients.get(itype.value, {})
                 sprite_id = itype.value
                 color = tuple(item_config.get('color', (255, 255, 255)))
 
@@ -103,15 +106,42 @@ class RectangularRoom:
 
         # Enemies
         if spawn_enemies:
-            x = random.randint(self.x1 + 1, self.x2 - 1)
-            y = random.randint(self.y1 + 1, self.y2 - 1)
+            game_state = esper.get_component(GameState)[0][1]
+            floor = game_state.floor
+
+            # Filter enemies valid for current floor
+            available_enemies = [e for e in configs.enemies.values() if e['floors'][0] <= floor <= e['floors'][1]]
+            if not available_enemies:
+                return
+
+            enemy_cfg = random.choice(available_enemies)
+
+            # Re-roll until we find a non-exit tile
+            for _ in range(20):
+                x = random.randint(self.x1 + 1, self.x2 - 1)
+                y = random.randint(self.y1 + 1, self.y2 - 1)
+                if not self.dungeon.tiles[x][y].is_exit:
+                    break
+            else:
+                return
+
+            # Map behavior string to Class
+            behaviors = {
+                'CHASE': ChaseBehavior(),
+                'PATROL': PatrolBehavior(
+                    path=[self.center, random.choice([r for r in rooms if r is not self] or [self]).center]
+                ),
+                'FLEE': FleeBehavior(),
+            }
+            behavior = behaviors.get(enemy_cfg['behavior'].upper(), ChaseBehavior())
+
             esper.create_entity(
                 Position(x, y),
-                Renderable(sprite_id='enemy_test', color=(255, 128, 0)),
-                Actor(speed=25),
-                AI(behavior=BehaviorType.CHASE),
-                Enemy(attack_damage=15, bump_damage=5),
-                Stats(hp=50, max_hp=50),
+                Renderable(sprite_id=enemy_cfg['id'], color=tuple(enemy_cfg['color'])),
+                Actor(speed=enemy_cfg['speed']),
+                AI(behavior=behavior),
+                Enemy(attack_damage=enemy_cfg['damage'], bump_damage=enemy_cfg['damage'] // 2),
+                Stats(hp=enemy_cfg['hp'], max_hp=enemy_cfg['hp']),
                 StatusEffects(),
                 FieldOfView(radius=8),
             )
@@ -137,7 +167,6 @@ def generate_dungeon(
     room_min_size: int,
     room_max_size: int,
     max_items_per_room: int,
-    ingredients_config: dict,
     tiles_config: list,
 ) -> tuple[Map, Point]:
     # Retrieve current floor from GameState
@@ -180,7 +209,7 @@ def generate_dungeon(
         x = random.randint(0, dungeon.width - w - 1)
         y = random.randint(0, dungeon.height - h - 1)
 
-        new_room = RectangularRoom(x, y, w, h)
+        new_room = RectangularRoom(x, y, w, h, dungeon)
         if any(new_room.intersects(other) for other in rooms):
             continue
 
@@ -210,7 +239,7 @@ def generate_dungeon(
     # Spawn all items/enemies
     for i, room in enumerate(rooms):
         # Don't spawn enemies in the player's starting room (the first room)
-        room.spawn_entities(ingredients_config, spawn_enemies=(i > 0))
+        room.spawn_entities(rooms, spawn_enemies=(i > 0))
 
     # Place exit
     if rooms:

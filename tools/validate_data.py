@@ -188,6 +188,49 @@ def validate_data() -> bool:
                     print(f'ERROR: Tile "{tid}" depth must be a list of 2 integers.')
                     errors += 1
 
+    # 4. Validate Enemies
+    enemies_file = data_dir / 'enemies.yaml'
+    if not enemies_file.exists():
+        print(f'Note: {enemies_file} not found, skipping enemy validation.')
+    else:
+        print(f'Validating {enemies_file}...')
+        try:
+            with open(enemies_file) as f:
+                enemies_data = yaml.safe_load(f)
+        except Exception as e:
+            print(f'ERROR: Failed to parse enemies.yaml: {e}')
+            return False
+
+        enemy_ids = set()
+        for i, enemy in enumerate(enemies_data.get('enemies', [])):
+            if 'id' not in enemy:
+                print(f'ERROR: Enemy #{i} missing "id".')
+                errors += 1
+                continue
+            eid = enemy['id']
+            if eid in enemy_ids:
+                print(f'ERROR: Duplicate enemy ID: "{eid}"')
+                errors += 1
+            enemy_ids.add(eid)
+
+            required_fields = ['sprite', 'hp', 'damage', 'speed', 'behavior', 'floors', 'color']
+            for field in required_fields:
+                if field not in enemy:
+                    print(f'ERROR: Enemy "{eid}" missing "{field}".')
+                    errors += 1
+
+            if 'floors' in enemy:
+                floors = enemy['floors']
+                if not isinstance(floors, list) or len(floors) != 2 or not all(isinstance(f, int) for f in floors):
+                    print(f'ERROR: Enemy "{eid}" floors must be a list of 2 integers.')
+                    errors += 1
+
+            if 'color' in enemy:
+                color = enemy['color']
+                if not isinstance(color, list) or len(color) != 3 or not all(isinstance(c, int) for c in color):
+                    print(f'ERROR: Enemy "{eid}" color must be a list of 3 integers.')
+                    errors += 1
+
     if errors == 0:
         print('SUCCESS: All data files are valid.')
         return True

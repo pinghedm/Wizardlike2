@@ -38,6 +38,7 @@ def create_configuration(configs):
             spells=configs['spells'],
             characters=configs['characters'],
             tiles=configs['tiles'],
+            enemies=configs['enemies'],
         )
     )
 

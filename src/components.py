@@ -3,6 +3,9 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, NamedTuple
 
+if TYPE_CHECKING:
+    from ai_behaviors import AIBehavior
+
 import tcod
 
 from data_utils import load_str_enum_from_yaml
@@ -11,12 +14,6 @@ from data_utils import load_str_enum_from_yaml
 class Point(NamedTuple):
     x: int
     y: int
-
-
-class BehaviorType(enum.Enum):
-    CHASE = enum.auto()
-    PATROL = enum.auto()
-    FLEE = enum.auto()
 
 
 class StatusType(enum.StrEnum):
@@ -77,6 +74,7 @@ class Configuration:
     spells: list
     characters: dict
     tiles: list
+    enemies: dict
 
 
 @dataclass
@@ -156,7 +154,7 @@ class Actor:
 class AI:
     """Basic AI component."""
 
-    behavior: BehaviorType = BehaviorType.CHASE
+    behavior: AIBehavior
     last_known_player_position: Point | None = None
 
 
