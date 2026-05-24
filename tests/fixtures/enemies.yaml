@@ -1,0 +1,9 @@
+enemies:
+  - id: test_enemy
+    char: "e"
+    color: [0, 255, 0]
+    hp: 30
+    damage: 10
+    speed: 100
+    behavior: CHASE
+    floors: [1, 99]

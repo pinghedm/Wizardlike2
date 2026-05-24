@@ -353,6 +353,19 @@ def apply_effect(target_ent: int, effect_data: dict, log: MessageLog):
         log.add_simple_message(f'{target_name} is slowed!', color=(100, 100, 255))
 
 
+def match_recipe(selection: tuple) -> tuple[SpellType, int] | None:
+    """Match a sorted ingredient selection to a spell recipe.
+
+    Returns (spell_type, charges) for the first matching recipe, or None.
+    """
+    configs = esper.get_component(Configuration)[0][1]
+    for s_conf in configs.spells:
+        for r_data in s_conf['recipes']:
+            if r_data['ingredients'] == selection:
+                return SpellType(s_conf['id']), r_data['charges']
+    return None
+
+
 def cast_spell(spell_id: str, target_x: int, target_y: int):
     log = esper.get_component(MessageLog)[0][1]
 

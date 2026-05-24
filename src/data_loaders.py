@@ -1,3 +1,4 @@
+import warnings
 from dataclasses import dataclass
 from enum import Enum, auto
 from functools import lru_cache
@@ -5,8 +6,10 @@ from functools import lru_cache
 import numpy as np
 import tcod
 import yaml
+from PIL import Image
 
 from src.components import EffectType, ItemType
+from src.constants import DATA_DIR
 
 
 class AssetType(Enum):
@@ -26,7 +29,7 @@ class SpriteDefinition:
 
 
 def load_ingredients_config(asset_loader: AssetLoader):
-    with open('data/ingredients.yaml') as f:
+    with open(f'{DATA_DIR}/ingredients.yaml') as f:
         data = yaml.safe_load(f)['ingredients']
         items = {item['id']: item for item in data}
         for iid, config in items.items():
@@ -40,7 +43,7 @@ def load_ingredients_config(asset_loader: AssetLoader):
 
 
 def load_spells_config(asset_loader: AssetLoader):
-    with open('data/spells.yaml') as f:
+    with open(f'{DATA_DIR}/spells.yaml') as f:
         data = yaml.safe_load(f)['spells']
         for spell in data:
             # Map effect strings to Enums
@@ -67,7 +70,7 @@ def load_spells_config(asset_loader: AssetLoader):
 
 def load_characters_config(asset_loader: AssetLoader):
     try:
-        with open('data/characters.yaml') as f:
+        with open(f'{DATA_DIR}/characters.yaml') as f:
             data = yaml.safe_load(f)['characters']
             chars = {char['id']: char for char in data}
             for cid, config in chars.items():
@@ -83,7 +86,7 @@ def load_characters_config(asset_loader: AssetLoader):
 
 def load_enemies_config(asset_loader: AssetLoader):
     try:
-        with open('data/enemies.yaml') as f:
+        with open(f'{DATA_DIR}/enemies.yaml') as f:
             data = yaml.safe_load(f)['enemies']
             enemies = {enemy['id']: enemy for enemy in data}
             for eid, config in enemies.items():
@@ -99,7 +102,7 @@ def load_enemies_config(asset_loader: AssetLoader):
 
 def load_tiles_config(asset_loader: AssetLoader):
     try:
-        with open('data/tiles.yaml') as f:
+        with open(f'{DATA_DIR}/tiles.yaml') as f:
             data = yaml.safe_load(f)['tiles']
             for tile in data:
                 if 'sprite' in tile:
@@ -129,7 +132,7 @@ def get_game_configs(asset_loader: AssetLoader):
 
 class AssetLoader:
     def __init__(self):
-        self._cache: dict[str, tcod.image.Image] = {}
+        self._cache: dict[str, np.ndarray] = {}
         self._mapping: dict[str, SpriteDefinition] = {}
 
     def register_char(self, sprite_id: str, char: str):
@@ -155,8 +158,13 @@ class AssetLoader:
         # tile_shape is (height, width)
         tw, th = self.tileset.tile_width, self.tileset.tile_height
 
-        # Add procedural blocks
-        tcod.tileset.procedural_block_elements(tileset=self.tileset)
+        # Add procedural blocks. tcod's procedural_block_elements assigns tiles through its own
+        # deprecated set_tile path (true as of tcod 21.2.0, the latest release, regardless of how
+        # it's called), so the resulting DeprecationWarning is not actionable from our side and is
+        # suppressed here. Upstream filters the same warning in its own test suite.
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore', DeprecationWarning)
+            self.tileset += tcod.tileset.procedural_block_elements(shape=self.tileset.tile_shape)
 
         # 2. Map graphical sprites to new codepoints in the Private Use Area
         current_codepoint = 0xE000
@@ -173,7 +181,7 @@ class AssetLoader:
 
             try:
                 if definition.path not in self._cache:
-                    self._cache[definition.path] = tcod.image.load(definition.path)
+                    self._cache[definition.path] = np.asarray(Image.open(definition.path).convert('RGBA'))
 
                 full_image = self._cache[definition.path]
 
@@ -230,7 +238,7 @@ class AssetLoader:
                     src_start_y : src_start_y + copy_h, src_start_x : src_start_x + copy_w
                 ]
 
-                self.tileset.set_tile(current_codepoint, final_tile)
+                self.tileset[current_codepoint] = final_tile
                 definition.codepoint = current_codepoint
                 asset_to_codepoint[key] = current_codepoint
                 current_codepoint += 1

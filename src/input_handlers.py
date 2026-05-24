@@ -14,14 +14,13 @@ from src.components import (
     PlayerTag,
     Position,
     SpellInventory,
-    SpellType,
     TargetingReticle,
     UIState,
 )
 from src.map_objects import Map
 from src.procgen import transition_to_next_floor
 from src.states import MAIN_MENU_OPTIONS, DisplayMode, GameState, MenuOption
-from src.systems import cast_spell, move_entity
+from src.systems import cast_spell, match_recipe, move_entity
 
 
 def handle_modal_input(event):
@@ -209,47 +208,40 @@ def handle_combining_input(event):
         if not flat_selection:
             return DisplayMode.COMBINING
 
-        configs = esper.get_component(Configuration)[0][1]
-        spells_config = configs.spells
+        log = esper.get_component(MessageLog)[0][1]
+        result = match_recipe(flat_selection)
 
-        match_found = False
-        for s_conf in spells_config:
-            for r_data in s_conf['recipes']:
-                if r_data['ingredients'] == flat_selection:
-                    stype = SpellType(s_conf['id'])
-                    player_recipes = esper.component_for_entity(player, KnownRecipes)
-                    player_spell_inv = esper.component_for_entity(player, SpellInventory)
-
-                    # Record the recipe discovery
-                    if stype not in player_recipes.recipes:
-                        player_recipes.recipes[stype] = set()
-                    player_recipes.recipes[stype].add(flat_selection)
-
-                    # Grant charges
-                    charges = r_data['charges']
-                    player_spell_inv.spells[stype] = player_spell_inv.spells.get(stype, 0) + charges
-
-                    # Consume ingredients
-                    for itype, count in ui_state.selected_for_crafting.items():
-                        player_inv.items[itype] -= count
-
-                    log = esper.get_component(MessageLog)[0][1]
-                    log.add_message(
-                        [
-                            ('SUCCESS: Crafted ', (255, 255, 255)),
-                            (stype.name, (0, 255, 255)),
-                            (f'! (+{charges} charges)', (255, 255, 255)),
-                        ]
-                    )
-                    match_found = True
-                    # Clear selection on success
-                    ui_state.selected_for_crafting = {}
-                    return DisplayMode.EXPLORING
-
-        if not match_found:
-            log = esper.get_component(MessageLog)[0][1]
+        if result is None:
             log.add_simple_message('The combination fizzles...', color=(255, 0, 0))
             ui_state.selected_for_crafting = {}
+            return DisplayMode.COMBINING
+
+        stype, charges = result
+        player_recipes = esper.component_for_entity(player, KnownRecipes)
+        player_spell_inv = esper.component_for_entity(player, SpellInventory)
+
+        # Record the recipe discovery
+        if stype not in player_recipes.recipes:
+            player_recipes.recipes[stype] = set()
+        player_recipes.recipes[stype].add(flat_selection)
+
+        # Grant charges
+        player_spell_inv.spells[stype] = player_spell_inv.spells.get(stype, 0) + charges
+
+        # Consume ingredients
+        for itype, count in ui_state.selected_for_crafting.items():
+            player_inv.items[itype] -= count
+
+        log.add_message(
+            [
+                ('SUCCESS: Crafted ', (255, 255, 255)),
+                (stype.name, (0, 255, 255)),
+                (f'! (+{charges} charges)', (255, 255, 255)),
+            ]
+        )
+        # Clear selection on success
+        ui_state.selected_for_crafting = {}
+        return DisplayMode.EXPLORING
 
     return DisplayMode.COMBINING
 

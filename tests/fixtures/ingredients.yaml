@@ -1,0 +1,13 @@
+ingredients:
+  - id: reagent_a
+    name: Reagent A
+    char: "a"
+    color: [255, 0, 0]
+  - id: reagent_b
+    name: Reagent B
+    char: "b"
+    color: [0, 255, 0]
+  - id: reagent_c
+    name: Reagent C
+    char: "c"
+    color: [0, 0, 255]

@@ -1,8 +1,8 @@
 import esper
 import pytest
 import tcod.event
-from src.components import Actor, Keybindings
-from src.states import GameState
+
+from src.components import Actor
 from tests.headless_runner import HeadlessRunner
 
 

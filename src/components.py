@@ -8,6 +8,7 @@ if TYPE_CHECKING:
 
 import tcod
 
+from src.constants import DATA_DIR
 from src.data_utils import load_str_enum_from_yaml
 
 
@@ -34,8 +35,8 @@ if TYPE_CHECKING:
     class SpellType(enum.StrEnum):
         pass
 else:
-    ItemType = load_str_enum_from_yaml('ItemType', 'data/ingredients.yaml', 'ingredients')
-    SpellType = load_str_enum_from_yaml('SpellType', 'data/spells.yaml', 'spells')
+    ItemType = load_str_enum_from_yaml('ItemType', f'{DATA_DIR}/ingredients.yaml', 'ingredients')
+    SpellType = load_str_enum_from_yaml('SpellType', f'{DATA_DIR}/spells.yaml', 'spells')
 
 
 @dataclass

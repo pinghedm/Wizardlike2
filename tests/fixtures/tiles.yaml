@@ -1,0 +1,19 @@
+tiles:
+  - id: test_floor
+    type: floor
+    char: "."
+    depth: [1, 99]
+    fg: [255, 255, 255]
+    bg: [0, 0, 0]
+  - id: test_wall
+    type: wall
+    char: "#"
+    depth: [1, 99]
+    fg: [255, 255, 255]
+    bg: [0, 0, 0]
+  - id: test_exit
+    type: exit
+    char: ">"
+    depth: [1, 99]
+    fg: [255, 255, 0]
+    bg: [0, 0, 0]

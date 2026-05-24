@@ -79,7 +79,17 @@ def add_render_systems(root_console, asset_loader, player):
     esper.add_processor(TargetingOverlaySystem(root_console))
 
 
+def update_pause_state(game_state: GameState):
+    """Pause game time whenever not exploring or a modal is open."""
+    has_modal = bool(esper.get_component(Modal))
+    game_state.time_paused = (game_state.display_mode != DisplayMode.EXPLORING) or has_modal
+
+
 def dispatch_input(event: tcod.event.Event, game_state: GameState):
+    if esper.get_component(Modal):
+        handle_modal_input(event)
+        return
+
     if game_state.display_mode == DisplayMode.EXPLORING:
         game_state.display_mode = handle_exploring_input(event)
     elif game_state.display_mode == DisplayMode.MENU:
@@ -129,8 +139,7 @@ def main():
             game_state = esper.get_component(GameState)[0][1]
 
             # Update time_paused based on mode or modals
-            has_modal = bool(esper.get_component(Modal))
-            game_state.time_paused = (game_state.display_mode != DisplayMode.EXPLORING) or has_modal
+            update_pause_state(game_state)
 
             root_console.clear()
 
@@ -142,11 +151,6 @@ def main():
             for event in tcod.event.get():
                 if isinstance(event, tcod.event.Quit):
                     raise SystemExit()
-
-                # Prioritize Modal Input
-                if has_modal:
-                    handle_modal_input(event)
-                    continue
 
                 old_mode = game_state.display_mode
                 dispatch_input(event, game_state)

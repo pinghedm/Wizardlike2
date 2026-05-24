@@ -1,0 +1,25 @@
+spells:
+  - id: test_bolt
+    name: Test Bolt
+    char: "*"
+    range: 8
+    radius: 0
+    effects:
+      - type: damage
+        power: 12
+      - type: slow
+        duration: 40
+    recipes:
+      - ingredients: [reagent_a, reagent_b]
+        charges: 3
+  - id: test_blast
+    name: Test Blast
+    char: "o"
+    range: 6
+    radius: 1
+    effects:
+      - type: damage
+        power: 20
+    recipes:
+      - ingredients: [reagent_a, reagent_a]
+        charges: 5

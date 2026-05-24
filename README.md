@@ -29,13 +29,19 @@ python -m src.main
 
 ### Controls
 
-- **Arrow Keys**: Move your character.
+- **Arrow Keys**: Move your character (bump into enemies to attack).
 - **C**: Open/Close the Crafting Menu.
+- **S**: Open/Close the Spellcasting Menu.
+- **Escape**: Open the main menu.
 - **In Crafting Menu**:
   - **Up/Down**: Navigate your inventory.
   - **Left/Right**: Add/Remove ingredients to your mix.
   - **Enter**: Attempt to combine ingredients.
   - **C / Escape**: Return to the dungeon.
+- **In Spellcasting Menu**:
+  - **Up/Down**: Select a known spell.
+  - **Enter**: Choose the spell, then use the **Arrow Keys** to aim and **Enter** to cast.
+  - **S / Escape**: Cancel.
 
 ## Crafting & Discovery
 
@@ -56,3 +62,19 @@ _Always run the data validator after modifying these files:_
 ```bash
 python tools/validate_data.py
 ```
+
+## Development
+
+Run the test suite (headless playtests against a real game world):
+
+```bash
+python -m pytest tests/
+```
+
+Lint and format with `ruff`:
+
+```bash
+python -m ruff check --fix . && python -m ruff format .
+```
+
+Tests load their own data from `tests/fixtures/` (via `WIZARDLIKE_DATA_DIR`), so they stay independent of the content in `data/`.
