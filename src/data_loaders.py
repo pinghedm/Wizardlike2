@@ -139,14 +139,17 @@ class AssetLoader:
         """Register a font-based character directly."""
         self._mapping[sprite_id] = SpriteDefinition(codepoint=ord(char))
 
-    def register_sprite(self, sprite_id: str, config: dict):
+    def register_sprite(self, sprite_id: str, config: SpriteDefinition):
         """Register an external graphical sprite."""
         asset_type_str = config.get('type', 'FILE').upper()
         asset_type = AssetType[asset_type_str]
         region = tuple(config['region']) if 'region' in config else None
 
         self._mapping[sprite_id] = SpriteDefinition(
-            path=config['path'], type=asset_type, region=region, scale=config.get('scale', 1.0)
+            path=config['path'],
+            type=asset_type,
+            region=region,
+            scale=config.get('scale', 1.0),
         )
 
     def build_tileset(self) -> tcod.tileset.Tileset:
@@ -174,7 +177,12 @@ class AssetLoader:
             if definition.path is None:
                 continue
 
-            key = (definition.path, definition.type, definition.region, definition.scale)
+            key = (
+                definition.path,
+                definition.type,
+                definition.region,
+                definition.scale,
+            )
             if key in asset_to_codepoint:
                 definition.codepoint = asset_to_codepoint[key]
                 continue
@@ -235,7 +243,8 @@ class AssetLoader:
                 src_start_y = max(0, (target_h - th) // 2) if target_h > th else 0
 
                 final_tile[start_y : start_y + copy_h, start_x : start_x + copy_w] = resized[
-                    src_start_y : src_start_y + copy_h, src_start_x : src_start_x + copy_w
+                    src_start_y : src_start_y + copy_h,
+                    src_start_x : src_start_x + copy_w,
                 ]
 
                 self.tileset[current_codepoint] = final_tile

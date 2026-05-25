@@ -113,7 +113,7 @@ class AISystem(esper.Processor):
         player_stats = esper.component_for_entity(player_ent, Stats)
 
         # 1. Collect unique targets to precompute pathfinders
-        targets_to_compute = set()
+        targets_to_compute: set[Point] = set()
         for ent, ai in esper.get_component(AI):
             target = ai.behavior.get_target(ent)
             if target:

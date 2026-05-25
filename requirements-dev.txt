@@ -16,6 +16,8 @@ icdiff==2.0.10
     # via pytest-icdiff
 iniconfig==2.3.0
     # via pytest
+nodeenv==1.10.0
+    # via pyright
 packaging==26.2
     # via
     #   build
@@ -35,6 +37,8 @@ pyproject-hooks==1.2.0
     # via
     #   build
     #   pip-tools
+pyright==1.1.409
+    # via -r requirements-dev.in
 pytest==9.0.3
     # via
     #   -r requirements-dev.in
@@ -57,6 +61,8 @@ ruff==0.15.12
     # via -r requirements-dev.in
 termcolor==3.3.0
     # via pytest-sugar
+typing-extensions==4.15.0
+    # via pyright
 wheel==0.47.0
     # via pip-tools
 

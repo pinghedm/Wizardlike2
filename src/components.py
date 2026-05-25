@@ -1,15 +1,69 @@
 import enum
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING, NamedTuple, TypedDict
 
 if TYPE_CHECKING:
     from src.ai_behaviors import AIBehavior
+    from src.data_loaders import SpriteDefinition
 
 import tcod
 
 from src.constants import DATA_DIR
 from src.data_utils import load_str_enum_from_yaml
+
+
+class EffectConfig(TypedDict):
+    type: EffectType
+    power: int | None
+    duration: int | None
+
+
+class RecipeConfig(TypedDict):
+    ingredients: list[ItemType]
+    charges: int
+
+
+class SpellConfig(TypedDict):
+    id: str
+    name: str
+    range: int
+    radius: int
+    effects: list[EffectConfig]
+    recipes: list[RecipeConfig]
+
+
+class IngredientConfig(TypedDict):
+    id: str
+    name: str
+    char: str
+    color: list[int]
+
+
+class TileConfig(TypedDict):
+    id: str
+    type: str
+    char: str | None
+    fg: list[int] | None
+    bg: list[int] | None
+    depth: list[int]
+    sprite: SpriteDefinition | None
+
+
+class EnemyConfig(TypedDict):
+    id: str
+    sprite: SpriteDefinition
+    color: list[int]
+    hp: int
+    damage: int
+    speed: int
+    behavior: str
+    floors: list[int]
+
+
+class CharacterConfig(TypedDict):
+    id: str
+    sprite: SpriteDefinition
 
 
 class Point(NamedTuple):
@@ -34,6 +88,7 @@ if TYPE_CHECKING:
 
     class SpellType(enum.StrEnum):
         pass
+
 else:
     ItemType = load_str_enum_from_yaml('ItemType', f'{DATA_DIR}/ingredients.yaml', 'ingredients')
     SpellType = load_str_enum_from_yaml('SpellType', f'{DATA_DIR}/spells.yaml', 'spells')
@@ -41,7 +96,7 @@ else:
 
 @dataclass
 class FieldOfView:
-    visible_tiles: set[Point] = field(default_factory=set)
+    visible_tiles: set[Point] = field(default_factory=set[Point])
     radius: int = 8
     dirty: bool = True
 
@@ -71,11 +126,11 @@ class Item:
 class Configuration:
     """Singleton component to hold game configurations."""
 
-    ingredients: dict
-    spells: list
-    characters: dict
-    tiles: list
-    enemies: dict
+    ingredients: dict[ItemType, IngredientConfig]
+    spells: list[SpellConfig]
+    characters: dict[str, CharacterConfig]
+    tiles: list[TileConfig]
+    enemies: dict[str, EnemyConfig]
 
 
 @dataclass
@@ -94,7 +149,7 @@ class UIState:
     casting_cursor: int = 0
     settings_cursor: int = 0
     remapping_action: str | None = None
-    selected_for_crafting: dict[ItemType, int] = field(default_factory=dict)
+    selected_for_crafting: dict[ItemType, int] = field(default_factory=dict[ItemType, int])
     active_targeting_spell_id: str | None = None
 
 
@@ -106,28 +161,34 @@ class Stats:
 
 @dataclass
 class Inventory:
-    items: dict[ItemType, int] = field(default_factory=dict)
+    items: dict[ItemType, int] = field(default_factory=dict[ItemType, int])
 
 
 @dataclass
 class KnownRecipes:
     # Maps a Spell to the set of ingredient combinations discovered for it
-    recipes: dict[SpellType, set[tuple[ItemType, ...]]] = field(default_factory=dict)
+    recipes: dict[SpellType, set[tuple[ItemType, ...]]] = field(
+        default_factory=dict[SpellType, set[tuple[ItemType, ...]]]
+    )
 
 
 @dataclass
 class SpellInventory:
     # Tracks remaining uses of each spell
-    spells: dict[SpellType, int] = field(default_factory=dict)
+    spells: dict[SpellType, int] = field(default_factory=dict[SpellType, int])
+
+
+MessageSegment = tuple[str, tuple[int, int, int]]
+Message = list[MessageSegment]
 
 
 @dataclass
 class MessageLog:
     # A list of messages, where each message is a list of (text, color) segments
-    messages: list[list[tuple[str, tuple[int, int, int]]]] = field(default_factory=list)
+    messages: list[Message] = field(default_factory=list[Message])
     scroll_index: int = 0
 
-    def add_message(self, segments: list[tuple[str, tuple[int, int, int]]]):
+    def add_message(self, segments: Message):
         self.messages.append(segments)
         self.scroll_index = 0
 
@@ -182,7 +243,7 @@ class TargetingReticle:
 class StatusEffects:
     """Component to track active status effects on an entity."""
 
-    active: dict[StatusType, int] = field(default_factory=dict)
+    active: dict[StatusType, int] = field(default_factory=dict[StatusType, int])
 
 
 class PlayerTag:

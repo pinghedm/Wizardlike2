@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 import esper
 import numpy as np
 import tcod
+from tcod.path import Dijkstra
 
 from src.components import (
     AI,
@@ -18,14 +19,14 @@ from src.systems import get_cooldown, move_entity
 
 class AIBehavior(ABC):
     @abstractmethod
-    def update(self, ent: int, pathfinding_context: dict):
+    def update(self, ent: int, pathfinding_context: dict[Point, Dijkstra]):
         pass
 
     @abstractmethod
     def get_target(self, ent: int) -> Point | None:
         pass
 
-    def get_path(self, ent: int, pathfinding_context: dict) -> list | None:
+    def get_path(self, ent: int, pathfinding_context: dict[Point, Dijkstra]) -> list[tuple[int, int]] | None:
         pos = esper.component_for_entity(ent, Position)
         target = self.get_target(ent)
         if not target:
@@ -56,7 +57,7 @@ class MoveRelativeToPlayerBehavior(AIBehavior):
 
 
 class ChaseBehavior(MoveRelativeToPlayerBehavior):
-    def update(self, ent: int, pathfinding_context: dict):
+    def update(self, ent: int, pathfinding_context: dict[Point, Dijkstra]):
         pos = esper.component_for_entity(ent, Position)
         actor = esper.component_for_entity(ent, Actor)
         ai = esper.component_for_entity(ent, AI)
@@ -90,7 +91,7 @@ class PatrolBehavior(AIBehavior):
     def get_target(self, ent: int) -> Point:
         return self.path[self.index]
 
-    def update(self, ent: int, pathfinding_context: dict):
+    def update(self, ent: int, pathfinding_context: dict[Point, Dijkstra]):
         pos = esper.component_for_entity(ent, Position)
         actor = esper.component_for_entity(ent, Actor)
 
@@ -111,7 +112,7 @@ class PatrolBehavior(AIBehavior):
 
 
 class FleeBehavior(MoveRelativeToPlayerBehavior):
-    def update(self, ent: int, pathfinding_context: dict):
+    def update(self, ent: int, pathfinding_context: dict[Point, Dijkstra]):
         pos = esper.component_for_entity(ent, Position)
         actor = esper.component_for_entity(ent, Actor)
         ai = esper.component_for_entity(ent, AI)

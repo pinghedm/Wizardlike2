@@ -23,3 +23,11 @@ line-ending = "lf"
 
 [tool.coverage.run]
 omit = ["src/**/__init__.py"]
+
+[tool.pyright]
+include = ["src"]
+exclude = ["**/__pycache__", "venv"]
+pythonVersion = "3.14"
+typeCheckingMode = "strict"
+reportMissingImports = true
+reportMissingTypeStubs = false
