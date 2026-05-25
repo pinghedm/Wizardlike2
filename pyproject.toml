@@ -20,3 +20,6 @@ unfixable = []
 quote-style = "single"
 indent-style = "space"
 line-ending = "lf"
+
+[tool.coverage.run]
+omit = ["src/**/__init__.py"]
