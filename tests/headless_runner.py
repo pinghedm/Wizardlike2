@@ -1,4 +1,5 @@
 import esper
+import tcod.console
 import tcod.event
 
 from src.components import (
@@ -18,10 +19,12 @@ from src.components import (
     Stats,
     StatusEffects,
 )
+from src.constants import SCREEN_HEIGHT, SCREEN_WIDTH
 from src.data_loaders import AssetLoader, get_game_configs
 from src.main import add_logic_systems, dispatch_input, init_game_world, update_pause_state
 from src.map_objects import Map, Tile
 from src.states import DisplayMode, GameState
+from src.ui_systems import HUDSystem, MenuSystem, ModalSystem, TargetingOverlaySystem
 
 
 class HeadlessRunner:
@@ -38,6 +41,17 @@ class HeadlessRunner:
             esper.clear_database()
             self.player = init_game_world(self.asset_loader)
             add_logic_systems()
+
+        # A real console for snapshot tests. The UI render processors are
+        # instantiated but deliberately NOT registered with esper, so the
+        # normal tick()/esper.process() path is unaffected.
+        self.console = tcod.console.Console(SCREEN_WIDTH, SCREEN_HEIGHT)
+        self._ui_systems = [
+            MenuSystem(self.console, self.player),
+            HUDSystem(self.console, self.player),
+            ModalSystem(self.console),
+            TargetingOverlaySystem(self.console),
+        ]
 
     def _inject_clean_room(self, width: int = 20, height: int = 20):
         """Replace the procedurally generated map with a simple open room."""
@@ -142,6 +156,34 @@ class HeadlessRunner:
         """Return all log lines as plain concatenated strings."""
         log = esper.get_component(MessageLog)[0][1]
         return [''.join(seg[0] for seg in msg) for msg in log.messages]
+
+    def render_ui(self):
+        """Clear the console and run the UI render processors once.
+
+        Does not advance game logic, so snapshots reflect the current ECS
+        state regardless of pause state.
+        """
+        self.console.clear()
+        for system in self._ui_systems:
+            system.process()
+
+    def get_console_text(self) -> list[str]:
+        """Render the UI and return the console as one string per row.
+
+        Empty cells read back as spaces (console.clear() fills with ' ').
+        """
+        self.render_ui()
+        return [''.join(chr(c) for c in row) for row in self.console.ch]
+
+    def get_console_fg(self, x: int, y: int) -> tuple[int, int, int]:
+        """Render the UI and return the foreground RGB at cell (x, y)."""
+        self.render_ui()
+        return tuple(int(c) for c in self.console.fg[y, x])
+
+    def get_console_bg(self, x: int, y: int) -> tuple[int, int, int]:
+        """Render the UI and return the background RGB at cell (x, y)."""
+        self.render_ui()
+        return tuple(int(c) for c in self.console.bg[y, x])
 
     def entity_at(self, x: int, y: int) -> int | None:
         """Return the first entity with a Position at (x, y), or None."""

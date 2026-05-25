@@ -28,7 +28,7 @@ from src.constants import (
 )
 from src.states import MAIN_MENU_OPTIONS, DisplayMode, GameState
 from src.systems import get_spell_config
-from src.ui_helpers import compute_visible_slice, draw_centered_frame, wrap_message
+from src.ui_helpers import compute_visible_slice, draw_centered_frame, draw_titled_frame, wrap_message
 
 
 class MenuSystem(esper.Processor):
@@ -50,7 +50,8 @@ class MenuSystem(esper.Processor):
 
     def render_main_menu(self):
         ui_state = esper.get_component(UIState)[0][1]
-        self.console.draw_frame(
+        draw_titled_frame(
+            self.console,
             0,
             0,
             self.console.width,
@@ -233,12 +234,12 @@ class ModalSystem(esper.Processor):
             x, y = draw_centered_frame(self.console, modal.width, modal.height, title='Message')
 
             # Message
-            self.console.print_box(
+            self.console.print(
                 x=x + 2,
                 y=y + 2,
                 width=modal.width - 4,
                 height=modal.height - 4,
-                string=modal.message,
+                text=modal.message,
                 fg=UI_WHITE,
             )
 
@@ -326,11 +327,12 @@ class HUDSystem(esper.Processor):
         _ent, log = logs[0]
 
         # Draw frame
-        self.console.draw_frame(
-            x=self.MSG_BOX_X,
-            y=self.MSG_BOX_Y,
-            width=self.MSG_BOX_WIDTH,
-            height=self.MSG_BOX_HEIGHT,
+        draw_titled_frame(
+            self.console,
+            self.MSG_BOX_X,
+            self.MSG_BOX_Y,
+            self.MSG_BOX_WIDTH,
+            self.MSG_BOX_HEIGHT,
             title='Messages',
             fg=UI_WHITE,
             bg=(0, 0, 0),

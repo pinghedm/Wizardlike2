@@ -15,6 +15,26 @@ def center_origin(console: tcod.console.Console, width: int, height: int) -> tup
     return (console.width - width) // 2, (console.height - height) // 2
 
 
+def draw_titled_frame(
+    console: tcod.console.Console,
+    x: int,
+    y: int,
+    width: int,
+    height: int,
+    title: str,
+    fg: tuple[int, int, int] = UI_WHITE,
+    bg: tuple[int, int, int] | None = None,
+) -> None:
+    """Draw a framed box with a title centered on its top border.
+
+    tcod deprecated draw_frame's built-in `title` (its style is hard-coded), so we
+    draw a plain frame and print the title over the top border ourselves, as the
+    tcod docs recommend.
+    """
+    console.draw_frame(x, y, width, height, fg=fg, bg=bg)
+    console.print(x=x, y=y, width=width, height=1, text=f' {title} ', fg=fg, alignment=tcod.constants.CENTER)
+
+
 def draw_centered_frame(
     console: tcod.console.Console,
     width: int,
@@ -25,7 +45,7 @@ def draw_centered_frame(
 ) -> tuple[int, int]:
     """Draw a centered frame and return its top-left (x, y) so callers can offset from it."""
     x, y = center_origin(console, width, height)
-    console.draw_frame(x, y, width, height, title=title, fg=fg, bg=bg)
+    draw_titled_frame(console, x, y, width, height, title=title, fg=fg, bg=bg)
     return x, y
 
 
