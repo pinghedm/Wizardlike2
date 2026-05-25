@@ -23,6 +23,7 @@ from src.components import (
     Point,
     Position,
     Renderable,
+    SpellConfig,
     SpellInventory,
     SpellType,
     Stats,
@@ -423,6 +424,14 @@ def apply_effect(target_ent: int, effect_data: dict, log: MessageLog):
         log.add_simple_message(f'{target_name} is slowed!', color=(100, 100, 255))
 
 
+def get_spell_config(spell_id: str) -> SpellConfig | None:
+    """Look up a spell's config by id via the Configuration index (O(1))."""
+    configs = get_singleton(Configuration)
+    if configs is None:
+        return None
+    return configs.spells_by_id.get(spell_id)
+
+
 def match_recipe(selection: tuple) -> tuple[SpellType, int] | None:
     """Match a sorted ingredient selection to a spell recipe.
 
@@ -450,12 +459,8 @@ def cast_spell(spell_id: str, target_x: int, target_y: int):
     # Consume charge
     player_spell_inv.spells[stype] -= 1
 
-    # Query for config
-    configs = esper.get_component(Configuration)[0][1]
-    spells_config = configs.spells
-
-    # Find config
-    s_conf = next((s for s in spells_config if s['id'] == spell_id), None)
+    # Look up config
+    s_conf = get_spell_config(spell_id)
     if not s_conf:
         return
 

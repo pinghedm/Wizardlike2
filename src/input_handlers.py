@@ -4,7 +4,6 @@ import esper
 import tcod
 
 from src.components import (
-    Configuration,
     Enemy,
     Inventory,
     Item,
@@ -21,7 +20,14 @@ from src.components import (
 from src.map_objects import Map
 from src.procgen import transition_to_next_floor
 from src.states import MAIN_MENU_OPTIONS, DisplayMode, GameState, MenuOption
-from src.systems import cast_spell, deal_damage, get_display_name, match_recipe, move_entity
+from src.systems import (
+    cast_spell,
+    deal_damage,
+    get_display_name,
+    get_spell_config,
+    match_recipe,
+    move_entity,
+)
 
 
 def handle_modal_input(event):
@@ -299,11 +305,8 @@ def handle_casting_input(event):
         if available_spells:
             stype = available_spells[ui_state.casting_cursor]
 
-            configs = esper.get_component(Configuration)[0][1]
-            spells_config = configs.spells
-
             # Find spell config for range/radius
-            s_conf = next((s for s in spells_config if s['id'] == stype.value), None)
+            s_conf = get_spell_config(stype.value)
             if s_conf:
                 player_entities = esper.get_components(Position, PlayerTag)
                 _player, (player_pos, _tag) = player_entities[0]

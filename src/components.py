@@ -131,6 +131,12 @@ class Configuration:
     tiles: list[TileConfig]
     enemies: dict[str, EnemyConfig]
 
+    # Index into `spells` by id, built once so lookups don't linear-scan.
+    spells_by_id: dict[str, SpellConfig] = field(init=False)
+
+    def __post_init__(self):
+        self.spells_by_id = {s['id']: s for s in self.spells}
+
 
 @dataclass
 class Keybindings:
