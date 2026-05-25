@@ -8,7 +8,7 @@ enemies:
     color: [0, 255, 0]
     hp: 30
     damage: 10
-    speed: 100
+    speed: 30
     behavior: CHASE
     floors: [1, 5]
   - id: slime
@@ -20,7 +20,7 @@ enemies:
     color: [0, 128, 255]
     hp: 60
     damage: 5
-    speed: 200
+    speed: 40
     behavior: PATROL
     floors: [1, 10]
   - id: ghost
