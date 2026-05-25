@@ -5,6 +5,7 @@ import tcod
 
 from src.components import (
     Configuration,
+    Enemy,
     Inventory,
     Item,
     Keybindings,
@@ -20,7 +21,7 @@ from src.components import (
 from src.map_objects import Map
 from src.procgen import transition_to_next_floor
 from src.states import MAIN_MENU_OPTIONS, DisplayMode, GameState, MenuOption
-from src.systems import cast_spell, match_recipe, move_entity
+from src.systems import cast_spell, deal_damage, get_display_name, match_recipe, move_entity
 
 
 def handle_modal_input(event):
@@ -70,6 +71,20 @@ def handle_exploring_input(event):
         log.scroll_index -= 1
 
     if dx != 0 or dy != 0:
+        # Bumping an enemy deals bump damage to the player (combat is decoupled from
+        # movement). move_entity then walks the player onto a non-blocking enemy, or
+        # is stopped by a blocking one.
+        target_x, target_y = player_pos.x + dx, player_pos.y + dy
+        for ent, (epos, enemy) in esper.get_components(Position, Enemy):
+            if epos.x == target_x and epos.y == target_y:
+                deal_damage(
+                    player,
+                    enemy.bump_damage,
+                    f'You bump into a {get_display_name(ent)} and take damage!',
+                    color=(255, 0, 0),
+                )
+                break
+
         move_entity(player, dx, dy)
         player_pos = esper.component_for_entity(player, Position)
         player_inv = esper.component_for_entity(player, Inventory)

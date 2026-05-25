@@ -38,7 +38,7 @@ WizardLike is a 2D roguelike game inspired by *Chocobo's Mystery Dungeon*. It fe
 ### Data Validation
 Always run the validation tool before committing changes to data files:
 ```bash
-./venv/bin/python tools/validate_data.py
+./venv/bin/python -m tools.validate_data
 ```
 
 ### Testing
@@ -52,7 +52,7 @@ Tests run against a real `esper.World` via `tests/headless_runner.py` (simulate 
 
 - **Formatting & Linting:** Code must be formatted and linted with `ruff`.
 - **Type Safety:** Use Type Hints and `StrEnum` for ingredient/spell identifiers.
-- **Data Integrity:** All new items or recipes must be added to `data/ingredients.yaml` or `data/spells.yaml` and pass `tools/validate_data.py`.
+- **Data Integrity:** All new items or recipes must be added to `data/ingredients.yaml` or `data/spells.yaml` and pass `python -m tools.validate_data`.
 - **Testing:** Tests must not assert against shipped `data/` values; build the recipe/spell/config under test in-fixtures (`tests/fixtures/`) or override it in-test, so balance changes don't break tests.
 - **Function Calls:** Use explicit keyword arguments for functions with many parameters (e.g., `generate_dungeon`).
 - **Architectural Patterns:**
@@ -62,7 +62,7 @@ Tests run against a real `esper.World` via `tests/headless_runner.py` (simulate 
 
 ## Development Workflow
 
-- **Data Integrity:** Always run `./venv/bin/python tools/validate_data.py` before committing changes to any YAML data files.
+- **Data Integrity:** Always run `./venv/bin/python -m tools.validate_data` before committing changes to any YAML data files.
 - **Code Quality:** Run `./venv/bin/python -m ruff check --fix . && ./venv/bin/python -m ruff format .` to maintain formatting and linting compliance.
 - **Testing:** Run `./venv/bin/python -m pytest tests/` before committing logic changes.
 - **Verification:** Ensure the game runs and transitions through levels correctly after any changes to `procgen.py` or input logic.

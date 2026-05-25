@@ -1,10 +1,10 @@
 import esper
 import tcod.event
 
-from src.ai_behaviors import ChaseBehavior
 from src.components import (
     AI,
     Actor,
+    ChaseTag,
     Enemy,
     FieldOfView,
     Inventory,
@@ -120,7 +120,8 @@ class HeadlessRunner:
             Position(x, y),
             Renderable(sprite_id='test_enemy', color=(0, 255, 0)),
             Actor(speed=speed),
-            AI(behavior=ChaseBehavior()),
+            AI(),
+            ChaseTag(),
             Enemy(attack_damage=damage, bump_damage=damage // 2),
             Stats(hp=hp, max_hp=hp),
             StatusEffects(),

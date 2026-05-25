@@ -60,7 +60,7 @@ All game data is defined in the `data/` directory.
 _Always run the data validator after modifying these files:_
 
 ```bash
-python tools/validate_data.py
+python -m tools.validate_data
 ```
 
 ## Development

@@ -1,3 +1,4 @@
+import sys
 from typing import TYPE_CHECKING
 
 import esper
@@ -14,8 +15,10 @@ from src.components import (
     EffectType,
     Enemy,
     FieldOfView,
+    FleeTag,
     MessageLog,
     Modal,
+    PatrolTag,
     PlayerTag,
     Point,
     Position,
@@ -33,12 +36,33 @@ if TYPE_CHECKING:
     from src.data_loaders import AssetLoader
 
 
+def get_singleton(component_type):
+    """Return the single instance of a singleton component, or None if absent."""
+    components = esper.get_component(component_type)
+    return components[0][1] if components else None
+
+
+def get_display_name(entity: int) -> str:
+    """Human-facing name for an entity, taken from its Renderable sprite id."""
+    if esper.has_component(entity, Renderable):
+        return esper.component_for_entity(entity, Renderable).sprite_id
+    return 'enemy'
+
+
+def deal_damage(target_ent: int, amount: int, message: str, color: tuple[int, int, int]):
+    """Apply damage to a target's Stats and log a message."""
+    stats = esper.component_for_entity(target_ent, Stats)
+    stats.hp -= amount
+    log = get_singleton(MessageLog)
+    if log:
+        log.add_simple_message(message, color=color)
+
+
 class DeathSystem(esper.Processor):
     """Handles death for all entities with Stats."""
 
     def process(self):
-        log_entities = esper.get_component(MessageLog)
-        log = log_entities[0][1] if log_entities else None
+        log = get_singleton(MessageLog)
 
         for ent, stats in esper.get_component(Stats):
             if stats.hp <= 0:
@@ -47,30 +71,22 @@ class DeathSystem(esper.Processor):
                         esper.create_entity(
                             Modal(
                                 message='You have died! Press Enter to quit.',
-                                on_close=lambda: exit(),
+                                on_close=lambda: sys.exit(),
                             )
                         )
                 else:
                     if log:
-                        name = 'enemy'
-                        if esper.has_component(ent, Renderable):
-                            name = esper.component_for_entity(ent, Renderable).sprite_id
-                        log.add_simple_message(f'The {name} dies!', color=(255, 255, 0))
+                        log.add_simple_message(f'The {get_display_name(ent)} dies!', color=(255, 255, 0))
                     esper.delete_entity(ent)
 
 
 class ActionSystem(esper.Processor):
     """Manages cooldowns for all actors."""
 
-    def __init__(self):
-        self.tick_parity = 0
-
     def process(self):
-        game_state = esper.get_component(GameState)[0][1]
+        game_state = get_singleton(GameState)
         if game_state.time_paused:
             return
-
-        self.tick_parity = (self.tick_parity + 1) % 2
 
         for _ent, actor in esper.get_component(Actor):
             if actor.cooldown > 0:
@@ -93,29 +109,103 @@ class StatusSystem(esper.Processor):
                     del status.active[effect_type]
 
 
+def _ai_target(ent: int) -> Point | None:
+    """The tile an AI entity is currently pathing toward, by behavior tag."""
+    if esper.has_component(ent, PatrolTag):
+        patrol = esper.component_for_entity(ent, PatrolTag)
+        return patrol.path[patrol.index]
+    return esper.component_for_entity(ent, AI).last_known_player_position
+
+
+def _compute_path(ent: int, target: Point | None, pathfinding_context: dict) -> list | None:
+    """Dijkstra path from the entity to target, reusing a precomputed map if available."""
+    if not target:
+        return None
+    pos = esper.component_for_entity(ent, Position)
+
+    pf = pathfinding_context.get(target)
+    if not pf:
+        game_map = get_singleton(Map)
+        cost = game_map.walkable.astype(np.int32)
+        pf = tcod.path.Dijkstra(cost, diagonal=1.41)
+        pf.set_goal(target.x, target.y)
+
+    path = pf.get_path(pos.x, pos.y)
+    if isinstance(path, np.ndarray):
+        path = path.tolist()
+
+    # tcod's Dijkstra path excludes the goal; add it back if reachable.
+    if path and (path[0][0] != target.x or path[0][1] != target.y):
+        path.insert(0, [target.x, target.y])
+
+    return path
+
+
+def _remember_player_if_seen(ent: int):
+    """Update an entity's last-known player position when the player is in its FOV."""
+    fov = esper.component_for_entity(ent, FieldOfView)
+    player_pos = esper.get_components(Position, PlayerTag)[0][1][0]
+    if player_pos.point in fov.visible_tiles:
+        esper.component_for_entity(ent, AI).last_known_player_position = player_pos.point
+
+
+def _process_chase(ent: int, pos: Position, pathfinding_context: dict):
+    _remember_player_if_seen(ent)
+    target = esper.component_for_entity(ent, AI).last_known_player_position
+    path = _compute_path(ent, target, pathfinding_context)
+    if path and len(path) > 1:
+        move_x, move_y = path[-2]
+        move_entity(ent, move_x - pos.x, move_y - pos.y)
+
+
+def _process_patrol(ent: int, pos: Position, pathfinding_context: dict):
+    patrol = esper.component_for_entity(ent, PatrolTag)
+    target = patrol.path[patrol.index]
+    if pos.x == target.x and pos.y == target.y:
+        patrol.index = (patrol.index + 1) % len(patrol.path)
+        target = patrol.path[patrol.index]
+
+    path = _compute_path(ent, target, pathfinding_context)
+    if path and len(path) > 1:
+        move_x, move_y = path[-2]
+        if get_singleton(Map).is_walkable(move_x, move_y):
+            move_entity(ent, move_x - pos.x, move_y - pos.y)
+
+
+def _process_flee(ent: int, pos: Position, pathfinding_context: dict):
+    _remember_player_if_seen(ent)
+    target = esper.component_for_entity(ent, AI).last_known_player_position
+    path = _compute_path(ent, target, pathfinding_context)
+    if path and len(path) > 1:
+        move_x, move_y = path[0]
+        # Step directly away from the next tile toward the player.
+        target_x = pos.x + (1 if pos.x - move_x >= 0 else -1)
+        target_y = pos.y + (1 if pos.y - move_y >= 0 else -1)
+        if get_singleton(Map).is_walkable(target_x, target_y):
+            move_entity(ent, target_x - pos.x, target_y - pos.y)
+
+
 class AISystem(esper.Processor):
-    """Handles basic AI behaviors with FOV and Dijkstra pathfinding."""
+    """Drives tagged AI entities with FOV and Dijkstra pathfinding."""
 
     def process(self):
-        game_state = esper.get_component(GameState)[0][1]
+        game_state = get_singleton(GameState)
         if game_state.time_paused or game_state.display_mode != DisplayMode.EXPLORING:
             return
 
-        maps = esper.get_component(Map)
-        if not maps:
+        game_map = get_singleton(Map)
+        if not game_map:
             return
-        game_map = maps[0][1]
 
         player_ents = esper.get_components(Position, PlayerTag)
         if not player_ents:
             return
         player_ent, (player_pos, _tag) = player_ents[0]
-        player_stats = esper.component_for_entity(player_ent, Stats)
 
-        # 1. Collect unique targets to precompute pathfinders
+        # 1. Collect unique targets so each goal's Dijkstra map is built once.
         targets_to_compute: set[Point] = set()
-        for ent, ai in esper.get_component(AI):
-            target = ai.behavior.get_target(ent)
+        for ent, _ai in esper.get_component(AI):
+            target = _ai_target(ent)
             if target:
                 targets_to_compute.add(target)
 
@@ -126,35 +216,30 @@ class AISystem(esper.Processor):
             pf.set_goal(target.x, target.y)
             pathfinding_context[target] = pf
 
-        # 2. Dispatch behavior
-        for ent, (pos, ai) in esper.get_components(Position, AI):
-            # Cooldown check applies to all actions
-            if esper.has_component(ent, Actor):
-                actor = esper.component_for_entity(ent, Actor)
-                if actor.cooldown > 0:
-                    continue
+        # 2. Dispatch behavior by tag.
+        for ent, (pos, _ai) in esper.get_components(Position, AI):
+            actor = esper.component_for_entity(ent, Actor) if esper.has_component(ent, Actor) else None
+            if actor and actor.cooldown > 0:
+                continue
 
-            # Attack if adjacent
-            if esper.has_component(ent, Enemy):
-                dx = player_pos.x - pos.x
-                dy = player_pos.y - pos.y
-                if abs(dx) <= 1 and abs(dy) <= 1:
-                    enemy = esper.component_for_entity(ent, Enemy)
-                    player_stats.hp -= enemy.attack_damage
-                    logs = esper.get_component(MessageLog)
-                    if logs:
-                        name = 'enemy'
-                        if esper.has_component(ent, Renderable):
-                            name = esper.component_for_entity(ent, Renderable).sprite_id
-                        logs[0][1].add_simple_message(f'The {name} hits you!', color=(255, 0, 0))
+            # Attack the player if adjacent (any behavior), otherwise move.
+            if esper.has_component(ent, Enemy) and abs(player_pos.x - pos.x) <= 1 and abs(player_pos.y - pos.y) <= 1:
+                enemy = esper.component_for_entity(ent, Enemy)
+                deal_damage(
+                    player_ent,
+                    enemy.attack_damage,
+                    f'The {get_display_name(ent)} hits you!',
+                    color=(255, 0, 0),
+                )
+            elif esper.has_component(ent, PatrolTag):
+                _process_patrol(ent, pos, pathfinding_context)
+            elif esper.has_component(ent, FleeTag):
+                _process_flee(ent, pos, pathfinding_context)
+            else:
+                _process_chase(ent, pos, pathfinding_context)
 
-                    if esper.has_component(ent, Actor):
-                        actor = esper.component_for_entity(ent, Actor)
-                        actor.cooldown = get_cooldown(ent, actor.speed)
-                    continue
-
-            # Move if not attacking
-            ai.behavior.update(ent, pathfinding_context)
+            if actor:
+                actor.cooldown = get_cooldown(ent, actor.speed)
 
 
 class FOVSystem(esper.Processor):
@@ -246,70 +331,58 @@ class RenderSystem(esper.Processor):
             self.console.print(x=pos.x, y=pos.y, string=chr(codepoint), fg=rend.color)
 
 
+def _destination_blocked(mover: int, x: int, y: int) -> bool:
+    """True if an actor already occupying (x, y) blocks the mover.
+
+    The player may step onto a non-blocking enemy (the two overlap); every
+    other actor-on-actor collision blocks movement.
+    """
+    for other_ent, (other_pos, _actor) in esper.get_components(Position, Actor):
+        if other_ent == mover or other_pos.x != x or other_pos.y != y:
+            continue
+        if (
+            esper.has_component(mover, PlayerTag)
+            and esper.has_component(other_ent, Enemy)
+            and not esper.component_for_entity(other_ent, Enemy).blocks_movement
+        ):
+            continue
+        return True
+    return False
+
+
 def move_entity(entity: int, dx: int, dy: int):
+    """Move an entity by (dx, dy) if the destination is walkable and unblocked.
+
+    Pure movement: combat (e.g. bumping into an enemy) is the caller's concern.
+    """
     pos = esper.component_for_entity(entity, Position)
     new_x = pos.x + dx
     new_y = pos.y + dy
 
-    maps = esper.get_component(Map)
-    if maps:
-        game_map = maps[0][1]
+    game_map = get_singleton(Map)
+    if not game_map:
+        return
 
-        # Check for wall collision
-        if not game_map.is_walkable(new_x, new_y):
-            return
+    if not game_map.is_walkable(new_x, new_y):
+        return
 
-        # Check for exit tile collision (for enemies)
-        if not esper.has_component(entity, PlayerTag):
-            if game_map.tiles[new_x][new_y].is_exit:
-                return
+    # Enemies may not step onto exit tiles.
+    if not esper.has_component(entity, PlayerTag) and game_map.tiles[new_x][new_y].is_exit:
+        return
 
-        # Check for entity collision (with Actors or Player)
-        # Check for Actors
-        for other_ent, (other_pos, _actor) in esper.get_components(Position, Actor):
-            if other_ent != entity and other_pos.x == new_x and other_pos.y == new_y:
-                # If player bumps into enemy
-                if esper.has_component(entity, PlayerTag) and esper.has_component(other_ent, Enemy):
-                    player_entities = esper.get_components(Stats, PlayerTag)
-                    if player_entities:
-                        _player_ent, (player_stats, _tag) = player_entities[0]
-                        enemy = esper.component_for_entity(other_ent, Enemy)
-                        player_stats.hp -= enemy.bump_damage
-                        logs = esper.get_component(MessageLog)
-                        if logs:
-                            name = 'enemy'
-                            if esper.has_component(other_ent, Renderable):
-                                name = esper.component_for_entity(other_ent, Renderable).sprite_id
-                            logs[0][1].add_simple_message(
-                                f'You bump into a {name} and take damage!',
-                                color=(255, 0, 0),
-                            )
+    if _destination_blocked(entity, new_x, new_y):
+        return
 
-                    if enemy.blocks_movement:
-                        return
-                else:
-                    # Other entity collisions (enemy into enemy, etc) still block
-                    return
+    pos.x = new_x
+    pos.y = new_y
 
-        # Check for Player specifically (if an enemy is moving)
-        if not esper.has_component(entity, PlayerTag):
-            player_entities = esper.get_components(Position, PlayerTag)
-            if player_entities:
-                _player_ent, (player_pos, _tag) = player_entities[0]
-                if player_pos.x == new_x and player_pos.y == new_y:
-                    return
-        pos.x = new_x
-        pos.y = new_y
+    if esper.has_component(entity, FieldOfView):
+        esper.component_for_entity(entity, FieldOfView).dirty = True
 
-        # If the entity has a FieldOfView, mark it as dirty
-        if esper.has_component(entity, FieldOfView):
-            fov = esper.component_for_entity(entity, FieldOfView)
-            fov.dirty = True
-
-        # Player cooldown on move (Base move cost of 10)
-        if esper.has_component(entity, PlayerTag):
-            actor = esper.component_for_entity(entity, Actor)
-            actor.cooldown = get_cooldown(entity, 10)
+    # Player move consumes a turn (base move cost of 10).
+    if esper.has_component(entity, PlayerTag):
+        actor = esper.component_for_entity(entity, Actor)
+        actor.cooldown = get_cooldown(entity, 10)
 
 
 def get_cooldown(entity: int, base_speed: int) -> int:
@@ -330,10 +403,7 @@ def apply_effect(target_ent: int, effect_data: dict, log: MessageLog):
     if is_player:
         target_name = 'You'
     else:
-        name = 'enemy'
-        if esper.has_component(target_ent, Renderable):
-            name = esper.component_for_entity(target_ent, Renderable).sprite_id
-        target_name = f'The {name}'
+        target_name = f'The {get_display_name(target_ent)}'
 
     etype = effect_data['type']
 

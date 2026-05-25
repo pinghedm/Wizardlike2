@@ -7,7 +7,7 @@ if TYPE_CHECKING:
     pass
 
 
-@dataclass
+@dataclass(frozen=True)
 class Tile:
     walkable: bool
     transparent: bool
@@ -23,8 +23,9 @@ class Map:
         self.height = height
         self.tiles = [[default_tile for _ in range(height)] for _ in range(width)]
         self.explored = np.zeros((width, height), dtype=bool, order='F')
-        self.transparent = np.ones((width, height), dtype=bool, order='F')
-        self.walkable = np.ones((width, height), dtype=bool, order='F')
+        # Derived arrays are seeded from the fill tile and kept in sync via set_tile.
+        self.transparent = np.full((width, height), default_tile.transparent, dtype=bool, order='F')
+        self.walkable = np.full((width, height), default_tile.walkable, dtype=bool, order='F')
 
     def in_bounds(self, x: int, y: int) -> bool:
         return 0 <= x < self.width and 0 <= y < self.height
@@ -34,8 +35,8 @@ class Map:
             return False
         return self.tiles[x][y].walkable
 
-    def update_transparency(self) -> None:
-        for x in range(self.width):
-            for y in range(self.height):
-                self.transparent[x, y] = self.tiles[x][y].transparent
-                self.walkable[x, y] = self.tiles[x][y].walkable
+    def set_tile(self, x: int, y: int, tile: Tile) -> None:
+        """Place a tile, keeping the derived walkable/transparent arrays in sync."""
+        self.tiles[x][y] = tile
+        self.transparent[x, y] = tile.transparent
+        self.walkable[x, y] = tile.walkable

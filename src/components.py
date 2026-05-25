@@ -4,7 +4,6 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, NamedTuple, TypedDict
 
 if TYPE_CHECKING:
-    from src.ai_behaviors import AIBehavior
     from src.data_loaders import SpriteDefinition
 
 import tcod
@@ -214,10 +213,26 @@ class Actor:
 
 @dataclass
 class AI:
-    """Basic AI component."""
+    """Marks an AI-driven entity. The active behavior is selected by an
+    accompanying tag (ChaseTag / FleeTag / PatrolTag)."""
 
-    behavior: AIBehavior
     last_known_player_position: Point | None = None
+
+
+class ChaseTag:
+    """Behavior tag: pursue the player's last-known position."""
+
+
+class FleeTag:
+    """Behavior tag: flee from the player's last-known position."""
+
+
+@dataclass
+class PatrolTag:
+    """Behavior tag: walk a fixed loop of waypoints."""
+
+    path: list[Point]
+    index: int = 0
 
 
 @dataclass

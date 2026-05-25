@@ -2,16 +2,18 @@ import random
 
 import esper
 
-from src.ai_behaviors import ChaseBehavior, FleeBehavior, PatrolBehavior
 from src.components import (
     AI,
     Actor,
+    ChaseTag,
     Configuration,
     Enemy,
     FieldOfView,
+    FleeTag,
     Item,
     ItemType,
     MessageLog,
+    PatrolTag,
     PlayerTag,
     Point,
     Position,
@@ -20,10 +22,8 @@ from src.components import (
     StatusEffects,
 )
 from src.constants import MAP_HEIGHT, MAP_WIDTH
-from src.data_loaders import get_game_configs
 from src.map_objects import Map, Tile
 from src.states import GameState
-from src.systems import RenderSystem
 
 
 def transition_to_next_floor():
@@ -31,20 +31,21 @@ def transition_to_next_floor():
     game_state = esper.get_component(GameState)[0][1]
     game_state.floor += 1
 
-    # 2. Get Configs (memoized)
-    # We find the RenderSystem to get its asset_loader
-    render_system = esper.get_processor(RenderSystem)
-    configs = get_game_configs(render_system.asset_loader)
+    # 2. Get Configs (already loaded into the Configuration singleton at startup)
+    configs = esper.get_component(Configuration)[0][1]
 
     # 3. Calculate floor-dependent parameters
     max_rooms = 30 + (game_state.floor // 2)
     max_items = 2 + (game_state.floor // 5)
 
-    # 4. Clear existing non-persistent entities (Items/Enemies)
+    # 4. Clear existing non-persistent entities (Items/Enemies).
+    # immediate=True so the floor is rebuilt to a clean state synchronously; esper's
+    # default deferred delete would leave stale entities visible to get_component until
+    # the next process() tick.
     for ent, _ in esper.get_component(Item):
-        esper.delete_entity(ent)
+        esper.delete_entity(ent, immediate=True)
     for ent, _ in esper.get_component(Enemy):
-        esper.delete_entity(ent)
+        esper.delete_entity(ent, immediate=True)
 
     # 5. Generate new map
     new_map, player_start = generate_dungeon(
@@ -52,12 +53,13 @@ def transition_to_next_floor():
         room_min_size=6,
         room_max_size=10,
         max_items_per_room=max_items,
-        tiles_config=configs['tiles'],
+        tiles_config=configs.tiles,
     )
 
-    # 6. Update the Map entity in ECS
+    # 6. Replace the Map entity. immediate=True so the stale map is gone before
+    # anything queries the singleton Map again (see note above).
     for ent, _old_map in esper.get_component(Map):
-        esper.delete_entity(ent)
+        esper.delete_entity(ent, immediate=True)
     esper.create_entity(new_map)
 
     # 7. Update Player Position
@@ -125,21 +127,22 @@ class RectangularRoom:
             else:
                 return
 
-            # Map behavior string to Class
-            behaviors = {
-                'CHASE': ChaseBehavior(),
-                'PATROL': PatrolBehavior(
-                    path=[self.center, random.choice([r for r in rooms if r is not self] or [self]).center]
-                ),
-                'FLEE': FleeBehavior(),
-            }
-            behavior = behaviors.get(enemy_cfg['behavior'].upper(), ChaseBehavior())
+            # Map the behavior string to a behavior tag component.
+            behavior_name = enemy_cfg['behavior'].upper()
+            if behavior_name == 'PATROL':
+                waypoints = [self.center, random.choice([r for r in rooms if r is not self] or [self]).center]
+                behavior_tag = PatrolTag(path=waypoints)
+            elif behavior_name == 'FLEE':
+                behavior_tag = FleeTag()
+            else:
+                behavior_tag = ChaseTag()
 
             esper.create_entity(
                 Position(x, y),
                 Renderable(sprite_id=enemy_cfg['id'], color=tuple(enemy_cfg['color'])),
                 Actor(speed=enemy_cfg['speed']),
-                AI(behavior=behavior),
+                AI(),
+                behavior_tag,
                 Enemy(attack_damage=enemy_cfg['damage'], bump_damage=enemy_cfg['damage'] // 2),
                 Stats(hp=enemy_cfg['hp'], max_hp=enemy_cfg['hp']),
                 StatusEffects(),
@@ -216,13 +219,13 @@ def generate_dungeon(
         # Dig room
         for rx in range(new_room.x1 + 1, new_room.x2):
             for ry in range(new_room.y1 + 1, new_room.y2):
-                dungeon.tiles[rx][ry] = floor_tile
+                dungeon.set_tile(rx, ry, floor_tile)
 
         if not rooms:
             player_start = new_room.center
         else:
             for p in tunnel_between(rooms[-1].center, new_room.center):
-                dungeon.tiles[p.x][p.y] = floor_tile
+                dungeon.set_tile(p.x, p.y, floor_tile)
 
             # Populate room item data
             num_items = random.randint(0, max_items_per_room)
@@ -244,13 +247,11 @@ def generate_dungeon(
     # Place exit
     if rooms:
         exit_p = rooms[-1].center
-        dungeon.tiles[exit_p.x][exit_p.y] = exit_tile
+        dungeon.set_tile(exit_p.x, exit_p.y, exit_tile)
 
     # Announce floor entry
     logs = esper.get_component(MessageLog)
     if logs:
         log = logs[0][1]
         log.add_simple_message(f'Entered level {floor_number}', color=(255, 255, 255))
-
-    dungeon.update_transparency()
     return dungeon, player_start
