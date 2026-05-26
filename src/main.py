@@ -126,6 +126,31 @@ def dispatch_input(event: tcod.event.Event, game_state: GameState):
         game_state.display_mode = handle_settings_input(event)
 
 
+def apply_pending_transition(game_state: GameState, asset_loader: AssetLoader) -> None:
+    """Carry out the side effects of a pending world-transition display_mode.
+
+    EXITING quits the process. LOADING_SAVE / STARTING_NEW_GAME / SAVING perform
+    their I/O and reset the mode to EXPLORING. clear_database()/load_game()
+    replace the GameState singleton, so re-fetch it via get_singleton().
+    """
+    mode = game_state.display_mode
+    if mode == DisplayMode.EXITING:
+        sys.exit()
+    elif mode == DisplayMode.LOADING_SAVE:
+        persistence.load_game()
+        get_singleton(GameState).display_mode = DisplayMode.EXPLORING
+    elif mode == DisplayMode.STARTING_NEW_GAME:
+        esper.clear_database()
+        init_game_world(asset_loader)
+        get_singleton(GameState).display_mode = DisplayMode.EXPLORING
+    elif mode == DisplayMode.SAVING:
+        persistence.save_game()
+        log = get_singleton(MessageLog)
+        if log:
+            log.add_simple_message('Game saved.', color=(0, 255, 255))
+        game_state.display_mode = DisplayMode.EXPLORING
+
+
 def main():
     # Asset Loader
     asset_loader = AssetLoader()
@@ -180,28 +205,11 @@ def main():
                 old_mode = game_state.display_mode
                 dispatch_input(event, game_state)
 
-                if game_state.display_mode == DisplayMode.EXITING:
-                    sys.exit()
-
                 # Handle world transitions. clear_database() wipes entities and
-                # components but leaves the (stateless) processors in place.
-                elif game_state.display_mode == DisplayMode.LOADING_SAVE:
-                    persistence.load_game()
-                    game_state = get_singleton(GameState)
-                    game_state.display_mode = DisplayMode.EXPLORING
-
-                elif game_state.display_mode == DisplayMode.STARTING_NEW_GAME:
-                    esper.clear_database()
-                    init_game_world(asset_loader)
-                    game_state = get_singleton(GameState)
-                    game_state.display_mode = DisplayMode.EXPLORING
-
-                elif game_state.display_mode == DisplayMode.SAVING:
-                    persistence.save_game()
-                    log = get_singleton(MessageLog)
-                    if log:
-                        log.add_simple_message('Game saved.', color=(0, 255, 255))
-                    game_state.display_mode = DisplayMode.EXPLORING
+                # components but leaves the (stateless) processors in place, so a
+                # load / new game may replace the GameState singleton.
+                apply_pending_transition(game_state, asset_loader)
+                game_state = get_singleton(GameState)
 
                 # If the state changed, break the event loop to redraw immediately
                 if game_state.display_mode != old_mode:
