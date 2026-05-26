@@ -6,6 +6,10 @@ SCREEN_WIDTH = 80
 SCREEN_HEIGHT = 50
 TICKS_PER_SECOND = 30
 
+# Number of floors in a full run. Reaching the exit on this floor wins the game;
+# earlier floors descend deeper. Tune for run length / difficulty.
+MAX_FLOORS = 10
+
 # Directory holding game-content YAML (ingredients, spells, tiles, etc.).
 DATA_DIR = os.environ.get('WIZARDLIKE_DATA_DIR', 'data')
 

@@ -18,6 +18,7 @@ from src.components import (
     TargetingReticle,
     UIState,
 )
+from src.constants import MAX_FLOORS
 from src.map_objects import Map
 from src.procgen import transition_to_next_floor
 from src.states import (
@@ -116,7 +117,7 @@ def handle_exploring_input(event):
         if maps:
             game_map = maps[0][1]
             if game_map.tiles[player_pos.x][player_pos.y].is_exit:
-                if game_state.floor >= 3:
+                if game_state.floor >= MAX_FLOORS:
                     log.add_simple_message('Level Complete!', color=(255, 255, 0))
                     raise SystemExit()
                 else:
