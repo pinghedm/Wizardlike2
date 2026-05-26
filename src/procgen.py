@@ -24,6 +24,7 @@ from src.components import (
 from src.constants import MAP_HEIGHT, MAP_WIDTH
 from src.map_objects import Map, Tile
 from src.states import GameState
+from src.systems import get_singleton
 
 
 def transition_to_next_floor():
@@ -31,14 +32,11 @@ def transition_to_next_floor():
     game_state = esper.get_component(GameState)[0][1]
     game_state.floor += 1
 
-    # 2. Get Configs (already loaded into the Configuration singleton at startup)
-    configs = esper.get_component(Configuration)[0][1]
-
-    # 3. Calculate floor-dependent parameters
+    # 2. Calculate floor-dependent parameters
     max_rooms = 30 + (game_state.floor // 2)
     max_items = 2 + (game_state.floor // 5)
 
-    # 4. Clear existing non-persistent entities (Items/Enemies).
+    # 3. Clear existing non-persistent entities (Items/Enemies).
     # immediate=True so the floor is rebuilt to a clean state synchronously; esper's
     # default deferred delete would leave stale entities visible to get_component until
     # the next process() tick.
@@ -47,22 +45,21 @@ def transition_to_next_floor():
     for ent, _ in esper.get_component(Enemy):
         esper.delete_entity(ent, immediate=True)
 
-    # 5. Generate new map
+    # 4. Generate new map
     new_map, player_start = generate_dungeon(
         max_rooms=max_rooms,
         room_min_size=6,
         room_max_size=10,
         max_items_per_room=max_items,
-        tiles_config=configs.tiles,
     )
 
-    # 6. Replace the Map entity. immediate=True so the stale map is gone before
+    # 5. Replace the Map entity. immediate=True so the stale map is gone before
     # anything queries the singleton Map again (see note above).
     for ent, _old_map in esper.get_component(Map):
         esper.delete_entity(ent, immediate=True)
     esper.create_entity(new_map)
 
-    # 7. Update Player Position
+    # 6. Update Player Position
     for ent, _ in esper.get_component(PlayerTag):
         pos = esper.component_for_entity(ent, Position)
         pos.x = player_start.x
@@ -170,7 +167,6 @@ def generate_dungeon(
     room_min_size: int,
     room_max_size: int,
     max_items_per_room: int,
-    tiles_config: list,
 ) -> tuple[Map, Point]:
     # Retrieve current floor from GameState
     try:
@@ -179,7 +175,10 @@ def generate_dungeon(
     except IndexError, KeyError:
         floor_number = 1
 
-    # 1. Select tiles for this floor based on depth
+    # 1. Select tiles for this floor based on depth. Tiles live on the
+    # Configuration singleton (created at startup), so query it directly rather
+    # than threading the config through every call site.
+    tiles_config = get_singleton(Configuration).tiles
     available_tiles = [t for t in tiles_config if t['depth'][0] <= floor_number <= t['depth'][1]]
 
     wall_cfg = random.choice([t for t in available_tiles if t['type'] == 'wall'])

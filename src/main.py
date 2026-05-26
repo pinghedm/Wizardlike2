@@ -59,7 +59,6 @@ def init_game_world(asset_loader: AssetLoader):
         room_min_size=6,
         room_max_size=10,
         max_items_per_room=2,
-        tiles_config=configs['tiles'],
     )
     esper.create_entity(game_map)
 

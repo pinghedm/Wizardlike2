@@ -1,0 +1,80 @@
+import esper
+
+from src.components import FieldOfView, Item, ItemType, Point, Position
+from src.procgen import RectangularRoom, transition_to_next_floor, tunnel_between
+from tests.headless_runner import HeadlessRunner
+
+# --- Pure geometry: deterministic, no randomness ------------------------------
+
+
+def test_room_center_is_the_geometric_midpoint():
+    room = RectangularRoom(x=10, y=20, width=4, height=6, dungeon=None)
+    assert room.center == Point(12, 23)
+
+
+def test_overlapping_rooms_intersect():
+    a = RectangularRoom(x=0, y=0, width=5, height=5, dungeon=None)
+    b = RectangularRoom(x=3, y=3, width=5, height=5, dungeon=None)
+    assert a.intersects(b)
+    assert b.intersects(a)
+
+
+def test_separated_rooms_do_not_intersect():
+    a = RectangularRoom(x=0, y=0, width=4, height=4, dungeon=None)
+    b = RectangularRoom(x=20, y=20, width=4, height=4, dungeon=None)
+    assert not a.intersects(b)
+    assert not b.intersects(a)
+
+
+def _assert_contiguous_path(path, start, end):
+    assert path[0] == start
+    assert path[-1] == end
+    # No teleports: each step moves at most one tile (0 covers the repeated corner).
+    for prev, cur in zip(path, path[1:], strict=False):
+        assert abs(cur.x - prev.x) + abs(cur.y - prev.y) <= 1
+
+
+def test_tunnel_horizontal_first_connects_endpoints_contiguously(monkeypatch):
+    # random.random() < 0.5 takes the horizontal-then-vertical branch.
+    monkeypatch.setattr("random.random", lambda: 0.0)
+    start, end = Point(2, 3), Point(18, 11)
+    _assert_contiguous_path(list(tunnel_between(start, end)), start, end)
+
+
+def test_tunnel_vertical_first_connects_endpoints_contiguously(monkeypatch):
+    # random.random() >= 0.5 takes the vertical-then-horizontal branch.
+    monkeypatch.setattr("random.random", lambda: 0.9)
+    start, end = Point(2, 3), Point(18, 11)
+    _assert_contiguous_path(list(tunnel_between(start, end)), start, end)
+
+
+# --- Floor transition: deterministic structural behavior ----------------------
+
+
+def test_transition_increments_floor():
+    runner = HeadlessRunner(use_random_map=True)
+    start_floor = runner.game_state.floor
+
+    transition_to_next_floor()
+
+    assert runner.game_state.floor == start_floor + 1
+
+
+def test_transition_clears_previous_floor_entities():
+    runner = HeadlessRunner(use_random_map=True)
+    stale_enemy = runner.spawn_enemy(1, 1)
+    stale_item = esper.create_entity(Position(1, 2), Item(next(iter(ItemType))))
+
+    transition_to_next_floor()
+
+    assert not esper.entity_exists(stale_enemy)
+    assert not esper.entity_exists(stale_item)
+
+
+def test_transition_marks_player_fov_dirty():
+    runner = HeadlessRunner(use_random_map=True)
+    esper.component_for_entity(runner.player, FieldOfView).dirty = False
+
+    transition_to_next_floor()
+
+    assert esper.component_for_entity(runner.player, FieldOfView).dirty
