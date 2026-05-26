@@ -9,14 +9,34 @@ class DisplayMode(enum.Enum):
     CASTING = enum.auto()
     TARGETING = enum.auto()
     SETTINGS = enum.auto()
+    LOADING_SAVE = enum.auto()
+    STARTING_NEW_GAME = enum.auto()
+    SAVING = enum.auto()
+    EXITING = enum.auto()
 
 
 class MenuOption(enum.StrEnum):
-    QUIT = 'Quit'
+    NEW_GAME = 'New Game'
+    CONTINUE = 'Continue'
+    RESUME = 'Resume'
+    SAVE = 'Save'
+    LOAD = 'Load'
     SETTINGS = 'Settings'
+    QUIT = 'Quit'
 
 
-MAIN_MENU_OPTIONS = [
+# Shown at startup, when no game is running.
+TITLE_MENU_OPTIONS = [
+    MenuOption.NEW_GAME,
+    MenuOption.CONTINUE,
+    MenuOption.QUIT,
+]
+
+# Shown in-game (pause menu), when a player entity exists.
+PAUSE_MENU_OPTIONS = [
+    MenuOption.RESUME,
+    MenuOption.SAVE,
+    MenuOption.LOAD,
     MenuOption.SETTINGS,
     MenuOption.QUIT,
 ]

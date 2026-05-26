@@ -92,6 +92,12 @@ else:
     ItemType = load_str_enum_from_yaml('ItemType', f'{DATA_DIR}/ingredients.yaml', 'ingredients')
     SpellType = load_str_enum_from_yaml('SpellType', f'{DATA_DIR}/spells.yaml', 'spells')
 
+    # These enums are built dynamically inside data_utils, so their __module__ points
+    # there by default. Bind them to this module so pickle can resolve members by
+    # reference (e.g. src.components.ItemType) when loading a saved game.
+    ItemType.__module__ = __name__
+    SpellType.__module__ = __name__
+
 
 @dataclass
 class FieldOfView:

@@ -1,9 +1,11 @@
+import sys
 import time
 
 import esper
 import tcod
 
-from src.components import Modal
+from src import persistence
+from src.components import MessageLog, Modal
 from src.constants import SCREEN_HEIGHT, SCREEN_WIDTH, TICKS_PER_SECOND
 from src.data_loaders import AssetLoader, get_game_configs
 from src.entities import (
@@ -32,11 +34,15 @@ from src.systems import (
     FOVSystem,
     RenderSystem,
     StatusSystem,
+    get_singleton,
 )
 from src.ui_systems import HUDSystem, MenuSystem, ModalSystem, TargetingOverlaySystem
 
 
 def init_game_world(asset_loader: AssetLoader):
+    # Load Meta-Persistence (Grimoire)
+    initial_recipes = persistence.load_grimoire()
+
     # Load Configs (memoized)
     configs = get_game_configs(asset_loader)
 
@@ -58,7 +64,12 @@ def init_game_world(asset_loader: AssetLoader):
     esper.create_entity(game_map)
 
     # ECS Entities
-    player = create_player(player_start.x, player_start.y, configs['characters'])
+    player = create_player(
+        player_start.x,
+        player_start.y,
+        configs['characters'],
+        initial_recipes=initial_recipes,
+    )
     return player
 
 
@@ -71,12 +82,23 @@ def add_logic_systems():
     esper.add_processor(FOVSystem())
 
 
-def add_render_systems(root_console, asset_loader, player):
+def add_render_systems(root_console, asset_loader):
     esper.add_processor(RenderSystem(root_console, asset_loader))
-    esper.add_processor(MenuSystem(root_console, player))
-    esper.add_processor(HUDSystem(root_console, player))
+    esper.add_processor(MenuSystem(root_console))
+    esper.add_processor(HUDSystem(root_console))
     esper.add_processor(ModalSystem(root_console))
     esper.add_processor(TargetingOverlaySystem(root_console))
+
+
+def init_main_menu():
+    """Create the minimal state for the startup title screen.
+
+    Only GameState (in MENU mode) and UIState are needed; the title screen has
+    no player, map, or config. New Game / Continue build the full world from here.
+    """
+    create_game_state()
+    create_ui_state()
+    get_singleton(GameState).display_mode = DisplayMode.MENU
 
 
 def update_pause_state(game_state: GameState):
@@ -114,8 +136,6 @@ def main():
     # BUILD the master tileset
     tileset = asset_loader.build_tileset()
 
-    player = init_game_world(asset_loader)
-
     with tcod.context.new(
         columns=SCREEN_WIDTH,
         rows=SCREEN_HEIGHT,
@@ -127,8 +147,13 @@ def main():
     ) as context:
         root_console = tcod.console.Console(SCREEN_WIDTH, SCREEN_HEIGHT)
 
+        # Register processors once. They are stateless and survive the
+        # clear_database() done on load / new game, so they are never re-added.
         add_logic_systems()
-        add_render_systems(root_console, asset_loader, player)
+        add_render_systems(root_console, asset_loader)
+
+        # Boot into the title screen (New Game / Continue / Quit).
+        init_main_menu()
 
         tick_rate = 1 / TICKS_PER_SECOND
 
@@ -136,7 +161,7 @@ def main():
             frame_start = time.perf_counter()
 
             # Fetch fresh game state
-            game_state = esper.get_component(GameState)[0][1]
+            game_state = get_singleton(GameState)
 
             # Update time_paused based on mode or modals
             update_pause_state(game_state)
@@ -150,10 +175,33 @@ def main():
 
             for event in tcod.event.get():
                 if isinstance(event, tcod.event.Quit):
-                    raise SystemExit()
+                    sys.exit()
 
                 old_mode = game_state.display_mode
                 dispatch_input(event, game_state)
+
+                if game_state.display_mode == DisplayMode.EXITING:
+                    sys.exit()
+
+                # Handle world transitions. clear_database() wipes entities and
+                # components but leaves the (stateless) processors in place.
+                elif game_state.display_mode == DisplayMode.LOADING_SAVE:
+                    persistence.load_game()
+                    game_state = get_singleton(GameState)
+                    game_state.display_mode = DisplayMode.EXPLORING
+
+                elif game_state.display_mode == DisplayMode.STARTING_NEW_GAME:
+                    esper.clear_database()
+                    init_game_world(asset_loader)
+                    game_state = get_singleton(GameState)
+                    game_state.display_mode = DisplayMode.EXPLORING
+
+                elif game_state.display_mode == DisplayMode.SAVING:
+                    persistence.save_game()
+                    log = get_singleton(MessageLog)
+                    if log:
+                        log.add_simple_message('Game saved.', color=(0, 255, 255))
+                    game_state.display_mode = DisplayMode.EXPLORING
 
                 # If the state changed, break the event loop to redraw immediately
                 if game_state.display_mode != old_mode:

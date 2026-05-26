@@ -3,6 +3,7 @@ import math
 import esper
 import tcod
 
+from src import persistence
 from src.components import (
     Inventory,
     Keybindings,
@@ -26,18 +27,30 @@ from src.constants import (
     UI_WHITE,
     UI_YELLOW,
 )
-from src.states import MAIN_MENU_OPTIONS, DisplayMode, GameState
-from src.systems import get_spell_config
-from src.ui_helpers import compute_visible_slice, draw_centered_frame, draw_titled_frame, wrap_message
+from src.states import (
+    PAUSE_MENU_OPTIONS,
+    TITLE_MENU_OPTIONS,
+    DisplayMode,
+    GameState,
+    MenuOption,
+)
+from src.systems import get_singleton, get_spell_config, is_game_active
+from src.ui_helpers import (
+    compute_visible_slice,
+    draw_centered_frame,
+    draw_titled_frame,
+    wrap_message,
+)
 
 
 class MenuSystem(esper.Processor):
-    def __init__(self, console: tcod.console.Console, player: int):
+    def __init__(self, console: tcod.console.Console):
         self.console = console
-        self.player = player
 
     def process(self):
-        game_state = esper.get_component(GameState)[0][1]
+        game_state = get_singleton(GameState)
+        if not game_state:
+            return
 
         if game_state.display_mode == DisplayMode.MENU:
             self.render_main_menu()
@@ -49,34 +62,51 @@ class MenuSystem(esper.Processor):
             self.render_settings_menu()
 
     def render_main_menu(self):
-        ui_state = esper.get_component(UIState)[0][1]
-        draw_titled_frame(
+        ui_state = get_singleton(UIState)
+        if not ui_state:
+            return
+
+        game_active = is_game_active()
+        options = PAUSE_MENU_OPTIONS if game_active else TITLE_MENU_OPTIONS
+        title = 'Paused' if game_active else 'WizardLike'
+        cursor = ui_state.main_menu_cursor % len(options)
+
+        x, y = draw_centered_frame(
             self.console,
-            0,
-            0,
-            self.console.width,
-            self.console.height,
-            title='Main Menu',
-            fg=UI_WHITE,
+            24,
+            len(options) + 4,
+            title=title,
         )
 
-        for i, option in enumerate(MAIN_MENU_OPTIONS):
-            color = UI_YELLOW if i == ui_state.main_menu_cursor else UI_WHITE
+        can_load = persistence.has_save()
+
+        for i, option in enumerate(options):
+            color = UI_YELLOW if i == cursor else UI_WHITE
+            if option in (MenuOption.CONTINUE, MenuOption.LOAD) and not can_load:
+                color = UI_GRAY_DARK
+
+            # Anchor options inside the frame (border at x/y, title on row y).
             self.console.print(
-                self.console.width // 2 - 5,
-                self.console.height // 2 - 1 + i,
-                f'{"> " if i == ui_state.main_menu_cursor else "  "}{option}',
+                x + 3,
+                y + 2 + i,
+                f'{"> " if i == cursor else "  "}{option}',
                 fg=color,
             )
 
     def render_combining_menu(self):
-        ui_state = esper.get_component(UIState)[0][1]
-        width = 60
+        ui_state = get_singleton(UIState)
+        player_inv = get_singleton(Inventory)
+        player_recipes = get_singleton(KnownRecipes)
+        player_spell_inv = get_singleton(SpellInventory)
+
+        if not all([ui_state, player_inv, player_recipes, player_spell_inv]):
+            return
+
+        width = 72
         height = 20
         x, y = draw_centered_frame(self.console, width, height, title='Combine Items')
 
         self.console.print(x + 2, y + 1, 'SPELL COMBINING', fg=UI_YELLOW)
-        player_inv = esper.component_for_entity(self.player, Inventory)
         inv_list = sorted(player_inv.items.keys())
 
         for i, itype in enumerate(inv_list):
@@ -96,9 +126,6 @@ class MenuSystem(esper.Processor):
             'Arrows: Move | L/R: Select | Enter: Combine | Esc: Close',
             fg=UI_GRAY,
         )
-
-        player_recipes = esper.component_for_entity(self.player, KnownRecipes)
-        player_spell_inv = esper.component_for_entity(self.player, SpellInventory)
 
         # Spellbook section (rendered to the right of the inventory list)
         self.console.print(x + 35, y + 1, 'SPELLBOOK', fg=UI_CYAN)
@@ -122,13 +149,15 @@ class MenuSystem(esper.Processor):
                 y_offset += 1
 
     def render_casting_menu(self):
-        ui_state = esper.get_component(UIState)[0][1]
+        ui_state = get_singleton(UIState)
+        player_spell_inv = get_singleton(SpellInventory)
+        if not ui_state or not player_spell_inv:
+            return
 
         width = 50
         height = 15
         x, y = draw_centered_frame(self.console, width, height, title='Select Spell to Cast')
 
-        player_spell_inv = esper.component_for_entity(self.player, SpellInventory)
         available_spells = sorted(
             [s for s in player_spell_inv.spells if player_spell_inv.spells[s] > 0],
             key=lambda x: x.name,
@@ -165,8 +194,11 @@ class MenuSystem(esper.Processor):
         )
 
     def render_settings_menu(self):
-        ui_state = esper.get_component(UIState)[0][1]
-        keybindings = esper.get_component(Keybindings)[0][1]
+        ui_state = get_singleton(UIState)
+        keybindings = get_singleton(Keybindings)
+        if not ui_state or not keybindings:
+            return
+
         actions = list(keybindings.bindings.keys())
 
         width = 40
@@ -198,6 +230,10 @@ class TargetingOverlaySystem(esper.Processor):
         self.console = console
 
     def process(self):
+        game_state = get_singleton(GameState)
+        if not game_state or game_state.display_mode != DisplayMode.TARGETING:
+            return
+
         reticles = esper.get_component(TargetingReticle)
         if not reticles:
             return
@@ -265,12 +301,13 @@ class HUDSystem(esper.Processor):
     FLOOR_TEXT_X = 2
     FLOOR_TEXT_Y = 48
 
-    def __init__(self, console: tcod.console.Console, player: int):
+    def __init__(self, console: tcod.console.Console):
         self.console = console
-        self.player = player
 
     def process(self):
-        game_state = esper.get_component(GameState)[0][1]
+        game_state = get_singleton(GameState)
+        if not game_state:
+            return
 
         if game_state.display_mode not in [
             DisplayMode.EXPLORING,
@@ -285,7 +322,11 @@ class HUDSystem(esper.Processor):
         self.render_message_log()
 
     def render_hp_bar(self):
-        stats = esper.component_for_entity(self.player, Stats)
+        player_stats = esper.get_components(Stats, PlayerTag)
+        if not player_stats:
+            return
+        _player, (stats, _) = player_stats[0]
+
         hp_text = f'HP: {stats.hp}/{stats.max_hp}'
         self.console.print(self.HP_BAR_X, self.HP_BAR_Y, hp_text, fg=UI_WHITE)
 
@@ -320,11 +361,9 @@ class HUDSystem(esper.Processor):
         )
 
     def render_message_log(self):
-        logs = esper.get_component(MessageLog)
-        if not logs:
+        log = get_singleton(MessageLog)
+        if not log:
             return
-
-        _ent, log = logs[0]
 
         # Draw frame
         draw_titled_frame(

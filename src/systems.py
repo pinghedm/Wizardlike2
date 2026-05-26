@@ -43,6 +43,14 @@ def get_singleton(component_type):
     return components[0][1] if components else None
 
 
+def is_game_active() -> bool:
+    """True when a run is in progress (a player entity exists).
+
+    Used to decide between the title menu and the in-game pause menu.
+    """
+    return bool(esper.get_components(PlayerTag))
+
+
 def get_display_name(entity: int) -> str:
     """Human-facing name for an entity, taken from its Renderable sprite id."""
     if esper.has_component(entity, Renderable):
@@ -281,7 +289,9 @@ class RenderSystem(esper.Processor):
         self.asset_loader = asset_loader
 
     def process(self):
-        game_state = esper.get_component(GameState)[0][1]
+        game_state = get_singleton(GameState)
+        if not game_state:
+            return
 
         if game_state.display_mode not in [
             DisplayMode.EXPLORING,

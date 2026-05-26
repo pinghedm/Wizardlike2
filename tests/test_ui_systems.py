@@ -8,6 +8,7 @@ and assert on the resulting text and highlight colors.
 import esper
 import pytest
 
+from src import persistence
 from src.components import (
     ItemType,
     KnownRecipes,
@@ -19,8 +20,20 @@ from src.components import (
     TargetingReticle,
     UIState,
 )
-from src.constants import UI_GRAY_DARK, UI_RED, UI_RED_DARK, UI_WHITE, UI_YELLOW
-from src.states import MAIN_MENU_OPTIONS, DisplayMode
+from src.constants import (
+    UI_GRAY_DARK,
+    UI_RED,
+    UI_RED_DARK,
+    UI_WHITE,
+    UI_YELLOW,
+)
+from src.entities import create_game_state, create_ui_state
+from src.states import (
+    PAUSE_MENU_OPTIONS,
+    TITLE_MENU_OPTIONS,
+    DisplayMode,
+    MenuOption,
+)
 
 from .headless_runner import HeadlessRunner
 
@@ -45,25 +58,46 @@ def _ui_state(runner: HeadlessRunner) -> UIState:
 # --- MenuSystem.render_main_menu --------------------------------------------
 
 
-def test_main_menu_shows_title_and_options():
+def test_title_menu_shows_title_and_options():
+    # Build a runner for the console/UI processors, then strip the world down to
+    # the startup title state (no player) to exercise the title menu branch.
+    runner = HeadlessRunner(use_random_map=False)
+    esper.clear_database()
+    create_game_state()
+    create_ui_state()
+    runner.game_state.display_mode = DisplayMode.MENU
+
+    text = _full_text(runner)
+    assert 'WizardLike' in text
+    for option in TITLE_MENU_OPTIONS:
+        assert str(option) in text
+
+
+def test_pause_menu_shows_title_and_options():
+    # A player exists -> in-game pause menu.
     runner = HeadlessRunner(use_random_map=False)
     runner.game_state.display_mode = DisplayMode.MENU
 
     text = _full_text(runner)
-    assert 'Main Menu' in text
-    for option in MAIN_MENU_OPTIONS:
+    assert 'Paused' in text
+    for option in PAUSE_MENU_OPTIONS:
         assert str(option) in text
 
 
-@pytest.mark.parametrize('cursor', range(len(MAIN_MENU_OPTIONS)))
-def test_main_menu_highlights_selected_option(cursor):
+@pytest.mark.parametrize('cursor', range(len(PAUSE_MENU_OPTIONS)))
+def test_pause_menu_highlights_selected_option(cursor):
     runner = HeadlessRunner(use_random_map=False)
     runner.game_state.display_mode = DisplayMode.MENU
     _ui_state(runner).main_menu_cursor = cursor
 
-    for i, option in enumerate(MAIN_MENU_OPTIONS):
+    can_load = persistence.has_save()
+
+    for i, option in enumerate(PAUSE_MENU_OPTIONS):
         x, y = _find_text(runner, str(option))
-        expected = UI_YELLOW if i == cursor else UI_WHITE
+        if option in (MenuOption.CONTINUE, MenuOption.LOAD) and not can_load:
+            expected = UI_GRAY_DARK
+        else:
+            expected = UI_YELLOW if i == cursor else UI_WHITE
         assert runner.get_console_fg(x, y) == expected
 
 
@@ -255,6 +289,7 @@ def test_modal_renders_message_and_prompt():
 
 def test_targeting_overlay_draws_reticle_and_zones():
     runner = HeadlessRunner(use_random_map=False)
+    runner.game_state.display_mode = DisplayMode.TARGETING
     px, py = runner.player_pos
     rx, ry = px + 2, py
     esper.create_entity(TargetingReticle(x=rx, y=ry, range=8, radius=1))

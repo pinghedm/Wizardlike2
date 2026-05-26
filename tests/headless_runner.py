@@ -47,8 +47,8 @@ class HeadlessRunner:
         # normal tick()/esper.process() path is unaffected.
         self.console = tcod.console.Console(SCREEN_WIDTH, SCREEN_HEIGHT)
         self._ui_systems = [
-            MenuSystem(self.console, self.player),
-            HUDSystem(self.console, self.player),
+            MenuSystem(self.console),
+            HUDSystem(self.console),
             ModalSystem(self.console),
             TargetingOverlaySystem(self.console),
         ]

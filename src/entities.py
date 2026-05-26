@@ -66,10 +66,14 @@ def create_keybindings():
     )
 
 
-def create_player(x, y, characters_config):
+def create_player(x, y, characters_config, initial_recipes=None):
     """Factory function for the player entity."""
     # The ID 'player' is registered in AssetLoader (either as a sprite or char '@')
     sprite_id = 'player'
+
+    known_recipes = KnownRecipes()
+    if initial_recipes:
+        known_recipes.recipes = initial_recipes
 
     return esper.create_entity(
         Position(x, y),
@@ -78,7 +82,7 @@ def create_player(x, y, characters_config):
         Renderable(sprite_id=sprite_id, color=(255, 255, 255)),
         Stats(hp=100, max_hp=100),
         Inventory(),
-        KnownRecipes(),
+        known_recipes,
         SpellInventory(),
         StatusEffects(),
         PlayerTag(),

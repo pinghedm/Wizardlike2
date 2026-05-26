@@ -3,6 +3,7 @@ import math
 import esper
 import tcod
 
+from src import persistence
 from src.components import (
     Enemy,
     Inventory,
@@ -19,12 +20,19 @@ from src.components import (
 )
 from src.map_objects import Map
 from src.procgen import transition_to_next_floor
-from src.states import MAIN_MENU_OPTIONS, DisplayMode, GameState, MenuOption
+from src.states import (
+    PAUSE_MENU_OPTIONS,
+    TITLE_MENU_OPTIONS,
+    DisplayMode,
+    GameState,
+    MenuOption,
+)
 from src.systems import (
     cast_spell,
     deal_damage,
     get_display_name,
     get_spell_config,
+    is_game_active,
     match_recipe,
     move_entity,
 )
@@ -158,21 +166,37 @@ def handle_menu_input(event):
 
     ui_state = esper.get_component(UIState)[0][1]
 
-    if event.sym == tcod.event.KeySym.ESCAPE or event.sym == tcod.event.KeySym.c:
-        return DisplayMode.EXPLORING
+    # Title menu before a run starts, pause menu once a player exists.
+    game_active = is_game_active()
+    options = PAUSE_MENU_OPTIONS if game_active else TITLE_MENU_OPTIONS
+    ui_state.main_menu_cursor %= len(options)
+
+    if event.sym == tcod.event.KeySym.ESCAPE:
+        # Escape resumes an active game; at the title screen there is nothing
+        # to resume, so stay on the menu.
+        return DisplayMode.EXPLORING if game_active else DisplayMode.MENU
 
     elif event.sym == tcod.event.KeySym.UP:
-        ui_state.main_menu_cursor = (ui_state.main_menu_cursor - 1) % len(MAIN_MENU_OPTIONS)
+        ui_state.main_menu_cursor = (ui_state.main_menu_cursor - 1) % len(options)
 
     elif event.sym == tcod.event.KeySym.DOWN:
-        ui_state.main_menu_cursor = (ui_state.main_menu_cursor + 1) % len(MAIN_MENU_OPTIONS)
+        ui_state.main_menu_cursor = (ui_state.main_menu_cursor + 1) % len(options)
 
     elif event.sym == tcod.event.KeySym.RETURN:
-        selection = MAIN_MENU_OPTIONS[ui_state.main_menu_cursor]
+        selection = options[ui_state.main_menu_cursor]
         if selection == MenuOption.QUIT:
-            raise SystemExit()
+            return DisplayMode.EXITING
+        elif selection == MenuOption.RESUME:
+            return DisplayMode.EXPLORING
+        elif selection == MenuOption.SAVE:
+            return DisplayMode.SAVING
         elif selection == MenuOption.SETTINGS:
             return DisplayMode.SETTINGS
+        elif selection in (MenuOption.CONTINUE, MenuOption.LOAD):
+            if persistence.has_save():
+                return DisplayMode.LOADING_SAVE
+        elif selection == MenuOption.NEW_GAME:
+            return DisplayMode.STARTING_NEW_GAME
 
     return DisplayMode.MENU
 
@@ -245,6 +269,9 @@ def handle_combining_input(event):
         if stype not in player_recipes.recipes:
             player_recipes.recipes[stype] = set()
         player_recipes.recipes[stype].add(flat_selection)
+
+        # PERSISTENT META-PROGRESSION: Save grimoire on discovery
+        persistence.save_grimoire(player_recipes.recipes)
 
         # Grant charges
         player_spell_inv.spells[stype] = player_spell_inv.spells.get(stype, 0) + charges
