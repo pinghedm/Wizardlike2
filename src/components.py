@@ -12,12 +12,6 @@ from src.constants import DATA_DIR
 from src.data_utils import load_str_enum_from_yaml
 
 
-class EffectConfig(TypedDict):
-    type: EffectType
-    power: int | None
-    duration: int | None
-
-
 class RecipeConfig(TypedDict):
     ingredients: list[ItemType]
     charges: int
@@ -28,7 +22,7 @@ class SpellConfig(TypedDict):
     name: str
     range: int
     radius: int
-    effects: list[EffectConfig]
+    effects: list[Effect]
     recipes: list[RecipeConfig]
 
 
@@ -72,12 +66,33 @@ class Point(NamedTuple):
 
 class StatusType(enum.StrEnum):
     SLOW = 'slow'
+    HASTE = 'haste'
+    POISON = 'poison'
+    REGEN = 'regen'
 
 
 class EffectType(enum.StrEnum):
     DAMAGE = 'damage'
     HEAL = 'heal'
     SLOW = 'slow'
+    HASTE = 'haste'
+    POISON = 'poison'
+    REGEN = 'regen'
+
+
+@dataclass
+class Effect:
+    """A single spell effect.
+
+    The same object is parsed from YAML and, for effects that linger, stored on
+    an entity's StatusEffects. Instant effects (damage/heal) use `power` only;
+    markers (slow/haste) use `duration` only; recurring effects (poison/regen)
+    use both — `power` per pulse, `duration` ticking down to expiry.
+    """
+
+    type: EffectType
+    duration: int = 0
+    power: int = 0
 
 
 if TYPE_CHECKING:
@@ -270,7 +285,7 @@ class TargetingReticle:
 class StatusEffects:
     """Component to track active status effects on an entity."""
 
-    active: dict[StatusType, int] = field(default_factory=dict[StatusType, int])
+    active: dict[StatusType, Effect] = field(default_factory=dict[StatusType, Effect])
 
 
 class PlayerTag:

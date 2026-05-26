@@ -57,7 +57,7 @@ def test_full_gameplay_loop():
         configs = esper.get_component(Configuration)[0][1]
         spells_config = configs.spells
         s_conf = next((s for s in spells_config if s['id'] == 'test_bolt'), None)
-        damage = [e for e in s_conf['effects'] if e['type'] == EffectType.DAMAGE][0]['power']
+        damage = [e for e in s_conf['effects'] if e.type == EffectType.DAMAGE][0].power
         assert stats.hp == (enemy_starting_hp - damage)  # Ensure damage was taken
 
     messages = runner.get_log_messages()

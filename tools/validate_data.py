@@ -87,8 +87,11 @@ def validate_data() -> bool:
                 # Use EffectType enum to determine valid types
                 valid_effect_info = {
                     EffectType.DAMAGE: ['power'],
-                    EffectType.SLOW: ['duration'],
                     EffectType.HEAL: ['power'],
+                    EffectType.SLOW: ['duration'],
+                    EffectType.HASTE: ['duration'],
+                    EffectType.POISON: ['power', 'duration'],
+                    EffectType.REGEN: ['power', 'duration'],
                 }
                 valid_effect_type_names = [e.value for e in valid_effect_info.keys()]
 

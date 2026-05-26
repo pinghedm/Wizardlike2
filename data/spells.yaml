@@ -45,3 +45,37 @@ spells:
         charges: 4
       - ingredients: [fire_crystal, ice_shard, mystic_herb]
         charges: 10
+  - id: blight
+    name: Blight
+    range: 8
+    radius: 0
+    effects:
+      - type: damage
+        power: 6
+      - type: poison
+        power: 4
+        duration: 90
+    recipes:
+      - ingredients: [ice_shard, mystic_herb]
+        charges: 4
+  - id: renewal
+    name: Renewal
+    range: 0
+    radius: 0
+    effects:
+      - type: regen
+        power: 5
+        duration: 120
+    recipes:
+      - ingredients: [mystic_herb, mystic_herb, mystic_herb]
+        charges: 3
+  - id: quicken
+    name: Quicken
+    range: 0
+    radius: 0
+    effects:
+      - type: haste
+        duration: 150
+    recipes:
+      - ingredients: [fire_crystal, mystic_herb]
+        charges: 3

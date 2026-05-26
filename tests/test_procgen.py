@@ -36,14 +36,14 @@ def _assert_contiguous_path(path, start, end):
 
 def test_tunnel_horizontal_first_connects_endpoints_contiguously(monkeypatch):
     # random.random() < 0.5 takes the horizontal-then-vertical branch.
-    monkeypatch.setattr("random.random", lambda: 0.0)
+    monkeypatch.setattr('random.random', lambda: 0.0)
     start, end = Point(2, 3), Point(18, 11)
     _assert_contiguous_path(list(tunnel_between(start, end)), start, end)
 
 
 def test_tunnel_vertical_first_connects_endpoints_contiguously(monkeypatch):
     # random.random() >= 0.5 takes the vertical-then-horizontal branch.
-    monkeypatch.setattr("random.random", lambda: 0.9)
+    monkeypatch.setattr('random.random', lambda: 0.9)
     start, end = Point(2, 3), Point(18, 11)
     _assert_contiguous_path(list(tunnel_between(start, end)), start, end)
 

@@ -10,6 +10,11 @@ TICKS_PER_SECOND = 30
 # earlier floors descend deeper. Tune for run length / difficulty.
 MAX_FLOORS = 10
 
+# Recurring status effects (poison, regen) fire one pulse every this many ticks
+# while active. A status' authored `duration` is in ticks, so author it as a
+# multiple of this interval to get a predictable number of pulses.
+STATUS_PULSE_INTERVAL = 30
+
 # Directory holding game-content YAML (ingredients, spells, tiles, etc.).
 DATA_DIR = os.environ.get('WIZARDLIKE_DATA_DIR', 'data')
 

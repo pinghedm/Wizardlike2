@@ -8,7 +8,7 @@ import tcod
 import yaml
 from PIL import Image
 
-from src.components import EffectType, ItemType
+from src.components import Effect, EffectType, ItemType
 from src.constants import DATA_DIR
 
 
@@ -46,9 +46,14 @@ def load_spells_config(asset_loader: AssetLoader):
     with open(f'{DATA_DIR}/spells.yaml') as f:
         data = yaml.safe_load(f)['spells']
         for spell in data:
-            # Map effect strings to Enums
-            for effect in spell.get('effects', []):
-                effect['type'] = EffectType(effect['type'])
+            spell['effects'] = [
+                Effect(
+                    type=EffectType(effect['type']),
+                    duration=effect.get('duration', 0),
+                    power=effect.get('power', 0),
+                )
+                for effect in spell.get('effects', [])
+            ]
 
             processed_recipes = []
             for r_data in spell['recipes']:

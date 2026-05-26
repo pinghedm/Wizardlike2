@@ -1,4 +1,5 @@
 import sys
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 import esper
@@ -12,6 +13,7 @@ from src.components import (
     AI,
     Actor,
     Configuration,
+    Effect,
     EffectType,
     Enemy,
     FieldOfView,
@@ -30,6 +32,7 @@ from src.components import (
     StatusEffects,
     StatusType,
 )
+from src.constants import STATUS_PULSE_INTERVAL
 from src.map_objects import Map
 from src.states import DisplayMode, GameState
 
@@ -102,20 +105,39 @@ class ActionSystem(esper.Processor):
                 actor.cooldown -= 1
 
 
+def _apply_status_pulse(ent: int, status_type: StatusType, power: int, log: MessageLog | None):
+    """Apply one pulse of a recurring status effect (poison damage / regen heal)."""
+    stats = esper.component_for_entity(ent, Stats)
+    name = 'You' if esper.has_component(ent, PlayerTag) else f'The {get_display_name(ent)}'
+
+    if status_type == StatusType.POISON:
+        stats.hp -= power
+        if log:
+            log.add_simple_message(f'{name} took {power} poison damage!', color=(50, 200, 50))
+    elif status_type == StatusType.REGEN:
+        stats.hp = min(stats.max_hp, stats.hp + power)
+        if log:
+            log.add_simple_message(f'{name} regained {power} HP.', color=(0, 255, 0))
+
+
 class StatusSystem(esper.Processor):
-    """Manages duration of active status effects."""
+    """Ages active status effects and applies recurring ones each pulse."""
 
     def process(self):
         game_state = esper.get_component(GameState)[0][1]
         if game_state.time_paused:
             return
 
-        for _ent, status in esper.get_component(StatusEffects):
-            for effect_type in list(status.active.keys()):
-                if status.active[effect_type] > 0:
-                    status.active[effect_type] -= 1
-                else:
-                    del status.active[effect_type]
+        log = get_singleton(MessageLog)
+        for ent, status in esper.get_component(StatusEffects):
+            for status_type in list(status.active.keys()):
+                effect = status.active[status_type]
+                # Recurring effects carry power; they pulse on the global cadence.
+                if effect.power and effect.duration % STATUS_PULSE_INTERVAL == 0:
+                    _apply_status_pulse(ent, status_type, effect.power, log)
+                effect.duration -= 1
+                if effect.duration <= 0:
+                    del status.active[status_type]
 
 
 def _ai_target(ent: int) -> Point | None:
@@ -399,14 +421,20 @@ def move_entity(entity: int, dx: int, dy: int):
 def get_cooldown(entity: int, base_speed: int) -> int:
     """Calculate cooldown based on status effects."""
     if esper.has_component(entity, StatusEffects):
-        status = esper.component_for_entity(entity, StatusEffects)
-        if StatusType.SLOW in status.active:
+        active = esper.component_for_entity(entity, StatusEffects).active
+        if StatusType.SLOW in active:
             return base_speed * 2
+        if StatusType.HASTE in active:
+            return max(0, base_speed // 2)
     return max(0, base_speed)
 
 
-def apply_effect(target_ent: int, effect_data: dict, log: MessageLog):
-    """Apply a single spell effect to a target entity."""
+def apply_effect(target_ent: int, effect: Effect, log: MessageLog):
+    """Apply a single spell effect to a target entity.
+
+    Instant effects (damage/heal) resolve immediately; lingering ones store a
+    copy of the effect on the target's StatusEffects for StatusSystem to age.
+    """
     stats = esper.component_for_entity(target_ent, Stats)
     status = esper.component_for_entity(target_ent, StatusEffects)
     is_player = esper.has_component(target_ent, PlayerTag)
@@ -416,22 +444,29 @@ def apply_effect(target_ent: int, effect_data: dict, log: MessageLog):
     else:
         target_name = f'The {get_display_name(target_ent)}'
 
-    etype = effect_data['type']
+    if effect.type == EffectType.DAMAGE:
+        stats.hp -= effect.power
+        log.add_simple_message(f'{target_name} took {effect.power} damage!', color=(255, 100, 0))
 
-    if etype == EffectType.DAMAGE:
-        power = effect_data['power']
-        stats.hp -= power
-        log.add_simple_message(f'{target_name} took {power} damage!', color=(255, 100, 0))
+    elif effect.type == EffectType.HEAL:
+        stats.hp = min(stats.max_hp, stats.hp + effect.power)
+        log.add_simple_message(f'{target_name} healed for {effect.power} HP!', color=(0, 255, 0))
 
-    elif etype == EffectType.HEAL:
-        power = effect_data['power']
-        stats.hp = min(stats.max_hp, stats.hp + power)
-        log.add_simple_message(f'{target_name} healed for {power} HP!', color=(0, 255, 0))
-
-    elif etype == EffectType.SLOW:
-        duration = effect_data['duration']
-        status.active[StatusType.SLOW] = duration
+    elif effect.type == EffectType.SLOW:
+        status.active[StatusType.SLOW] = replace(effect)
         log.add_simple_message(f'{target_name} is slowed!', color=(100, 100, 255))
+
+    elif effect.type == EffectType.HASTE:
+        status.active[StatusType.HASTE] = replace(effect)
+        log.add_simple_message(f'{target_name} speeds up!', color=(255, 255, 0))
+
+    elif effect.type == EffectType.POISON:
+        status.active[StatusType.POISON] = replace(effect)
+        log.add_simple_message(f'{target_name} is poisoned!', color=(50, 200, 50))
+
+    elif effect.type == EffectType.REGEN:
+        status.active[StatusType.REGEN] = replace(effect)
+        log.add_simple_message(f'{target_name} begins to regenerate!', color=(0, 255, 0))
 
 
 def get_spell_config(spell_id: str) -> SpellConfig | None:

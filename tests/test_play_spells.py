@@ -26,7 +26,7 @@ def test_full_cast_cycle_applies_fixture_effects():
     assert runner.display_mode == DisplayMode.EXPLORING
     assert esper.component_for_entity(runner.player, SpellInventory).spells[SpellType('test_bolt')] == 0
     assert esper.component_for_entity(enemy, Stats).hp == 30 - 12
-    assert esper.component_for_entity(enemy, StatusEffects).active[StatusType.SLOW] == 40
+    assert esper.component_for_entity(enemy, StatusEffects).active[StatusType.SLOW].duration == 40
 
 
 def test_spell_radius_hits_only_targets_within_radius():
