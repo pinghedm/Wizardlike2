@@ -7,6 +7,7 @@ from src.components import (
     Actor,
     ChaseTag,
     Enemy,
+    EnemyAbility,
     FieldOfView,
     Inventory,
     ItemType,
@@ -27,6 +28,17 @@ from src.states import DisplayMode, GameState
 from src.ui_systems import HUDSystem, MenuSystem, ModalSystem, TargetingOverlaySystem
 
 
+def _reset_processors():
+    """Drop all registered processors.
+
+    Production registers processors once at startup and lets them survive
+    clear_database(); each HeadlessRunner instead rebuilds the world from scratch
+    and re-runs add_logic_systems(), so without this the pipeline accumulates a
+    duplicate set per runner and systems run multiple times per tick."""
+    esper._processors.clear()
+    esper._processors_dict.clear()
+
+
 class HeadlessRunner:
     def __init__(self, use_random_map: bool = False):
         self.asset_loader = AssetLoader()
@@ -39,6 +51,7 @@ class HeadlessRunner:
             self._inject_clean_room()
         else:
             esper.clear_database()
+            _reset_processors()
             self.player = init_game_world(self.asset_loader)
             add_logic_systems()
 
@@ -57,6 +70,7 @@ class HeadlessRunner:
         """Replace the procedurally generated map with a simple open room."""
         # 1. Total Reset
         esper.clear_database()
+        _reset_processors()
 
         # 2. Re-init baseline state (Log, Config, UI, etc)
         from src.entities import (
@@ -128,7 +142,15 @@ class HeadlessRunner:
     def display_mode(self) -> DisplayMode:
         return self.game_state.display_mode
 
-    def spawn_enemy(self, x: int, y: int, hp: int = 30, damage: int = 10, speed: int = 100) -> int:
+    def spawn_enemy(
+        self,
+        x: int,
+        y: int,
+        hp: int = 30,
+        damage: int = 10,
+        speed: int = 100,
+        ability: EnemyAbility | None = None,
+    ) -> int:
         """Create an enemy entity at (x, y) mirroring procgen spawning."""
         return esper.create_entity(
             Position(x, y),
@@ -136,7 +158,7 @@ class HeadlessRunner:
             Actor(speed=speed),
             AI(),
             ChaseTag(),
-            Enemy(attack_damage=damage, bump_damage=damage // 2),
+            Enemy(attack_damage=damage, bump_damage=damage // 2, ability=ability),
             Stats(hp=hp, max_hp=hp),
             StatusEffects(),
             FieldOfView(radius=8),

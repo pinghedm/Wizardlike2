@@ -7,3 +7,18 @@ enemies:
     speed: 100
     behavior: CHASE
     floors: [1, 99]
+  - id: test_caster
+    char: "c"
+    color: [120, 255, 120]
+    hp: 20
+    damage: 4
+    speed: 100
+    behavior: FLEE
+    floors: [1, 99]
+    ability:
+      range: 5
+      effects:
+        - type: damage
+          power: 7
+        - type: slow
+          duration: 60

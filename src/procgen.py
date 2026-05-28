@@ -140,7 +140,11 @@ class RectangularRoom:
                 Actor(speed=enemy_cfg['speed']),
                 AI(),
                 behavior_tag,
-                Enemy(attack_damage=enemy_cfg['damage'], bump_damage=enemy_cfg['damage'] // 2),
+                Enemy(
+                    attack_damage=enemy_cfg['damage'],
+                    bump_damage=enemy_cfg['damage'] // 2,
+                    ability=enemy_cfg.get('ability'),
+                ),
                 Stats(hp=enemy_cfg['hp'], max_hp=enemy_cfg['hp']),
                 StatusEffects(),
                 FieldOfView(radius=8),

@@ -8,7 +8,7 @@ import tcod
 import yaml
 from PIL import Image
 
-from src.components import Effect, EffectType, ItemType
+from src.components import Effect, EffectType, EnemyAbility, ItemType
 from src.constants import DATA_DIR
 
 
@@ -42,18 +42,22 @@ def load_ingredients_config(asset_loader: AssetLoader):
         return items
 
 
+def _parse_effects(raw: list[dict]) -> list[Effect]:
+    return [
+        Effect(
+            type=EffectType(effect['type']),
+            duration=effect.get('duration', 0),
+            power=effect.get('power', 0),
+        )
+        for effect in raw
+    ]
+
+
 def load_spells_config(asset_loader: AssetLoader):
     with open(f'{DATA_DIR}/spells.yaml') as f:
         data = yaml.safe_load(f)['spells']
         for spell in data:
-            spell['effects'] = [
-                Effect(
-                    type=EffectType(effect['type']),
-                    duration=effect.get('duration', 0),
-                    power=effect.get('power', 0),
-                )
-                for effect in spell.get('effects', [])
-            ]
+            spell['effects'] = _parse_effects(spell.get('effects', []))
 
             processed_recipes = []
             for r_data in spell['recipes']:
@@ -95,6 +99,11 @@ def load_enemies_config(asset_loader: AssetLoader):
             data = yaml.safe_load(f)['enemies']
             enemies = {enemy['id']: enemy for enemy in data}
             for eid, config in enemies.items():
+                if 'ability' in config:
+                    config['ability'] = EnemyAbility(
+                        range=config['ability']['range'],
+                        effects=_parse_effects(config['ability'].get('effects', [])),
+                    )
                 if 'sprite' in config:
                     asset_loader.register_sprite(eid, config['sprite'])
                 else:

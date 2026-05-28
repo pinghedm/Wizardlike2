@@ -95,6 +95,15 @@ class Effect:
     power: int = 0
 
 
+@dataclass
+class EnemyAbility:
+    """A ranged enemy attack, modeled as a mini-spell: a range plus the same
+    list of Effects spells use. Applied to the player via apply_effect."""
+
+    range: int
+    effects: list[Effect]
+
+
 if TYPE_CHECKING:
 
     class ItemType(enum.StrEnum):
@@ -269,6 +278,7 @@ class Enemy:
     attack_damage: int = 15
     bump_damage: int = 5
     blocks_movement: bool = False
+    ability: EnemyAbility | None = None
 
 
 @dataclass

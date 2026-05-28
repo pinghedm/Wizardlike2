@@ -35,3 +35,42 @@ enemies:
     speed: 50
     behavior: FLEE
     floors: [3, 10]
+  - id: wisp
+    sprite:
+      path: data/People.png
+      type: REGION
+      region: [90, 0, 10, 10]
+      scale: 1.0
+    color: [120, 255, 120]
+    hp: 18
+    damage: 4
+    speed: 40
+    behavior: FLEE
+    floors: [2, 10]
+    ability:
+      range: 5
+      effects:
+        - type: damage
+          power: 6
+        - type: poison
+          power: 3
+          duration: 90
+  - id: frost_shade
+    sprite:
+      path: data/People.png
+      type: REGION
+      region: [60, 0, 10, 10]
+      scale: 1.0
+    color: [150, 200, 255]
+    hp: 25
+    damage: 6
+    speed: 45
+    behavior: CHASE
+    floors: [4, 10]
+    ability:
+      range: 4
+      effects:
+        - type: damage
+          power: 5
+        - type: slow
+          duration: 90

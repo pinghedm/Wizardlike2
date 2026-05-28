@@ -78,3 +78,11 @@ python -m ruff check --fix . && python -m ruff format .
 ```
 
 Tests load their own data from `tests/fixtures/` (via `WIZARDLIKE_DATA_DIR`), so they stay independent of the content in `data/`.
+
+### Debugging
+
+Set `WIZARDLIKE_DEBUG=1` to stream per-frame and per-system debug logs to stderr (unset = silent). When chasing a crash, the last line printed is the operation that crashed:
+
+```bash
+WIZARDLIKE_DEBUG=1 python -m src.main 2> debug.log
+```

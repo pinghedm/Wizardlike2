@@ -40,7 +40,9 @@ from src.systems import (
 
 
 def handle_modal_input(event):
-    if not isinstance(event, tcod.event.KeyDown):
+    # Only Enter dismisses a modal, so an arrow key can't accidentally confirm a
+    # descent or blow past the death screen.
+    if not isinstance(event, tcod.event.KeyDown) or event.sym != tcod.event.KeySym.RETURN:
         return
 
     modals = esper.get_component(Modal)
@@ -123,7 +125,7 @@ def handle_exploring_input(event):
                 else:
                     esper.create_entity(
                         Modal(
-                            message='You descend deeper into the dungeon...',
+                            message='You descend deeper into the dungeon... (Press Enter)',
                             on_close=transition_to_next_floor,
                         )
                     )

@@ -5,6 +5,49 @@ import yaml
 
 from src.components import EffectType
 
+VALID_EFFECT_INFO = {
+    EffectType.DAMAGE: ['power'],
+    EffectType.HEAL: ['power'],
+    EffectType.SLOW: ['duration'],
+    EffectType.HASTE: ['duration'],
+    EffectType.POISON: ['power', 'duration'],
+    EffectType.REGEN: ['power', 'duration'],
+}
+
+
+def validate_effects(effects, context_label: str) -> int:
+    """Validate a list of effect dicts (shared by spells and enemy abilities).
+
+    Returns the number of errors found and prints each one.
+    """
+    if not isinstance(effects, list) or not effects:
+        print(f'ERROR: {context_label} must have a non-empty list of "effects".')
+        return 1
+
+    valid_effect_type_names = [e.value for e in VALID_EFFECT_INFO.keys()]
+    errors = 0
+    for eff_idx, effect in enumerate(effects):
+        etype_str = effect.get('type')
+        if not etype_str:
+            print(f'ERROR: {context_label} effect #{eff_idx} missing "type".')
+            errors += 1
+            continue
+
+        if etype_str not in valid_effect_type_names:
+            print(f'ERROR: {context_label} effect #{eff_idx} has invalid type: "{etype_str}".')
+            errors += 1
+            continue
+
+        etype = EffectType(etype_str)
+        for req_field in VALID_EFFECT_INFO[etype]:
+            if req_field not in effect:
+                print(f'ERROR: {context_label} effect #{eff_idx} ({etype_str}) missing required field "{req_field}".')
+                errors += 1
+            elif not isinstance(effect[req_field], int) or effect[req_field] <= 0:
+                print(f'ERROR: {context_label} effect #{eff_idx} field "{req_field}" must be a positive integer.')
+                errors += 1
+    return errors
+
 
 def validate_data() -> bool:
     data_dir = Path('data')
@@ -79,50 +122,7 @@ def validate_data() -> bool:
                     print(f'ERROR: Spell "{sid}" {field} must be a non-negative integer.')
                     errors += 1
 
-            effects = spell.get('effects', [])
-            if not isinstance(effects, list) or not effects:
-                print(f'ERROR: Spell "{sid}" must have a non-empty list of "effects".')
-                errors += 1
-            else:
-                # Use EffectType enum to determine valid types
-                valid_effect_info = {
-                    EffectType.DAMAGE: ['power'],
-                    EffectType.HEAL: ['power'],
-                    EffectType.SLOW: ['duration'],
-                    EffectType.HASTE: ['duration'],
-                    EffectType.POISON: ['power', 'duration'],
-                    EffectType.REGEN: ['power', 'duration'],
-                }
-                valid_effect_type_names = [e.value for e in valid_effect_info.keys()]
-
-                for eff_idx, effect in enumerate(effects):
-                    etype_str = effect.get('type')
-                    if not etype_str:
-                        print(f'ERROR: Spell "{sid}" effect #{eff_idx} missing "type".')
-                        errors += 1
-                        continue
-
-                    if etype_str not in valid_effect_type_names:
-                        print(f'ERROR: Spell "{sid}" effect #{eff_idx} has invalid type: "{etype_str}".')
-                        errors += 1
-                        continue
-
-                    # Map string back to Enum for logic
-                    etype = EffectType(etype_str)
-
-                    for req_field in valid_effect_info[etype]:
-                        if req_field not in effect:
-                            print(
-                                f'ERROR: Spell "{sid}" effect #{eff_idx} ({etype_str}) '
-                                f'missing required field "{req_field}".'
-                            )
-                            errors += 1
-                        elif not isinstance(effect[req_field], int) or effect[req_field] <= 0:
-                            print(
-                                f'ERROR: Spell "{sid}" effect #{eff_idx} '
-                                f'field "{req_field}" must be a positive integer.'
-                            )
-                            errors += 1
+            errors += validate_effects(spell.get('effects', []), f'Spell "{sid}"')
 
             recipes = spell.get('recipes', [])
             if not isinstance(recipes, list) or not recipes:
@@ -231,6 +231,14 @@ def validate_data() -> bool:
                 if not isinstance(color, list) or len(color) != 3 or not all(isinstance(c, int) for c in color):
                     print(f'ERROR: Enemy "{eid}" color must be a list of 3 integers.')
                     errors += 1
+
+            if 'ability' in enemy:
+                ability = enemy['ability']
+                rng = ability.get('range')
+                if not isinstance(rng, int) or rng < 0:
+                    print(f'ERROR: Enemy "{eid}" ability range must be a non-negative integer.')
+                    errors += 1
+                errors += validate_effects(ability.get('effects', []), f'Enemy "{eid}" ability')
 
     if errors == 0:
         print('SUCCESS: All data files are valid.')

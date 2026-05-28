@@ -8,6 +8,7 @@ from src import persistence
 from src.components import MessageLog, Modal
 from src.constants import SCREEN_HEIGHT, SCREEN_WIDTH, TICKS_PER_SECOND
 from src.data_loaders import AssetLoader, get_game_configs
+from src.debug import debug_log
 from src.entities import (
     create_configuration,
     create_game_state,
@@ -181,8 +182,10 @@ def main():
 
         tick_rate = 1 / TICKS_PER_SECOND
 
+        frame = 0
         while True:
             frame_start = time.perf_counter()
+            frame += 1
 
             # Fetch fresh game state
             game_state = get_singleton(GameState)
@@ -193,15 +196,19 @@ def main():
             root_console.clear()
 
             # Run all processors
+            debug_log(f'frame {frame}: process begin (mode={game_state.display_mode}, paused={game_state.time_paused})')
             esper.process()
+            debug_log(f'frame {frame}: process end')
 
             context.present(root_console)
+            debug_log(f'frame {frame}: present end')
 
             for event in tcod.event.get():
                 if isinstance(event, tcod.event.Quit):
                     sys.exit()
 
                 old_mode = game_state.display_mode
+                debug_log(f'frame {frame}: dispatch {type(event).__name__}')
                 dispatch_input(event, game_state)
 
                 # Handle world transitions. clear_database() wipes entities and

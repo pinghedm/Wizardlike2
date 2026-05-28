@@ -16,6 +16,7 @@ from src.components import (
     Effect,
     EffectType,
     Enemy,
+    EnemyAbility,
     FieldOfView,
     FleeTag,
     MessageLog,
@@ -33,6 +34,7 @@ from src.components import (
     StatusType,
 )
 from src.constants import STATUS_PULSE_INTERVAL
+from src.debug import debug_log
 from src.map_objects import Map
 from src.states import DisplayMode, GameState
 
@@ -79,6 +81,7 @@ class DeathSystem(esper.Processor):
         for ent, stats in esper.get_component(Stats):
             if stats.hp <= 0:
                 if esper.has_component(ent, PlayerTag):
+                    debug_log(f'DeathSystem: player {ent} died (hp={stats.hp})')
                     if not esper.get_component(Modal):
                         esper.create_entity(
                             Modal(
@@ -87,6 +90,7 @@ class DeathSystem(esper.Processor):
                             )
                         )
                 else:
+                    debug_log(f'DeathSystem: deleting {ent} ({get_display_name(ent)})')
                     if log:
                         log.add_simple_message(f'The {get_display_name(ent)} dies!', color=(255, 255, 0))
                     esper.delete_entity(ent)
@@ -216,6 +220,22 @@ def _process_flee(ent: int, pos: Position, pathfinding_context: dict):
             move_entity(ent, target_x - pos.x, target_y - pos.y)
 
 
+def _can_use_ability(ent: int, pos: Position, player_pos: Position, ability: EnemyAbility) -> bool:
+    """An ability fires when the player is within range and in the enemy's line of sight."""
+    if max(abs(player_pos.x - pos.x), abs(player_pos.y - pos.y)) > ability.range:
+        return False
+    if esper.has_component(ent, FieldOfView):
+        return player_pos.point in esper.component_for_entity(ent, FieldOfView).visible_tiles
+    return True
+
+
+def _use_ability(ent: int, player_ent: int, ability: EnemyAbility, log: MessageLog):
+    log.add_simple_message(f'The {get_display_name(ent)} attacks from afar!', color=(255, 0, 255))
+    for effect in ability.effects:
+        debug_log(f'  ability effect {effect.type} power={effect.power} dur={effect.duration} -> player {player_ent}')
+        apply_effect(player_ent, effect, log)
+
+
 class AISystem(esper.Processor):
     """Drives tagged AI entities with FOV and Dijkstra pathfinding."""
 
@@ -253,15 +273,21 @@ class AISystem(esper.Processor):
             if actor and actor.cooldown > 0:
                 continue
 
-            # Attack the player if adjacent (any behavior), otherwise move.
-            if esper.has_component(ent, Enemy) and abs(player_pos.x - pos.x) <= 1 and abs(player_pos.y - pos.y) <= 1:
-                enemy = esper.component_for_entity(ent, Enemy)
+            enemy = esper.component_for_entity(ent, Enemy) if esper.has_component(ent, Enemy) else None
+            adjacent = enemy and abs(player_pos.x - pos.x) <= 1 and abs(player_pos.y - pos.y) <= 1
+
+            # Melee if adjacent, else fire a ranged ability if one is in range, else move.
+            if adjacent:
+                debug_log(f'AI {ent} ({get_display_name(ent)}) melee at {(pos.x, pos.y)}')
                 deal_damage(
                     player_ent,
                     enemy.attack_damage,
                     f'The {get_display_name(ent)} hits you!',
                     color=(255, 0, 0),
                 )
+            elif enemy and enemy.ability and _can_use_ability(ent, pos, player_pos, enemy.ability):
+                debug_log(f'AI {ent} ({get_display_name(ent)}) ability from {(pos.x, pos.y)}')
+                _use_ability(ent, player_ent, enemy.ability, get_singleton(MessageLog))
             elif esper.has_component(ent, PatrolTag):
                 _process_patrol(ent, pos, pathfinding_context)
             elif esper.has_component(ent, FleeTag):
@@ -361,6 +387,7 @@ class RenderSystem(esper.Processor):
                 continue
 
             codepoint = self.asset_loader.get_codepoint(rend.sprite_id)
+            debug_log(f'render entity {_ent} sprite={rend.sprite_id} cp={codepoint} at {(pos.x, pos.y)}')
             self.console.print(x=pos.x, y=pos.y, string=chr(codepoint), fg=rend.color)
 
 
@@ -408,6 +435,7 @@ def move_entity(entity: int, dx: int, dy: int):
 
     pos.x = new_x
     pos.y = new_y
+    debug_log(f'move_entity {entity} -> {(new_x, new_y)} (player={esper.has_component(entity, PlayerTag)})')
 
     if esper.has_component(entity, FieldOfView):
         esper.component_for_entity(entity, FieldOfView).dirty = True
