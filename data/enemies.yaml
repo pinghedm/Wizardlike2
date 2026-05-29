@@ -39,7 +39,7 @@ enemies:
     sprite:
       path: data/People.png
       type: REGION
-      region: [90, 0, 10, 10]
+      region: [120, 0, 10, 10]
       scale: 1.0
     color: [120, 255, 120]
     hp: 18
@@ -55,11 +55,25 @@ enemies:
         - type: poison
           power: 3
           duration: 90
+  - id: gate_sentinel
+    sprite:
+      path: data/People.png
+      type: REGION
+      region: [150, 0, 10, 10]
+      scale: 1.0
+    color: [255, 200, 0]
+    hp: 50
+    damage: 12
+    speed: 40
+    behavior: GUARD
+    blocks_movement: true
+    guardian: true
+    floors: [1, 10]
   - id: frost_shade
     sprite:
       path: data/People.png
       type: REGION
-      region: [60, 0, 10, 10]
+      region: [180, 0, 10, 10]
       scale: 1.0
     color: [150, 200, 255]
     hp: 25

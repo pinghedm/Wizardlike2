@@ -5,6 +5,7 @@ import tcod
 
 from src import persistence
 from src.components import (
+    Actor,
     Enemy,
     Inventory,
     Item,
@@ -15,6 +16,8 @@ from src.components import (
     PlayerTag,
     Position,
     SpellInventory,
+    StatusEffects,
+    StatusType,
     TargetingReticle,
     UIState,
 )
@@ -53,6 +56,13 @@ def handle_modal_input(event):
         esper.delete_entity(ent)
 
 
+def _player_is_slowed(player: int) -> bool:
+    """True if the player currently has an active SLOW status."""
+    if not esper.has_component(player, StatusEffects):
+        return False
+    return StatusType.SLOW in esper.component_for_entity(player, StatusEffects).active
+
+
 def handle_exploring_input(event):
     game_state = esper.get_component(GameState)[0][1]
     keybindings = esper.get_component(Keybindings)[0][1]
@@ -88,6 +98,13 @@ def handle_exploring_input(event):
         log.scroll_index -= 1
 
     if dx != 0 or dy != 0:
+        # Default movement is uncapped (as fast as the player presses). Only a SLOW
+        # status throttles it: each move sets a (doubled) cooldown via move_entity,
+        # and we ignore further input until it elapses. Without slow, the cooldown
+        # is left to decay but never gates input, keeping movement responsive.
+        if _player_is_slowed(player) and esper.component_for_entity(player, Actor).cooldown > 0:
+            return DisplayMode.EXPLORING
+
         # Bumping an enemy deals bump damage to the player (combat is decoupled from
         # movement). move_entity then walks the player onto a non-blocking enemy, or
         # is stopped by a blocking one.

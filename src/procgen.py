@@ -8,8 +8,10 @@ from src.components import (
     ChaseTag,
     Configuration,
     Enemy,
+    EnemyConfig,
     FieldOfView,
     FleeTag,
+    GuardTag,
     Item,
     ItemType,
     MessageLog,
@@ -108,8 +110,13 @@ class RectangularRoom:
             game_state = esper.get_component(GameState)[0][1]
             floor = game_state.floor
 
-            # Filter enemies valid for current floor
-            available_enemies = [e for e in configs.enemies.values() if e['floors'][0] <= floor <= e['floors'][1]]
+            # Filter enemies valid for current floor. Guardians are reserved for the
+            # floor exit (spawned by generate_dungeon), so exclude them here.
+            available_enemies = [
+                e
+                for e in configs.enemies.values()
+                if not e.get('guardian') and e['floors'][0] <= floor <= e['floors'][1]
+            ]
             if not available_enemies:
                 return
 
@@ -124,31 +131,45 @@ class RectangularRoom:
             else:
                 return
 
-            # Map the behavior string to a behavior tag component.
-            behavior_name = enemy_cfg['behavior'].upper()
-            if behavior_name == 'PATROL':
-                waypoints = [self.center, random.choice([r for r in rooms if r is not self] or [self]).center]
-                behavior_tag = PatrolTag(path=waypoints)
-            elif behavior_name == 'FLEE':
-                behavior_tag = FleeTag()
-            else:
-                behavior_tag = ChaseTag()
+            spawn_enemy(enemy_cfg, x, y, rooms, home_room=self)
 
-            esper.create_entity(
-                Position(x, y),
-                Renderable(sprite_id=enemy_cfg['id'], color=tuple(enemy_cfg['color'])),
-                Actor(speed=enemy_cfg['speed']),
-                AI(),
-                behavior_tag,
-                Enemy(
-                    attack_damage=enemy_cfg['damage'],
-                    bump_damage=enemy_cfg['damage'] // 2,
-                    ability=enemy_cfg.get('ability'),
-                ),
-                Stats(hp=enemy_cfg['hp'], max_hp=enemy_cfg['hp']),
-                StatusEffects(),
-                FieldOfView(radius=8),
-            )
+
+def spawn_enemy(
+    enemy_cfg: EnemyConfig,
+    x: int,
+    y: int,
+    rooms: list[RectangularRoom],
+    home_room: RectangularRoom | None = None,
+) -> int:
+    """Create an enemy entity at (x, y), mapping the behavior string to a tag."""
+    behavior_name = enemy_cfg['behavior'].upper()
+    if behavior_name == 'PATROL':
+        anchor = home_room or rooms[0]
+        others = [r for r in rooms if r is not anchor] or [anchor]
+        behavior_tag = PatrolTag(path=[anchor.center, random.choice(others).center])
+    elif behavior_name == 'FLEE':
+        behavior_tag = FleeTag()
+    elif behavior_name == 'GUARD':
+        behavior_tag = GuardTag()
+    else:
+        behavior_tag = ChaseTag()
+
+    return esper.create_entity(
+        Position(x, y),
+        Renderable(sprite_id=enemy_cfg['id'], color=tuple(enemy_cfg['color'])),
+        Actor(speed=enemy_cfg['speed']),
+        AI(),
+        behavior_tag,
+        Enemy(
+            attack_damage=enemy_cfg['damage'],
+            bump_damage=enemy_cfg['damage'] // 2,
+            blocks_movement=enemy_cfg.get('blocks_movement', False),
+            ability=enemy_cfg.get('ability'),
+        ),
+        Stats(hp=enemy_cfg['hp'], max_hp=enemy_cfg['hp']),
+        StatusEffects(),
+        FieldOfView(radius=8),
+    )
 
 
 def tunnel_between(start: Point, end: Point):
@@ -164,6 +185,63 @@ def tunnel_between(start: Point, end: Point):
             yield Point(x1, y)
         for x in range(min(x1, x2), max(x1, x2) + 1):
             yield Point(x, y2)
+
+
+EXIT_MIN_ROOM_DISTANCE = 2
+
+
+def _select_exit_room(
+    rooms: list[RectangularRoom],
+    *,
+    player_room_index: int = 0,
+    min_distance: int = EXIT_MIN_ROOM_DISTANCE,
+) -> RectangularRoom | None:
+    """Return the room farthest from the player's room that is at least
+    ``min_distance`` rooms away, or ``None`` if none qualifies.
+
+    Rooms form a linear connectivity chain (each room tunnels only to the
+    previous one), so chain distance is just the difference in list index.
+    """
+    candidates = [
+        (abs(i - player_room_index), room) for i, room in enumerate(rooms) if abs(i - player_room_index) >= min_distance
+    ]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda c: c[0])[1]
+
+
+def _room_entrances(room: RectangularRoom, dungeon: Map) -> list[Point]:
+    """Return the border tiles where a corridor crosses into the room.
+
+    A tile is an entrance only if it is a walkable border tile with a walkable
+    neighbour *outside* the room's bounding box (the point where an outside
+    corridor enters). This excludes border tiles that a corridor merely runs
+    alongside; blocking the crossing points still fully seals the room, since
+    any path from outside to the interior must pass through one of them.
+    """
+    entrances = []
+    for x in range(room.x1, room.x2 + 1):
+        for y in range(room.y1, room.y2 + 1):
+            on_border = x in (room.x1, room.x2) or y in (room.y1, room.y2)
+            if not (on_border and dungeon.is_walkable(x, y)):
+                continue
+            for nx, ny in ((x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)):
+                outside = nx < room.x1 or nx > room.x2 or ny < room.y1 or ny > room.y2
+                if outside and dungeon.is_walkable(nx, ny):
+                    entrances.append(Point(x, y))
+                    break
+    return entrances
+
+
+def _spawn_exit_guardians(dungeon: Map, exit_room: RectangularRoom, rooms: list[RectangularRoom], floor: int):
+    """Spawn non-walkable guardian enemies at every entrance to the exit room."""
+    configs = esper.get_component(Configuration)[0][1]
+    guardians = [e for e in configs.enemies.values() if e.get('guardian') and e['floors'][0] <= floor <= e['floors'][1]]
+    if not guardians:
+        return
+    guardian_cfg = random.choice(guardians)
+    for entrance in _room_entrances(exit_room, dungeon):
+        spawn_enemy(guardian_cfg, entrance.x, entrance.y, rooms)
 
 
 def generate_dungeon(
@@ -203,54 +281,64 @@ def generate_dungeon(
     floor_tile = make_tile(floor_cfg, True, True)
     exit_tile = make_tile(exit_cfg, True, True, is_exit=True)
 
-    dungeon = Map(MAP_WIDTH, MAP_HEIGHT, wall_tile)
-    rooms: list[RectangularRoom] = []
-    player_start = Point(MAP_WIDTH // 2, MAP_HEIGHT // 2)
-
     item_types = list(ItemType)
 
-    for _ in range(max_rooms):
-        w = random.randint(room_min_size, room_max_size)
-        h = random.randint(room_min_size, room_max_size)
-        x = random.randint(0, dungeon.width - w - 1)
-        y = random.randint(0, dungeon.height - h - 1)
+    # Build rooms until the exit can sit at least EXIT_MIN_ROOM_DISTANCE rooms from
+    # the player's start. Rooms form a linear chain, so this is essentially always
+    # satisfied on the first attempt; the retry is a safety net for sparse maps.
+    for _attempt in range(10):
+        dungeon = Map(MAP_WIDTH, MAP_HEIGHT, wall_tile)
+        rooms: list[RectangularRoom] = []
+        player_start = Point(MAP_WIDTH // 2, MAP_HEIGHT // 2)
 
-        new_room = RectangularRoom(x, y, w, h, dungeon)
-        if any(new_room.intersects(other) for other in rooms):
-            continue
+        for _ in range(max_rooms):
+            w = random.randint(room_min_size, room_max_size)
+            h = random.randint(room_min_size, room_max_size)
+            x = random.randint(0, dungeon.width - w - 1)
+            y = random.randint(0, dungeon.height - h - 1)
 
-        # Dig room
-        for rx in range(new_room.x1 + 1, new_room.x2):
-            for ry in range(new_room.y1 + 1, new_room.y2):
-                dungeon.set_tile(rx, ry, floor_tile)
+            new_room = RectangularRoom(x, y, w, h, dungeon)
+            if any(new_room.intersects(other) for other in rooms):
+                continue
 
-        if not rooms:
-            player_start = new_room.center
-        else:
-            for p in tunnel_between(rooms[-1].center, new_room.center):
-                dungeon.set_tile(p.x, p.y, floor_tile)
+            # Dig room
+            for rx in range(new_room.x1 + 1, new_room.x2):
+                for ry in range(new_room.y1 + 1, new_room.y2):
+                    dungeon.set_tile(rx, ry, floor_tile)
 
-            # Populate room item data
-            num_items = random.randint(0, max_items_per_room)
-            for _ in range(num_items):
-                ix = random.randint(new_room.x1 + 1, new_room.x2 - 1)
-                iy = random.randint(new_room.y1 + 1, new_room.y2 - 1)
-                p = Point(ix, iy)
-                if p not in new_room.items:
-                    new_room.items[p] = []
-                new_room.items[p].append(random.choice(item_types))
+            if not rooms:
+                player_start = new_room.center
+            else:
+                for p in tunnel_between(rooms[-1].center, new_room.center):
+                    dungeon.set_tile(p.x, p.y, floor_tile)
 
-        rooms.append(new_room)
+                # Populate room item data
+                num_items = random.randint(0, max_items_per_room)
+                for _ in range(num_items):
+                    ix = random.randint(new_room.x1 + 1, new_room.x2 - 1)
+                    iy = random.randint(new_room.y1 + 1, new_room.y2 - 1)
+                    p = Point(ix, iy)
+                    if p not in new_room.items:
+                        new_room.items[p] = []
+                    new_room.items[p].append(random.choice(item_types))
+
+            rooms.append(new_room)
+
+        if _select_exit_room(rooms) is not None:
+            break
 
     # Spawn all items/enemies
     for i, room in enumerate(rooms):
         # Don't spawn enemies in the player's starting room (the first room)
         room.spawn_entities(rooms, spawn_enemies=(i > 0))
 
-    # Place exit
-    if rooms:
-        exit_p = rooms[-1].center
+    # Place the exit at least EXIT_MIN_ROOM_DISTANCE rooms from the player, then
+    # guard every entrance to its room with non-walkable sentinels.
+    exit_room = _select_exit_room(rooms) or (rooms[-1] if rooms else None)
+    if exit_room is not None:
+        exit_p = exit_room.center
         dungeon.set_tile(exit_p.x, exit_p.y, exit_tile)
+        _spawn_exit_guardians(dungeon, exit_room, rooms, floor_number)
 
     # Announce floor entry
     logs = esper.get_component(MessageLog)

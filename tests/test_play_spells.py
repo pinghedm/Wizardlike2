@@ -11,7 +11,7 @@ def test_full_cast_cycle_applies_fixture_effects():
     runner = HeadlessRunner(use_random_map=False)
     runner.give_spell('test_bolt', 1)  # range 8, radius 0, damage 12 + slow 40
     px, py = runner.player_pos
-    enemy = runner.spawn_enemy(px + 2, py, hp=30)
+    enemy = runner.spawn_enemy(px + 2, py)
 
     runner.simulate_key(tcod.event.KeySym.s)  # EXPLORING -> CASTING
     assert runner.display_mode == DisplayMode.CASTING
@@ -35,10 +35,10 @@ def test_spell_radius_hits_only_targets_within_radius():
     px, py = runner.player_pos
     tx, ty = px + 3, py
 
-    center = runner.spawn_enemy(tx, ty, hp=30)  # on target
-    orthogonal = runner.spawn_enemy(tx, ty + 1, hp=30)  # dist^2 = 1 -> inside radius 1
-    diagonal = runner.spawn_enemy(tx + 1, ty + 1, hp=30)  # dist^2 = 2 -> outside
-    far = runner.spawn_enemy(tx, ty + 2, hp=30)  # dist^2 = 4 -> outside
+    center = runner.spawn_enemy(tx, ty)  # on target
+    orthogonal = runner.spawn_enemy(tx, ty + 1)  # dist^2 = 1 -> inside radius 1
+    diagonal = runner.spawn_enemy(tx + 1, ty + 1)  # dist^2 = 2 -> outside
+    far = runner.spawn_enemy(tx, ty + 2)  # dist^2 = 4 -> outside
 
     cast_spell(spell_id='test_blast', target_x=tx, target_y=ty)
 

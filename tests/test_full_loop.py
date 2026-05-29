@@ -15,7 +15,9 @@ def test_full_gameplay_loop():
 
     # 2. Spawn enemy
     enemy_starting_hp = 20
-    enemy_ent = runner.spawn_enemy(runner.player_pos.x + 1, runner.player_pos.y, hp=enemy_starting_hp)
+    enemy_ent = runner.spawn_enemy(
+        runner.player_pos.x + 1, runner.player_pos.y, {**runner.enemy_config(), 'hp': enemy_starting_hp}
+    )
 
     # 3. Enter Crafting Mode
     runner.simulate_key(tcod.event.KeySym.c)

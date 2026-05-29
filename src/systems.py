@@ -19,6 +19,7 @@ from src.components import (
     EnemyAbility,
     FieldOfView,
     FleeTag,
+    GuardTag,
     MessageLog,
     Modal,
     PatrolTag,
@@ -33,7 +34,7 @@ from src.components import (
     StatusEffects,
     StatusType,
 )
-from src.constants import STATUS_PULSE_INTERVAL
+from src.constants import PLAYER_MOVE_COST, STATUS_PULSE_INTERVAL
 from src.debug import debug_log
 from src.map_objects import Map
 from src.states import DisplayMode, GameState
@@ -207,6 +208,12 @@ def _process_patrol(ent: int, pos: Position, pathfinding_context: dict):
             move_entity(ent, move_x - pos.x, move_y - pos.y)
 
 
+def _process_guard(ent: int, pos: Position, pathfinding_context: dict):
+    """Hold position. Guards never move; the AISystem still handles their melee
+    and ranged attacks before reaching this movement branch."""
+    pass
+
+
 def _process_flee(ent: int, pos: Position, pathfinding_context: dict):
     _remember_player_if_seen(ent)
     target = esper.component_for_entity(ent, AI).last_known_player_position
@@ -292,6 +299,8 @@ class AISystem(esper.Processor):
                 _process_patrol(ent, pos, pathfinding_context)
             elif esper.has_component(ent, FleeTag):
                 _process_flee(ent, pos, pathfinding_context)
+            elif esper.has_component(ent, GuardTag):
+                _process_guard(ent, pos, pathfinding_context)
             else:
                 _process_chase(ent, pos, pathfinding_context)
 
@@ -440,10 +449,10 @@ def move_entity(entity: int, dx: int, dy: int):
     if esper.has_component(entity, FieldOfView):
         esper.component_for_entity(entity, FieldOfView).dirty = True
 
-    # Player move consumes a turn (base move cost of 10).
+    # Player move consumes a turn at the base player move cost.
     if esper.has_component(entity, PlayerTag):
         actor = esper.component_for_entity(entity, Actor)
-        actor.cooldown = get_cooldown(entity, 10)
+        actor.cooldown = get_cooldown(entity, PLAYER_MOVE_COST)
 
 
 def get_cooldown(entity: int, base_speed: int) -> int:
@@ -522,10 +531,10 @@ def cast_spell(spell_id: str, target_x: int, target_y: int):
     log = esper.get_component(MessageLog)[0][1]
 
     # Query for player
-    player_ents = esper.get_components(SpellInventory, Actor, PlayerTag)
+    player_ents = esper.get_components(SpellInventory, PlayerTag)
     if not player_ents:
         return
-    player, (player_spell_inv, player_actor, _tag) = player_ents[0]
+    _player, (player_spell_inv, _tag) = player_ents[0]
 
     stype = SpellType(spell_id)
 
@@ -538,9 +547,6 @@ def cast_spell(spell_id: str, target_x: int, target_y: int):
         return
 
     log.add_simple_message(f'You cast {s_conf["name"]}!', color=(0, 255, 255))
-
-    # Set player cooldown (Base move/cast cost of 10)
-    player_actor.cooldown = get_cooldown(player, 10)
 
     radius = s_conf.get('radius', 0)
 

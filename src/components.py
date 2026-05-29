@@ -1,7 +1,7 @@
 import enum
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, NamedTuple, TypedDict
+from typing import TYPE_CHECKING, NamedTuple, NotRequired, TypedDict
 
 if TYPE_CHECKING:
     from src.data_loaders import SpriteDefinition
@@ -52,6 +52,8 @@ class EnemyConfig(TypedDict):
     speed: int
     behavior: str
     floors: list[int]
+    blocks_movement: NotRequired[bool]
+    guardian: NotRequired[bool]
 
 
 class CharacterConfig(TypedDict):
@@ -261,6 +263,10 @@ class ChaseTag:
 
 class FleeTag:
     """Behavior tag: flee from the player's last-known position."""
+
+
+class GuardTag:
+    """Behavior tag: hold position; attack only when the player is reachable."""
 
 
 @dataclass

@@ -15,6 +15,24 @@ VALID_EFFECT_INFO = {
 }
 
 
+VALID_BEHAVIORS = {'CHASE', 'FLEE', 'PATROL', 'GUARD'}
+
+ALLOWED_ENEMY_FIELDS = {
+    'id',
+    'sprite',
+    'char',
+    'color',
+    'hp',
+    'damage',
+    'speed',
+    'behavior',
+    'floors',
+    'ability',
+    'blocks_movement',
+    'guardian',
+}
+
+
 def validate_effects(effects, context_label: str) -> int:
     """Validate a list of effect dicts (shared by spells and enemy abilities).
 
@@ -218,6 +236,20 @@ def validate_data() -> bool:
             for field in required_fields:
                 if field not in enemy:
                     print(f'ERROR: Enemy "{eid}" missing "{field}".')
+                    errors += 1
+
+            unexpected = set(enemy) - ALLOWED_ENEMY_FIELDS
+            for field in sorted(unexpected):
+                print(f'ERROR: Enemy "{eid}" has unexpected field "{field}".')
+                errors += 1
+
+            if 'behavior' in enemy and enemy['behavior'] not in VALID_BEHAVIORS:
+                print(f'ERROR: Enemy "{eid}" behavior must be one of {sorted(VALID_BEHAVIORS)}.')
+                errors += 1
+
+            for field in ('blocks_movement', 'guardian'):
+                if field in enemy and not isinstance(enemy[field], bool):
+                    print(f'ERROR: Enemy "{eid}" {field} must be a boolean.')
                     errors += 1
 
             if 'floors' in enemy:

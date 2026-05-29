@@ -10,6 +10,11 @@ TICKS_PER_SECOND = 30
 # earlier floors descend deeper. Tune for run length / difficulty.
 MAX_FLOORS = 10
 
+# Cooldown (in ticks) the player incurs per move/cast, before status modifiers.
+# At TICKS_PER_SECOND this caps the player's action rate; SLOW doubles it and
+# HASTE halves it (see get_cooldown). Lower = more responsive movement.
+PLAYER_MOVE_COST = 5
+
 # Recurring status effects (poison, regen) fire one pulse every this many ticks
 # while active. A status' authored `duration` is in ticks, so author it as a
 # multiple of this interval to get a predictable number of pulses.

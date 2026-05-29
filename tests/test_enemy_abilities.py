@@ -54,7 +54,7 @@ def test_enemy_ability_loads_as_enemy_ability_with_effects():
 def test_ability_blocked_when_player_out_of_range():
     runner = HeadlessRunner(use_random_map=False)
     px, py = runner.player_pos
-    enemy = runner.spawn_enemy(px + 6, py, ability=_ranged(rng=5))
+    enemy = runner.spawn_enemy(px + 6, py, {**runner.enemy_config(), 'ability': _ranged(rng=5)})
     _see_player(enemy, Point(px, py))
 
     assert not _can_use_ability(enemy, esper.component_for_entity(enemy, Position), Position(px, py), _ranged(rng=5))
@@ -63,7 +63,7 @@ def test_ability_blocked_when_player_out_of_range():
 def test_ability_blocked_when_player_not_in_line_of_sight():
     runner = HeadlessRunner(use_random_map=False)
     px, py = runner.player_pos
-    enemy = runner.spawn_enemy(px + 3, py, ability=_ranged())
+    enemy = runner.spawn_enemy(px + 3, py, {**runner.enemy_config(), 'ability': _ranged()})
     fov = esper.component_for_entity(enemy, FieldOfView)
     fov.visible_tiles = set()  # player not visible
     fov.dirty = False
@@ -77,7 +77,8 @@ def test_ability_blocked_when_player_not_in_line_of_sight():
 def test_ranged_ability_damages_and_slows_player_from_a_distance():
     runner = HeadlessRunner(use_random_map=False)
     px, py = runner.player_pos
-    enemy = runner.spawn_enemy(px + 3, py, ability=_ranged(power=7))  # in range 5, not adjacent
+    # in range 5, not adjacent
+    enemy = runner.spawn_enemy(px + 3, py, {**runner.enemy_config(), 'ability': _ranged(power=7)})
     _see_player(enemy, Point(px, py))
     start_hp = esper.component_for_entity(runner.player, Stats).hp
 
@@ -90,7 +91,7 @@ def test_ranged_ability_damages_and_slows_player_from_a_distance():
 def test_ability_does_not_fire_while_on_cooldown():
     runner = HeadlessRunner(use_random_map=False)
     px, py = runner.player_pos
-    enemy = runner.spawn_enemy(px + 3, py, ability=_ranged())
+    enemy = runner.spawn_enemy(px + 3, py, {**runner.enemy_config(), 'ability': _ranged()})
     _see_player(enemy, Point(px, py))
     esper.component_for_entity(enemy, Actor).cooldown = 5
     start_hp = esper.component_for_entity(runner.player, Stats).hp

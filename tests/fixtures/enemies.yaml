@@ -7,6 +7,16 @@ enemies:
     speed: 100
     behavior: CHASE
     floors: [1, 99]
+  - id: test_guardian
+    char: "G"
+    color: [255, 200, 0]
+    hp: 50
+    damage: 12
+    speed: 100
+    behavior: GUARD
+    blocks_movement: true
+    guardian: true
+    floors: [1, 99]
   - id: test_caster
     char: "c"
     color: [120, 255, 120]

@@ -10,7 +10,7 @@ from tests.headless_runner import HeadlessRunner
 
 def test_apply_poison_stores_a_copy_carrying_power_and_duration():
     runner = HeadlessRunner(use_random_map=False)
-    enemy = runner.spawn_enemy(*runner.player_pos, hp=30)
+    enemy = runner.spawn_enemy(*runner.player_pos)
     source = Effect(type=EffectType.POISON, power=4, duration=90)
 
     apply_effect(enemy, source, get_singleton(MessageLog))
@@ -26,7 +26,7 @@ def test_apply_poison_stores_a_copy_carrying_power_and_duration():
 
 def test_poison_pulses_damage_once_per_interval_until_it_expires():
     runner = HeadlessRunner(use_random_map=False)
-    enemy = runner.spawn_enemy(*runner.player_pos, hp=30)
+    enemy = runner.spawn_enemy(*runner.player_pos)
     # Two intervals' worth of duration -> exactly two damage pulses (at d=60 and d=30).
     duration = 2 * STATUS_PULSE_INTERVAL
     esper.component_for_entity(enemy, StatusEffects).active[StatusType.POISON] = Effect(
@@ -41,7 +41,7 @@ def test_poison_pulses_damage_once_per_interval_until_it_expires():
 
 def test_regen_pulses_healing_capped_at_max_hp():
     runner = HeadlessRunner(use_random_map=False)
-    enemy = runner.spawn_enemy(*runner.player_pos, hp=10)
+    enemy = runner.spawn_enemy(*runner.player_pos, {**runner.enemy_config(), 'hp': 10})
     esper.component_for_entity(enemy, Stats).max_hp = 20
     esper.component_for_entity(enemy, StatusEffects).active[StatusType.REGEN] = Effect(
         type=EffectType.REGEN, power=100, duration=STATUS_PULSE_INTERVAL
@@ -54,7 +54,7 @@ def test_regen_pulses_healing_capped_at_max_hp():
 
 def test_marker_status_ages_without_dealing_damage():
     runner = HeadlessRunner(use_random_map=False)
-    enemy = runner.spawn_enemy(*runner.player_pos, hp=30)
+    enemy = runner.spawn_enemy(*runner.player_pos)
     esper.component_for_entity(enemy, StatusEffects).active[StatusType.SLOW] = Effect(
         type=EffectType.SLOW, duration=STATUS_PULSE_INTERVAL
     )
@@ -70,7 +70,7 @@ def test_marker_status_ages_without_dealing_damage():
 
 def test_slow_doubles_and_haste_halves_cooldown():
     runner = HeadlessRunner(use_random_map=False)
-    enemy = runner.spawn_enemy(*runner.player_pos, hp=30)
+    enemy = runner.spawn_enemy(*runner.player_pos)
     active = esper.component_for_entity(enemy, StatusEffects).active
 
     assert get_cooldown(enemy, 10) == 10  # baseline, no status

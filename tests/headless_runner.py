@@ -3,27 +3,21 @@ import tcod.console
 import tcod.event
 
 from src.components import (
-    AI,
-    Actor,
-    ChaseTag,
-    Enemy,
-    EnemyAbility,
-    FieldOfView,
+    Configuration,
+    EnemyConfig,
     Inventory,
     ItemType,
     MessageLog,
     Point,
     Position,
-    Renderable,
     SpellInventory,
     SpellType,
-    Stats,
-    StatusEffects,
 )
 from src.constants import SCREEN_HEIGHT, SCREEN_WIDTH
 from src.data_loaders import AssetLoader, get_game_configs
 from src.main import add_logic_systems, dispatch_input, init_game_world, update_pause_state
 from src.map_objects import Map, Tile
+from src.procgen import spawn_enemy
 from src.states import DisplayMode, GameState
 from src.ui_systems import HUDSystem, MenuSystem, ModalSystem, TargetingOverlaySystem
 
@@ -142,27 +136,20 @@ class HeadlessRunner:
     def display_mode(self) -> DisplayMode:
         return self.game_state.display_mode
 
-    def spawn_enemy(
-        self,
-        x: int,
-        y: int,
-        hp: int = 30,
-        damage: int = 10,
-        speed: int = 100,
-        ability: EnemyAbility | None = None,
-    ) -> int:
-        """Create an enemy entity at (x, y) mirroring procgen spawning."""
-        return esper.create_entity(
-            Position(x, y),
-            Renderable(sprite_id='test_enemy', color=(0, 255, 0)),
-            Actor(speed=speed),
-            AI(),
-            ChaseTag(),
-            Enemy(attack_damage=damage, bump_damage=damage // 2, ability=ability),
-            Stats(hp=hp, max_hp=hp),
-            StatusEffects(),
-            FieldOfView(radius=8),
-        )
+    def enemy_config(self, enemy_id: str = 'test_enemy') -> EnemyConfig:
+        """Return a copy of a loaded enemy fixture config, safe to spread-override."""
+        return dict(esper.get_component(Configuration)[0][1].enemies[enemy_id])
+
+    def spawn_enemy(self, x: int, y: int, config: EnemyConfig | None = None) -> int:
+        """Create an enemy at (x, y) via procgen's spawn path.
+
+        Defaults to the 'test_enemy' fixture; pass a config (optionally
+        spread-overridden, e.g. {**runner.enemy_config(), 'speed': 0}) to
+        customize stats, behavior, or ability.
+        """
+        if config is None:
+            config = self.enemy_config()
+        return spawn_enemy(config, x, y, rooms=[])
 
     def give_spell(self, spell_id: str, charges: int):
         """Grant the player charges of a spell."""
