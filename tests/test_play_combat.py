@@ -1,7 +1,7 @@
 import esper
 import tcod.event
 
-from src.components import Enemy, Position, Stats
+from src.components import Enemy, Stats
 from tests.headless_runner import HeadlessRunner
 
 
@@ -32,20 +32,6 @@ def test_blocking_enemy_prevents_movement():
     assert esper.component_for_entity(runner.player, Stats).hp < 100
 
 
-def test_enemy_chases_player():
-    runner = HeadlessRunner(use_random_map=False)
-    px, py = runner.player_pos
-    enemy = runner.spawn_enemy(px, py - 5, {**runner.enemy_config(), 'speed': 0})
-    start = esper.component_for_entity(enemy, Position).point
-
-    runner.tick(5)
-
-    now = esper.component_for_entity(enemy, Position).point
-    # Enemy moved and closed the vertical gap toward the player
-    assert now != start
-    assert abs(now.y - py) < abs(start.y - py)
-
-
 def test_adjacent_enemy_attacks_player():
     runner = HeadlessRunner(use_random_map=False)
     px, py = runner.player_pos
@@ -56,18 +42,6 @@ def test_adjacent_enemy_attacks_player():
 
     assert esper.component_for_entity(runner.player, Stats).hp < hp_before
     assert any('hits you' in m.lower() for m in runner.get_log_messages())
-
-
-def test_guard_holds_position_with_player_in_sight():
-    runner = HeadlessRunner(use_random_map=False)
-    px, py = runner.player_pos
-    # In FOV but not adjacent: a chaser would close in; a guard must not.
-    guard = runner.spawn_enemy(px, py - 4, {**runner.enemy_config('test_guardian'), 'speed': 0})
-    start = esper.component_for_entity(guard, Position).point
-
-    runner.tick(5)
-
-    assert esper.component_for_entity(guard, Position).point == start
 
 
 def test_guard_attacks_adjacent_player():

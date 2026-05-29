@@ -5,6 +5,7 @@ import tcod.event
 from src.components import Modal, Position, Stats
 from src.constants import MAX_FLOORS
 from src.map_objects import Map, Tile
+from src.systems import get_display_name
 from tests.headless_runner import HeadlessRunner
 
 
@@ -67,6 +68,20 @@ def test_player_death_spawns_a_modal_that_exits_only_on_enter():
 
     with pytest.raises(SystemExit):  # Enter fires on_close=sys.exit
         runner.simulate_key(tcod.event.KeySym.RETURN)
+
+
+def test_enemy_death_removes_the_entity_and_logs_a_death_message():
+    runner = HeadlessRunner(use_random_map=False)
+    px, py = runner.player_pos
+    enemy = runner.spawn_enemy(px + 1, py)  # adjacent free tile, away from the player
+    name = get_display_name(enemy)
+    esper.component_for_entity(enemy, Stats).hp = 0
+
+    runner.tick(1)  # DeathSystem sees hp <= 0 on a non-player entity
+
+    assert not esper.entity_exists(enemy)
+    # The message must name the dead enemy, so a player death can't satisfy it.
+    assert any(f'The {name} dies!' in line for line in runner.get_log_messages())
 
 
 def test_reaching_final_floor_exit_wins_instead_of_descending():

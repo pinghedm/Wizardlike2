@@ -140,16 +140,17 @@ class HeadlessRunner:
         """Return a copy of a loaded enemy fixture config, safe to spread-override."""
         return dict(esper.get_component(Configuration)[0][1].enemies[enemy_id])
 
-    def spawn_enemy(self, x: int, y: int, config: EnemyConfig | None = None) -> int:
+    def spawn_enemy(self, x: int, y: int, config: EnemyConfig | None = None, rooms=None) -> int:
         """Create an enemy at (x, y) via procgen's spawn path.
 
         Defaults to the 'test_enemy' fixture; pass a config (optionally
         spread-overridden, e.g. {**runner.enemy_config(), 'speed': 0}) to
-        customize stats, behavior, or ability.
+        customize stats, behavior, or ability. Pass `rooms` when spawning a
+        PATROL enemy so procgen can build its waypoints from the room centres.
         """
         if config is None:
             config = self.enemy_config()
-        return spawn_enemy(config, x, y, rooms=[])
+        return spawn_enemy(config, x, y, rooms=rooms or [])
 
     def give_spell(self, spell_id: str, charges: int):
         """Grant the player charges of a spell."""
