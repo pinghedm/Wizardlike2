@@ -20,7 +20,13 @@ from src.main import add_logic_systems, dispatch_input, init_game_world, update_
 from src.map_objects import Map, Tile
 from src.procgen import spawn_enemy
 from src.states import DisplayMode, GameState
-from src.ui_systems import HUDSystem, MenuSystem, ModalSystem, TargetingOverlaySystem
+from src.ui_systems import (
+    EffectOverlaySystem,
+    HUDSystem,
+    MenuSystem,
+    ModalSystem,
+    TargetingOverlaySystem,
+)
 
 
 def _reset_processors():
@@ -60,6 +66,7 @@ class HeadlessRunner:
             HUDSystem(self.layout),
             ModalSystem(self.layout),
             TargetingOverlaySystem(self.layout),
+            EffectOverlaySystem(self.layout),
         ]
 
     def _inject_clean_room(self, width: int = 20, height: int = 20):

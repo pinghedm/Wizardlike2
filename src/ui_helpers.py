@@ -46,6 +46,11 @@ def _format_effect(effect: Effect) -> str:
     return by_type.get(effect.type, effect.type.value)
 
 
+def blend(base: tuple[int, int, int], color: tuple[int, int, int], alpha: float) -> tuple[int, int, int]:
+    """Linearly blend `color` over `base` by `alpha` (0 -> base, 1 -> color)."""
+    return tuple(round(b * (1 - alpha) + c * alpha) for b, c in zip(base, color, strict=True))
+
+
 def center_origin(console: tcod.console.Console, width: int, height: int) -> tuple[int, int]:
     """Return the top-left (x, y) for a box of the given size centered on the console."""
     return (console.width - width) // 2, (console.height - height) // 2

@@ -2,10 +2,12 @@ import math
 from collections import Counter
 
 import esper
+import numpy as np
 import tcod
 
 from src import persistence
 from src.components import (
+    CastVisual,
     Inventory,
     Keybindings,
     KnownRecipes,
@@ -13,6 +15,7 @@ from src.components import (
     Modal,
     PlayerTag,
     Position,
+    ScreenFlash,
     SpellInventory,
     Stats,
     TargetingReticle,
@@ -40,6 +43,7 @@ from src.states import (
 )
 from src.systems import can_craft_known_spell, get_singleton, get_spell_config, is_game_active
 from src.ui_helpers import (
+    blend,
     compute_visible_slice,
     draw_centered_frame,
     draw_titled_frame,
@@ -338,6 +342,77 @@ class TargetingOverlaySystem(esper.Processor):
         screen_ry = view.y + reticle.y - cam_y
         if view.contains(screen_rx, screen_ry):
             self.console.print(screen_rx, screen_ry, 'X', fg=UI_YELLOW)
+
+
+class EffectOverlaySystem(esper.Processor):
+    """Renders and ages out transient combat visuals: the damage screen flash and
+    the spell-cast impact burst.
+
+    Registered after the map/targeting draw but before the HUD, so it tints only the
+    map area, never the HUD or modals. Effects age on every frame (independent of
+    time_paused) so they fade out even while the casting picker or a modal is open.
+    """
+
+    # Display modes that draw the map, and so can show map-anchored combat visuals.
+    VISUAL_MODES = (DisplayMode.EXPLORING, DisplayMode.CASTING, DisplayMode.COMBINING, DisplayMode.TARGETING)
+
+    def __init__(self, layout: Layout):
+        self.layout = layout
+
+    @property
+    def console(self) -> tcod.console.Console:
+        return self.layout.console
+
+    def process(self):
+        game_state = get_singleton(GameState)
+        if not game_state or game_state.display_mode not in self.VISUAL_MODES:
+            return
+        self._render_cast_visual()
+        self._render_screen_flash()
+
+    def _render_cast_visual(self):
+        visuals = esper.get_component(CastVisual)
+        if not visuals:
+            return
+        ent, visual = visuals[0]
+        self._draw_cast_burst(visual)
+        visual.ticks -= 1
+        if visual.ticks <= 0:
+            esper.delete_entity(ent, immediate=True)
+
+    def _draw_cast_burst(self, visual: CastVisual):
+        player = esper.get_components(Position, PlayerTag)
+        game_map = get_singleton(Map)
+        if not player or not game_map:
+            return
+        _p, (player_pos, _tag) = player[0]
+
+        view = self.layout.map_viewport
+        cam_x, cam_y = self.layout.camera_offset(player_pos.x, player_pos.y, game_map.width, game_map.height)
+        alpha = CastVisual.MAX_ALPHA * visual.ticks / visual.max_ticks
+
+        for screen_y in range(view.y, view.y + view.height):
+            for screen_x in range(view.x, view.x + view.width):
+                map_x = screen_x - view.x + cam_x
+                map_y = screen_y - view.y + cam_y
+                if math.sqrt((map_x - visual.center.x) ** 2 + (map_y - visual.center.y) ** 2) <= visual.radius:
+                    base = tuple(int(c) for c in self.console.rgb[screen_y, screen_x]['bg'])
+                    self.console.rgb[screen_y, screen_x]['bg'] = blend(base, visual.color, alpha)
+
+    def _render_screen_flash(self):
+        flashes = esper.get_component(ScreenFlash)
+        if not flashes:
+            return
+        ent, flash = flashes[0]
+
+        view = self.layout.map_viewport
+        alpha = ScreenFlash.MAX_ALPHA * flash.ticks / flash.max_ticks
+        region = self.console.rgb['bg'][view.y : view.y + view.height, view.x : view.x + view.width]
+        region[:] = region * (1 - alpha) + np.array(flash.color, dtype=float) * alpha
+
+        flash.ticks -= 1
+        if flash.ticks <= 0:
+            esper.delete_entity(ent, immediate=True)
 
 
 class ModalSystem(esper.Processor):

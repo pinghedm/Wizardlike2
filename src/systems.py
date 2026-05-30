@@ -13,6 +13,7 @@ from tcod import libtcodpy
 from src.components import (
     AI,
     Actor,
+    CastVisual,
     Configuration,
     Effect,
     EffectType,
@@ -30,6 +31,7 @@ from src.components import (
     Point,
     Position,
     Renderable,
+    ScreenFlash,
     SpellConfig,
     SpellInventory,
     SpellType,
@@ -37,7 +39,15 @@ from src.components import (
     StatusEffects,
     StatusType,
 )
-from src.constants import PLAYER_MOVE_COST, STATUS_PULSE_INTERVAL
+from src.constants import (
+    PLAYER_MOVE_COST,
+    STATUS_PULSE_INTERVAL,
+    UI_BLUE,
+    UI_GREEN,
+    UI_ORANGE,
+    UI_RED,
+    UI_YELLOW,
+)
 from src.debug import debug_log
 from src.map_objects import Map
 from src.states import DisplayMode, GameState
@@ -68,10 +78,44 @@ def get_display_name(entity: int) -> str:
     return 'enemy'
 
 
+# Color a cast spell's impact burst by its first effect type.
+EFFECT_COLORS: dict[EffectType, tuple[int, int, int]] = {
+    EffectType.DAMAGE: UI_ORANGE,
+    EffectType.HEAL: UI_GREEN,
+    EffectType.REGEN: UI_GREEN,
+    EffectType.POISON: UI_GREEN,
+    EffectType.SLOW: UI_BLUE,
+    EffectType.HASTE: UI_YELLOW,
+}
+
+
+def trigger_screen_flash(ent: int, color: tuple[int, int, int], ticks: int = ScreenFlash.DURATION):
+    """Wash the map viewport with `color` when `ent` is the player.
+
+    The flash is player-only damage feedback, so this no-ops for any other entity
+    — damage code can call it unconditionally. A fresh hit replaces any in-flight flash.
+    """
+    if not esper.has_component(ent, PlayerTag):
+        return
+    for flash_ent, _flash in esper.get_component(ScreenFlash):
+        esper.delete_entity(flash_ent, immediate=True)
+    esper.create_entity(ScreenFlash(color=color, ticks=ticks, max_ticks=ticks))
+
+
+def trigger_cast_visual(center: Point, radius: int, color: tuple[int, int, int]):
+    """Burst `color` over a spell's impact radius, replacing any in-flight burst."""
+    for ent, _visual in esper.get_component(CastVisual):
+        esper.delete_entity(ent, immediate=True)
+    esper.create_entity(
+        CastVisual(center=center, radius=radius, color=color, ticks=CastVisual.DURATION, max_ticks=CastVisual.DURATION)
+    )
+
+
 def deal_damage(target_ent: int, amount: int, message: str, color: tuple[int, int, int]):
     """Apply damage to a target's Stats and log a message."""
     stats = esper.component_for_entity(target_ent, Stats)
     stats.hp -= amount
+    trigger_screen_flash(ent=target_ent, color=UI_RED)
     log = get_singleton(MessageLog)
     if log:
         log.add_simple_message(message, color=color)
@@ -121,6 +165,7 @@ def _apply_status_pulse(ent: int, status_type: StatusType, power: int, log: Mess
 
     if status_type == StatusType.POISON:
         stats.hp -= power
+        trigger_screen_flash(ent=ent, color=UI_GREEN)
         if log:
             log.add_simple_message(f'{name} took {power} poison damage!', color=(50, 200, 50))
     elif status_type == StatusType.REGEN:
@@ -510,6 +555,7 @@ def apply_effect(target_ent: int, effect: Effect, log: MessageLog):
 
     if effect.type == EffectType.DAMAGE:
         stats.hp -= effect.power
+        trigger_screen_flash(ent=target_ent, color=UI_RED)
         log.add_simple_message(f'{target_name} took {effect.power} damage!', color=(255, 100, 0))
 
     elif effect.type == EffectType.HEAL:
@@ -526,6 +572,7 @@ def apply_effect(target_ent: int, effect: Effect, log: MessageLog):
 
     elif effect.type == EffectType.POISON:
         status.active[StatusType.POISON] = replace(effect)
+        trigger_screen_flash(ent=target_ent, color=UI_GREEN)
         log.add_simple_message(f'{target_name} is poisoned!', color=(50, 200, 50))
 
     elif effect.type == EffectType.REGEN:
@@ -620,6 +667,12 @@ def cast_spell(spell_id: str, target_x: int, target_y: int):
     log.add_simple_message(f'You cast {s_conf["name"]}!', color=(0, 255, 255))
 
     radius = s_conf.get('radius', 0)
+
+    # Flash the impact zone, colored by the spell's primary effect.
+    effects = s_conf['effects']
+    if effects:
+        burst_color = EFFECT_COLORS.get(effects[0].type, UI_ORANGE)
+        trigger_cast_visual(center=Point(target_x, target_y), radius=radius, color=burst_color)
 
     # Find all entities in impact zone using Euclidean distance
     targets = []

@@ -1,7 +1,7 @@
 import enum
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, NamedTuple, NotRequired, TypedDict
+from typing import TYPE_CHECKING, ClassVar, NamedTuple, NotRequired, TypedDict
 
 if TYPE_CHECKING:
     from src.data_loaders import SpriteDefinition
@@ -306,6 +306,40 @@ class StatusEffects:
     """Component to track active status effects on an entity."""
 
     active: dict[StatusType, Effect] = field(default_factory=dict[StatusType, Effect])
+
+
+@dataclass
+class ScreenFlash:
+    """A transient color wash over the map viewport (player damage feedback).
+
+    `ticks` counts frames remaining; intensity fades as `ticks / max_ticks`.
+    Only one exists at a time — a fresh hit replaces any in-flight flash.
+    """
+
+    DURATION: ClassVar[int] = 6  # frames a flash lives at ~30 tps (~0.2s)
+    MAX_ALPHA: ClassVar[float] = 0.55  # blend strength at full intensity
+
+    color: tuple[int, int, int]
+    ticks: int
+    max_ticks: int
+
+
+@dataclass
+class CastVisual:
+    """A transient colored burst over a cast spell's impact radius.
+
+    `ticks` counts frames remaining; intensity fades as `ticks / max_ticks`.
+    Only one exists at a time.
+    """
+
+    DURATION: ClassVar[int] = 8  # frames a burst lives at ~30 tps (~0.27s)
+    MAX_ALPHA: ClassVar[float] = 0.6  # blend strength at full intensity
+
+    center: Point
+    radius: int
+    color: tuple[int, int, int]
+    ticks: int
+    max_ticks: int
 
 
 class PlayerTag:

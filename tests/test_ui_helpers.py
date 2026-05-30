@@ -3,6 +3,7 @@ import tcod.console
 
 from src.components import Effect, EffectType, ItemType
 from src.ui_helpers import (
+    blend,
     center_origin,
     compute_visible_slice,
     format_recipe,
@@ -70,3 +71,15 @@ def test_wrap_message_trims_leading_space_on_wrapped_line():
 def test_center_origin_returns_top_left_of_centered_box():
     console = tcod.console.Console(80, 50)
     assert center_origin(console, 20, 10) == (30, 20)
+
+
+def test_blend_returns_base_at_alpha_zero():
+    assert blend((10, 20, 30), (200, 100, 50), 0.0) == (10, 20, 30)
+
+
+def test_blend_returns_color_at_alpha_one():
+    assert blend((10, 20, 30), (200, 100, 50), 1.0) == (200, 100, 50)
+
+
+def test_blend_averages_at_alpha_half():
+    assert blend((0, 0, 0), (100, 100, 100), 0.5) == (50, 50, 50)

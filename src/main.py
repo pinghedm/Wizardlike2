@@ -47,7 +47,13 @@ from src.systems import (
     StatusSystem,
     get_singleton,
 )
-from src.ui_systems import HUDSystem, MenuSystem, ModalSystem, TargetingOverlaySystem
+from src.ui_systems import (
+    EffectOverlaySystem,
+    HUDSystem,
+    MenuSystem,
+    ModalSystem,
+    TargetingOverlaySystem,
+)
 
 
 def init_game_world(asset_loader: AssetLoader):
@@ -94,10 +100,11 @@ def add_logic_systems():
 
 def add_render_systems(layout, asset_loader):
     esper.add_processor(RenderSystem(layout, asset_loader))
+    esper.add_processor(TargetingOverlaySystem(layout))
+    esper.add_processor(EffectOverlaySystem(layout))
     esper.add_processor(MenuSystem(layout))
     esper.add_processor(HUDSystem(layout))
     esper.add_processor(ModalSystem(layout))
-    esper.add_processor(TargetingOverlaySystem(layout))
 
 
 def init_main_menu():
