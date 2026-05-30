@@ -17,6 +17,16 @@ VALID_EFFECT_INFO = {
 
 VALID_BEHAVIORS = {'CHASE', 'FLEE', 'PATROL', 'GUARD'}
 
+ALLOWED_SPELL_FIELDS = {
+    'id',
+    'name',
+    'description',
+    'range',
+    'radius',
+    'effects',
+    'recipes',
+}
+
 ALLOWED_ENEMY_FIELDS = {
     'id',
     'sprite',
@@ -130,6 +140,15 @@ def validate_data() -> bool:
 
             if 'name' not in spell:
                 print(f'ERROR: Spell "{sid}" missing "name".')
+                errors += 1
+
+            unexpected = set(spell) - ALLOWED_SPELL_FIELDS
+            for field in sorted(unexpected):
+                print(f'ERROR: Spell "{sid}" has unexpected field "{field}".')
+                errors += 1
+
+            if 'description' in spell and not isinstance(spell['description'], str):
+                print(f'ERROR: Spell "{sid}" description must be a string.')
                 errors += 1
 
             for field in ['range', 'radius']:

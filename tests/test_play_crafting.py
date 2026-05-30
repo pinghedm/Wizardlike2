@@ -1,8 +1,8 @@
 import esper
 import tcod.event
 
-from src.components import Inventory, ItemType, KnownRecipes, SpellInventory, SpellType
-from src.states import DisplayMode
+from src.components import Inventory, ItemType, KnownRecipes, SpellInventory, SpellType, UIState
+from src.states import CraftingView, DisplayMode
 from src.systems import match_recipe
 from tests.headless_runner import HeadlessRunner
 
@@ -44,3 +44,46 @@ def test_combining_ingredients_creates_spell():
     assert esper.component_for_entity(runner.player, SpellInventory).spells[SpellType('test_blast')] == 5
     assert SpellType('test_blast') in esper.component_for_entity(runner.player, KnownRecipes).recipes
     assert esper.component_for_entity(runner.player, Inventory).items[ItemType('reagent_a')] == 0
+
+
+def test_tab_toggles_crafting_view():
+    runner = HeadlessRunner(use_random_map=False)
+    runner.simulate_key(tcod.event.KeySym.c)  # -> COMBINING (Experiment by default)
+    ui_state = esper.get_component(UIState)[0][1]
+    assert ui_state.crafting_view == CraftingView.EXPERIMENT
+
+    runner.simulate_key(tcod.event.KeySym.TAB)
+    assert ui_state.crafting_view == CraftingView.SPELLBOOK
+    runner.simulate_key(tcod.event.KeySym.TAB)
+    assert ui_state.crafting_view == CraftingView.EXPERIMENT
+
+
+def test_spellbook_instant_crafts_known_spell():
+    runner = HeadlessRunner(use_random_map=False)
+    recipes = esper.component_for_entity(runner.player, KnownRecipes)
+    recipes.recipes[SpellType('test_bolt')] = {make_ingredients_type('reagent_a', 'reagent_b')}
+    runner.give_item('reagent_a', 1)
+    runner.give_item('reagent_b', 1)
+
+    runner.simulate_key(tcod.event.KeySym.c)  # -> COMBINING
+    runner.simulate_key(tcod.event.KeySym.TAB)  # -> Spellbook
+    runner.simulate_key(tcod.event.KeySym.RETURN)  # craft the selected recipe
+
+    assert runner.display_mode == DisplayMode.COMBINING  # stays open to craft more
+    assert esper.component_for_entity(runner.player, SpellInventory).spells[SpellType('test_bolt')] == 3
+    inv = esper.component_for_entity(runner.player, Inventory)
+    assert inv.items[ItemType('reagent_a')] == 0
+    assert inv.items[ItemType('reagent_b')] == 0
+
+
+def test_spellbook_craft_without_ingredients_does_nothing():
+    runner = HeadlessRunner(use_random_map=False)
+    recipes = esper.component_for_entity(runner.player, KnownRecipes)
+    recipes.recipes[SpellType('test_bolt')] = {make_ingredients_type('reagent_a', 'reagent_b')}
+
+    runner.simulate_key(tcod.event.KeySym.c)
+    runner.simulate_key(tcod.event.KeySym.TAB)
+    runner.simulate_key(tcod.event.KeySym.RETURN)
+
+    assert esper.component_for_entity(runner.player, SpellInventory).spells.get(SpellType('test_bolt'), 0) == 0
+    assert any('Not enough ingredients' in m for m in runner.get_log_messages())

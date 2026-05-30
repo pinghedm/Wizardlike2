@@ -15,6 +15,13 @@ class DisplayMode(enum.Enum):
     EXITING = enum.auto()
 
 
+class CraftingView(enum.StrEnum):
+    """Sub-views of the crafting screen, toggled with Tab."""
+
+    EXPERIMENT = 'experiment'  # combine ingredients by hand to discover recipes
+    SPELLBOOK = 'spellbook'  # browse known recipes and re-craft them
+
+
 class MenuOption(enum.StrEnum):
     NEW_GAME = 'New Game'
     CONTINUE = 'Continue'

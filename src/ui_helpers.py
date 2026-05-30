@@ -4,10 +4,46 @@ These functions hold display-formatting math only (no ECS access), which keeps
 them straightforward to unit-test independently of the tcod render pass.
 """
 
+from collections import Counter
+
 import tcod
 
-from src.components import Message
-from src.constants import UI_WHITE
+from src.components import Effect, EffectType, ItemType, Message
+from src.constants import TICKS_PER_SECOND, UI_WHITE
+
+
+def format_recipe(combo: tuple[ItemType, ...]) -> str:
+    """Render an ingredient combo with counts, e.g. '2x MYSTIC_HERB, ICE_SHARD'.
+
+    Duplicates collapse to an 'Nx' prefix; singletons are shown bare. Ingredients
+    are ordered by name so a given combo always reads the same way.
+    """
+    counts = Counter(combo)
+    ordered = sorted(counts.items(), key=lambda c: c[0].name)
+    parts = [(f'{n}x {itype.name}' if n > 1 else itype.name) for itype, n in ordered]
+    return ', '.join(parts)
+
+
+def format_spell_effects(effects: list[Effect]) -> str:
+    """One-line readout of a spell's effects, e.g. 'Damage 25, Slow 3s'."""
+    return ', '.join(_format_effect(effect) for effect in effects)
+
+
+def _seconds(ticks: int) -> str:
+    """Render a tick duration in seconds, dropping trailing zeros (90 -> '3s')."""
+    return f'{round(ticks / TICKS_PER_SECOND, 1):g}s'
+
+
+def _format_effect(effect: Effect) -> str:
+    by_type = {
+        EffectType.DAMAGE: f'Damage {effect.power}',
+        EffectType.HEAL: f'Heal {effect.power}',
+        EffectType.POISON: f'Poison {effect.power} over {_seconds(effect.duration)}',
+        EffectType.REGEN: f'Regen {effect.power} over {_seconds(effect.duration)}',
+        EffectType.SLOW: f'Slow {_seconds(effect.duration)}',
+        EffectType.HASTE: f'Haste {_seconds(effect.duration)}',
+    }
+    return by_type.get(effect.type, effect.type.value)
 
 
 def center_origin(console: tcod.console.Console, width: int, height: int) -> tuple[int, int]:

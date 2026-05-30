@@ -21,6 +21,7 @@ from src.components import (
     UIState,
 )
 from src.constants import (
+    UI_GRAY,
     UI_GRAY_DARK,
     UI_RED,
     UI_RED_DARK,
@@ -31,6 +32,7 @@ from src.entities import create_game_state, create_ui_state
 from src.states import (
     PAUSE_MENU_OPTIONS,
     TITLE_MENU_OPTIONS,
+    CraftingView,
     DisplayMode,
     MenuOption,
 )
@@ -104,34 +106,61 @@ def test_pause_menu_highlights_selected_option(cursor):
 # --- MenuSystem.render_combining_menu ---------------------------------------
 
 
-def test_combining_menu_shows_inventory_selection_and_spellbook():
+def test_experiment_view_shows_inventory_selection():
     runner = HeadlessRunner(use_random_map=False)
     runner.give_item('reagent_a', 2)
     runner.give_item('reagent_b', 1)
-    runner.give_spell('test_bolt', 3)
     ui = _ui_state(runner)
     ui.crafting_cursor = 0
     ui.selected_for_crafting = {ItemType('reagent_a'): 1}
-    runner.game_state.display_mode = DisplayMode.COMBINING
+    runner.game_state.display_mode = DisplayMode.COMBINING  # defaults to the Experiment view
 
     text = _full_text(runner)
-    assert 'SPELL COMBINING' in text
+    assert 'Experiment' in text  # active tab label
     assert 'REAGENT_A: 2 (Selected: 1)' in text
     assert 'REAGENT_B: 1 (Selected: 0)' in text
-    assert 'SPELLBOOK' in text
-    assert '- TEST_BOLT: 3' in text
 
 
-def test_combining_menu_renders_known_recipe():
+def test_spellbook_view_shows_recipe_and_stats():
     runner = HeadlessRunner(use_random_map=False)
     recipes = esper.component_for_entity(runner.player, KnownRecipes)
     recipes.recipes[SpellType('test_bolt')] = {(ItemType('reagent_a'), ItemType('reagent_b'))}
+    runner.give_spell('test_bolt', 2)
+    _ui_state(runner).crafting_view = CraftingView.SPELLBOOK
     runner.game_state.display_mode = DisplayMode.COMBINING
 
     text = _full_text(runner)
-    assert 'Known Recipes' in text
-    assert 'TEST_BOLT:' in text
-    assert '* REAGENT_A + REAGENT_B' in text
+    assert 'TEST_BOLT' in text  # list entry (enum name)
+    assert 'Test Bolt' in text  # detail header (display name)
+    assert 'zaps and slows' in text  # description
+    assert 'Range 8' in text
+    assert 'Damage 12' in text
+    assert 'REAGENT_A, REAGENT_B' in text  # recipe, comma-joined
+
+
+def test_spellbook_collapses_duplicate_ingredients():
+    runner = HeadlessRunner(use_random_map=False)
+    recipes = esper.component_for_entity(runner.player, KnownRecipes)
+    recipes.recipes[SpellType('test_blast')] = {(ItemType('reagent_a'), ItemType('reagent_a'))}
+    _ui_state(runner).crafting_view = CraftingView.SPELLBOOK
+    runner.game_state.display_mode = DisplayMode.COMBINING
+
+    assert '2x REAGENT_A' in _full_text(runner)
+
+
+def test_spellbook_dims_unaffordable_spell():
+    runner = HeadlessRunner(use_random_map=False)
+    recipes = esper.component_for_entity(runner.player, KnownRecipes)
+    recipes.recipes[SpellType('test_bolt')] = {(ItemType('reagent_a'), ItemType('reagent_b'))}
+    _ui_state(runner).crafting_view = CraftingView.SPELLBOOK
+    runner.game_state.display_mode = DisplayMode.COMBINING
+
+    # The selected entry is dimmed (gray, not the highlighted yellow) while unaffordable.
+    assert runner.get_console_fg(*_find_text(runner, 'TEST_BOLT')) == UI_GRAY
+
+    runner.give_item('reagent_a', 1)
+    runner.give_item('reagent_b', 1)
+    assert runner.get_console_fg(*_find_text(runner, 'TEST_BOLT')) == UI_YELLOW
 
 
 def test_combining_menu_highlights_cursor_row():

@@ -27,12 +27,14 @@ from src.procgen import transition_to_next_floor
 from src.states import (
     PAUSE_MENU_OPTIONS,
     TITLE_MENU_OPTIONS,
+    CraftingView,
     DisplayMode,
     GameState,
     MenuOption,
 )
 from src.systems import (
     cast_spell,
+    craft_known_spell,
     deal_damage,
     get_display_name,
     get_spell_config,
@@ -228,6 +230,24 @@ def handle_combining_input(event):
     ui_state = esper.get_component(UIState)[0][1]
     keybindings = esper.get_component(Keybindings)[0][1]
 
+    # Cycle between the manual experiment view and the spellbook.
+    if event.sym == keybindings.bindings['CYCLE_TAB']:
+        ui_state.crafting_view = (
+            CraftingView.SPELLBOOK if ui_state.crafting_view == CraftingView.EXPERIMENT else CraftingView.EXPERIMENT
+        )
+        return DisplayMode.COMBINING
+
+    # The crafting key or Esc closes the whole screen from either view.
+    if event.sym in (keybindings.bindings['CANCEL'], keybindings.bindings['OPEN_CRAFTING']):
+        return DisplayMode.EXPLORING
+
+    if ui_state.crafting_view == CraftingView.SPELLBOOK:
+        return _handle_spellbook_input(event, ui_state, keybindings)
+    return _handle_experiment_input(event, ui_state, keybindings)
+
+
+def _handle_experiment_input(event, ui_state, keybindings):
+    """Manual ingredient combining: select reagents and combine to discover recipes."""
     player_entities = esper.get_components(Inventory, PlayerTag)
     if not player_entities:
         return DisplayMode.EXPLORING
@@ -240,10 +260,7 @@ def handle_combining_input(event):
     else:
         ui_state.crafting_cursor = 0
 
-    if event.sym == keybindings.bindings['CANCEL'] or event.sym == keybindings.bindings['OPEN_CRAFTING']:
-        return DisplayMode.EXPLORING
-
-    elif event.sym == keybindings.bindings['MOVE_UP']:
+    if event.sym == keybindings.bindings['MOVE_UP']:
         if inv_list:
             ui_state.crafting_cursor = (ui_state.crafting_cursor - 1) % len(inv_list)
 
@@ -310,6 +327,48 @@ def handle_combining_input(event):
         # Clear selection on success
         ui_state.selected_for_crafting = {}
         return DisplayMode.EXPLORING
+
+    return DisplayMode.COMBINING
+
+
+def _handle_spellbook_input(event, ui_state, keybindings):
+    """Browse known recipes and instantly re-craft the selected one from stock."""
+    player_entities = esper.get_components(KnownRecipes, PlayerTag)
+    if not player_entities:
+        return DisplayMode.EXPLORING
+    _player, (player_recipes, _tag) = player_entities[0]
+
+    known = sorted(player_recipes.recipes.keys(), key=lambda s: s.name)
+    if known:
+        ui_state.spellbook_cursor %= len(known)
+    else:
+        ui_state.spellbook_cursor = 0
+
+    if event.sym == keybindings.bindings['MOVE_UP']:
+        if known:
+            ui_state.spellbook_cursor = (ui_state.spellbook_cursor - 1) % len(known)
+
+    elif event.sym == keybindings.bindings['MOVE_DOWN']:
+        if known:
+            ui_state.spellbook_cursor = (ui_state.spellbook_cursor + 1) % len(known)
+
+    elif event.sym == keybindings.bindings['CONFIRM'] and known:
+        stype = known[ui_state.spellbook_cursor]
+        log = esper.get_component(MessageLog)[0][1]
+        charges = craft_known_spell(stype)
+        s_conf = get_spell_config(stype.value)
+        spell_name = s_conf.get('name', stype.name) if s_conf else stype.name
+
+        if charges is None:
+            log.add_simple_message(f'Not enough ingredients to craft {spell_name}.', color=(255, 100, 100))
+        else:
+            log.add_message(
+                [
+                    ('Crafted ', (255, 255, 255)),
+                    (spell_name, (0, 255, 255)),
+                    (f'! (+{charges} charges)', (255, 255, 255)),
+                ]
+            )
 
     return DisplayMode.COMBINING
 

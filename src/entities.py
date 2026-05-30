@@ -61,6 +61,7 @@ def create_keybindings():
                 'OPEN_CASTING': tcod.event.KeySym.s,
                 'CONFIRM': tcod.event.KeySym.RETURN,
                 'CANCEL': tcod.event.KeySym.ESCAPE,
+                'CYCLE_TAB': tcod.event.KeySym.TAB,
             }
         )
     )

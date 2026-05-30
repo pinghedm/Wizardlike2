@@ -10,6 +10,7 @@ import tcod
 
 from src.constants import DATA_DIR
 from src.data_utils import load_str_enum_from_yaml
+from src.states import CraftingView
 
 
 class RecipeConfig(TypedDict):
@@ -20,6 +21,7 @@ class RecipeConfig(TypedDict):
 class SpellConfig(TypedDict):
     id: str
     name: str
+    description: NotRequired[str]
     range: int
     radius: int
     effects: list[Effect]
@@ -188,6 +190,8 @@ class UIState:
     remapping_action: str | None = None
     selected_for_crafting: dict[ItemType, int] = field(default_factory=dict[ItemType, int])
     active_targeting_spell_id: str | None = None
+    crafting_view: CraftingView = CraftingView.EXPERIMENT
+    spellbook_cursor: int = 0
 
 
 @dataclass

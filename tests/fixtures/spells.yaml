@@ -1,7 +1,7 @@
 spells:
   - id: test_bolt
     name: Test Bolt
-    char: "*"
+    description: A test bolt that zaps and slows its target.
     range: 8
     radius: 0
     effects:
@@ -14,7 +14,7 @@ spells:
         charges: 3
   - id: test_blast
     name: Test Blast
-    char: "o"
+    description: A test blast that damages a small area.
     range: 6
     radius: 1
     effects:

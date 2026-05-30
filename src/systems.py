@@ -1,4 +1,5 @@
 import sys
+from collections import Counter
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
@@ -20,6 +21,8 @@ from src.components import (
     FieldOfView,
     FleeTag,
     GuardTag,
+    Inventory,
+    KnownRecipes,
     MessageLog,
     Modal,
     PatrolTag,
@@ -549,6 +552,50 @@ def match_recipe(selection: tuple) -> tuple[SpellType, int] | None:
             if r_data['ingredients'] == selection:
                 return SpellType(s_conf['id']), r_data['charges']
     return None
+
+
+def _affordable_recipe(inventory: Inventory, combos) -> tuple | None:
+    """The cheapest combo (fewest ingredients) the inventory can fully pay for, or None."""
+    for combo in sorted(combos, key=len):
+        if all(inventory.items.get(itype, 0) >= count for itype, count in Counter(combo).items()):
+            return combo
+    return None
+
+
+def can_craft_known_spell(stype: SpellType) -> bool:
+    """Whether the player can afford any known recipe for `stype` from current stock."""
+    recipes = get_singleton(KnownRecipes)
+    inventory = get_singleton(Inventory)
+    if recipes is None or inventory is None:
+        return False
+    return _affordable_recipe(inventory, recipes.recipes.get(stype, set())) is not None
+
+
+def craft_known_spell(stype: SpellType) -> int | None:
+    """Re-craft a known spell from the player's ingredients on hand.
+
+    Picks the cheapest known recipe (fewest ingredients) the player can afford,
+    consumes those ingredients, and grants its charges. Returns the charges
+    granted, or None if no known recipe for the spell is affordable.
+    """
+    recipes = get_singleton(KnownRecipes)
+    inventory = get_singleton(Inventory)
+    spell_inv = get_singleton(SpellInventory)
+    if recipes is None or inventory is None or spell_inv is None:
+        return None
+
+    combo = _affordable_recipe(inventory, recipes.recipes.get(stype, set()))
+    if combo is None:
+        return None
+    match = match_recipe(combo)
+    if match is None:
+        return None
+    charges = match[1]
+
+    for itype, count in Counter(combo).items():
+        inventory.items[itype] -= count
+    spell_inv.spells[stype] = spell_inv.spells.get(stype, 0) + charges
+    return charges
 
 
 def cast_spell(spell_id: str, target_x: int, target_y: int):

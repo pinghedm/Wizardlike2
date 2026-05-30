@@ -1,4 +1,5 @@
 import math
+from collections import Counter
 
 import esper
 import tcod
@@ -32,15 +33,18 @@ from src.map_objects import Map
 from src.states import (
     PAUSE_MENU_OPTIONS,
     TITLE_MENU_OPTIONS,
+    CraftingView,
     DisplayMode,
     GameState,
     MenuOption,
 )
-from src.systems import get_singleton, get_spell_config, is_game_active
+from src.systems import can_craft_known_spell, get_singleton, get_spell_config, is_game_active
 from src.ui_helpers import (
     compute_visible_slice,
     draw_centered_frame,
     draw_titled_frame,
+    format_recipe,
+    format_spell_effects,
     wrap_message,
 )
 
@@ -108,51 +112,104 @@ class MenuSystem(esper.Processor):
         if not all([ui_state, player_inv, player_recipes, player_spell_inv]):
             return
 
-        width = 72
-        height = 20
-        x, y = draw_centered_frame(self.console, width, height, title='Combine Items')
+        width, height = 72, 24
+        x, y = draw_centered_frame(self.console, width, height, title='Crafting')
 
-        self.console.print(x + 2, y + 1, 'SPELL COMBINING', fg=UI_YELLOW)
+        self._render_crafting_tabs(x + 2, y + 1, ui_state.crafting_view)
+
+        if ui_state.crafting_view == CraftingView.SPELLBOOK:
+            self._render_spellbook(x, y, width, ui_state, player_recipes, player_spell_inv, player_inv)
+            footer = 'Tab: Experiment | Up/Down: Select | Enter: Craft | Esc: Close'
+        else:
+            self._render_experiment(x, y, ui_state, player_inv)
+            footer = 'Tab: Spellbook | L/R: Select | Enter: Combine | Esc: Close'
+
+        self.console.print(x + 2, y + height - 2, footer, fg=UI_GRAY)
+
+    def _render_crafting_tabs(self, tx, ty, view):
+        self.console.print(tx, ty, 'Experiment', fg=UI_YELLOW if view == CraftingView.EXPERIMENT else UI_GRAY_DARK)
+        self.console.print(tx + 13, ty, 'Spellbook', fg=UI_YELLOW if view == CraftingView.SPELLBOOK else UI_GRAY_DARK)
+
+    def _render_experiment(self, x, y, ui_state, player_inv):
+        self.console.print(x + 2, y + 3, 'Combine ingredients to discover spells:', fg=UI_CYAN)
+
         inv_list = sorted(player_inv.items.keys())
+        if not inv_list:
+            self.console.print(x + 2, y + 5, 'No ingredients to combine.', fg=UI_GRAY_DARK)
+            return
 
         for i, itype in enumerate(inv_list):
-            color = UI_WHITE if i == ui_state.crafting_cursor else UI_GRAY_DARK
+            selected = i == ui_state.crafting_cursor
             count = player_inv.items[itype]
-            selected = ui_state.selected_for_crafting.get(itype, 0)
+            chosen = ui_state.selected_for_crafting.get(itype, 0)
+            marker = '> ' if selected else '  '
             self.console.print(
                 x + 2,
-                y + 3 + i,
-                f'{"> " if i == ui_state.crafting_cursor else "  "}{itype.name}: {count} (Selected: {selected})',
-                fg=color,
+                y + 5 + i,
+                f'{marker}{itype.name}: {count} (Selected: {chosen})',
+                fg=UI_WHITE if selected else UI_GRAY_DARK,
             )
 
-        self.console.print(
-            x + 2,
-            y + height - 2,
-            'Arrows: Move | L/R: Select | Enter: Combine | Esc: Close',
-            fg=UI_GRAY,
-        )
+    def _render_spellbook(self, x, y, width, ui_state, player_recipes, player_spell_inv, player_inv):
+        known = sorted(player_recipes.recipes.keys(), key=lambda s: s.name)
+        list_x = x + 2
+        detail_x = x + 26
 
-        # Spellbook section (rendered to the right of the inventory list)
-        self.console.print(x + 35, y + 1, 'SPELLBOOK', fg=UI_CYAN)
-        y_offset = 3
+        if not known:
+            self.console.print(list_x, y + 4, 'No recipes discovered yet.', fg=UI_GRAY)
+            self.console.print(list_x, y + 6, 'Find them in the Experiment tab.', fg=UI_GRAY_DARK)
+            return
 
-        self.console.print(x + 35, y + y_offset, 'Charges', fg=UI_CYAN_DARK)
-        y_offset += 1
-        for stype, charges in sorted(player_spell_inv.spells.items(), key=lambda x: x[0].name):
-            self.console.print(x + 35, y + y_offset, f'- {stype.name}: {charges}')
-            y_offset += 1
+        cursor = ui_state.spellbook_cursor % len(known)
+        for i, stype in enumerate(known):
+            # Spells with no affordable recipe are dimmed.
+            craftable = can_craft_known_spell(stype)
+            charges = player_spell_inv.spells.get(stype, 0)
+            if i == cursor:
+                color = UI_YELLOW if craftable else UI_GRAY
+            else:
+                color = UI_WHITE if craftable else UI_GRAY_DARK
+            marker = '> ' if i == cursor else '  '
+            self.console.print(list_x, y + 4 + i, f'{marker}{stype.name} ({charges})', fg=color)
 
-        y_offset += 1
-        self.console.print(x + 35, y + y_offset, 'Known Recipes', fg=UI_CYAN_DARK)
-        y_offset += 1
-        for stype in sorted(player_recipes.recipes.keys(), key=lambda x: x.name):
-            self.console.print(x + 35, y + y_offset, f'{stype.name}:', fg=UI_WHITE)
-            y_offset += 1
-            for recipe in sorted(player_recipes.recipes[stype]):
-                recipe_str = ' + '.join(itype.name for itype in recipe)
-                self.console.print(x + 37, y + y_offset, f'* {recipe_str}')
-                y_offset += 1
+        self._render_spell_detail(detail_x, y + 4, width - 28, known[cursor], player_recipes, player_inv)
+
+    def _render_spell_detail(self, dx, dy, detail_width, stype, player_recipes, player_inv):
+        s_conf = get_spell_config(stype.value)
+        if not s_conf:
+            return
+
+        row = dy
+        self.console.print(dx, row, s_conf.get('name', stype.name), fg=UI_CYAN)
+        row += 1
+
+        description = s_conf.get('description')
+        if description:
+            for line in wrap_message([(description, UI_GRAY)], detail_width):
+                self._print_segments(dx, row, line)
+                row += 1
+        row += 1
+
+        self.console.print(dx, row, f'Range {s_conf.get("range", 0)}   Radius {s_conf.get("radius", 0)}', fg=UI_WHITE)
+        row += 1
+        self.console.print(dx, row, format_spell_effects(s_conf.get('effects', [])), fg=UI_WHITE)
+        row += 2
+
+        self.console.print(dx, row, 'Recipes:', fg=UI_CYAN_DARK)
+        row += 1
+        charges_by_combo = {r['ingredients']: r['charges'] for r in s_conf.get('recipes', [])}
+        for combo in sorted(player_recipes.recipes[stype], key=len):
+            affordable = all(player_inv.items.get(itype, 0) >= count for itype, count in Counter(combo).items())
+            text = f'{format_recipe(combo)}  (+{charges_by_combo.get(combo, 0)})'
+            for line in wrap_message([(text, UI_WHITE if affordable else UI_GRAY_DARK)], detail_width):
+                self._print_segments(dx, row, line)
+                row += 1
+
+    def _print_segments(self, x, y, segments):
+        cx = x
+        for text, color in segments:
+            self.console.print(cx, y, text, fg=color)
+            cx += len(text)
 
     def render_casting_menu(self):
         ui_state = get_singleton(UIState)
