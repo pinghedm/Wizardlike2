@@ -10,6 +10,7 @@ from src import main, persistence
 from src.components import UIState
 from src.constants import SAVE_DIR, SCREEN_HEIGHT, SCREEN_WIDTH
 from src.data_loaders import AssetLoader
+from src.layout import Layout
 from src.states import DisplayMode, GameState
 from src.systems import (
     ActionSystem,
@@ -60,8 +61,8 @@ def test_add_logic_systems_registers_processors():
 
 
 def test_add_render_systems_registers_processors():
-    console = tcod.console.Console(SCREEN_WIDTH, SCREEN_HEIGHT)
-    main.add_render_systems(console, AssetLoader())
+    layout = Layout(tcod.console.Console(SCREEN_WIDTH, SCREEN_HEIGHT))
+    main.add_render_systems(layout, AssetLoader())
     for processor in (RenderSystem, MenuSystem, HUDSystem, ModalSystem, TargetingOverlaySystem):
         assert esper.get_processor(processor) is not None
 

@@ -6,7 +6,16 @@ import tcod
 
 from src import persistence
 from src.components import MessageLog, Modal
-from src.constants import SCREEN_HEIGHT, SCREEN_WIDTH, TICKS_PER_SECOND
+from src.constants import (
+    DISPLAY_SCALE,
+    MAX_ITEMS_PER_ROOM,
+    MAX_ROOMS,
+    ROOM_MAX_SIZE,
+    ROOM_MIN_SIZE,
+    SCREEN_HEIGHT,
+    SCREEN_WIDTH,
+    TICKS_PER_SECOND,
+)
 from src.data_loaders import AssetLoader, get_game_configs
 from src.debug import debug_log
 from src.entities import (
@@ -26,6 +35,7 @@ from src.input_handlers import (
     handle_settings_input,
     handle_targeting_input,
 )
+from src.layout import Layout
 from src.procgen import generate_dungeon
 from src.states import DisplayMode, GameState
 from src.systems import (
@@ -56,10 +66,10 @@ def init_game_world(asset_loader: AssetLoader):
 
     # Generate Dungeon & Spawns
     game_map, player_start = generate_dungeon(
-        max_rooms=30,
-        room_min_size=6,
-        room_max_size=10,
-        max_items_per_room=2,
+        max_rooms=MAX_ROOMS,
+        room_min_size=ROOM_MIN_SIZE,
+        room_max_size=ROOM_MAX_SIZE,
+        max_items_per_room=MAX_ITEMS_PER_ROOM,
     )
     esper.create_entity(game_map)
 
@@ -82,12 +92,12 @@ def add_logic_systems():
     esper.add_processor(FOVSystem())
 
 
-def add_render_systems(root_console, asset_loader):
-    esper.add_processor(RenderSystem(root_console, asset_loader))
-    esper.add_processor(MenuSystem(root_console))
-    esper.add_processor(HUDSystem(root_console))
-    esper.add_processor(ModalSystem(root_console))
-    esper.add_processor(TargetingOverlaySystem(root_console))
+def add_render_systems(layout, asset_loader):
+    esper.add_processor(RenderSystem(layout, asset_loader))
+    esper.add_processor(MenuSystem(layout))
+    esper.add_processor(HUDSystem(layout))
+    esper.add_processor(ModalSystem(layout))
+    esper.add_processor(TargetingOverlaySystem(layout))
 
 
 def init_main_menu():
@@ -171,11 +181,12 @@ def main():
         vsync=True,
     ) as context:
         root_console = tcod.console.Console(SCREEN_WIDTH, SCREEN_HEIGHT)
+        layout = Layout(root_console)
 
         # Register processors once. They are stateless and survive the
         # clear_database() done on load / new game, so they are never re-added.
         add_logic_systems()
-        add_render_systems(root_console, asset_loader)
+        add_render_systems(layout, asset_loader)
 
         # Boot into the title screen (New Game / Continue / Quit).
         init_main_menu()
@@ -186,6 +197,18 @@ def main():
         while True:
             frame_start = time.perf_counter()
             frame += 1
+
+            # React to a resized window: size the console to the window divided by
+            # DISPLAY_SCALE (so present() upscales each cell), then repoint the
+            # layout so its panels recompute. recommended_console_size() already
+            # divides the window by the native tile size; DISPLAY_SCALE makes cells
+            # that many times chunkier.
+            native_columns, native_rows = context.recommended_console_size()
+            columns = max(1, native_columns // DISPLAY_SCALE)
+            rows = max(1, native_rows // DISPLAY_SCALE)
+            if (columns, rows) != (root_console.width, root_console.height):
+                root_console = tcod.console.Console(columns, rows)
+                layout.console = root_console
 
             # Fetch fresh game state
             game_state = get_singleton(GameState)

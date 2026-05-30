@@ -23,7 +23,14 @@ from src.components import (
     Stats,
     StatusEffects,
 )
-from src.constants import MAP_HEIGHT, MAP_WIDTH
+from src.constants import (
+    MAP_HEIGHT,
+    MAP_WIDTH,
+    MAX_ITEMS_PER_ROOM,
+    MAX_ROOMS,
+    ROOM_MAX_SIZE,
+    ROOM_MIN_SIZE,
+)
 from src.map_objects import Map, Tile
 from src.states import GameState
 from src.systems import get_singleton
@@ -35,8 +42,8 @@ def transition_to_next_floor():
     game_state.floor += 1
 
     # 2. Calculate floor-dependent parameters
-    max_rooms = 30 + (game_state.floor // 2)
-    max_items = 2 + (game_state.floor // 5)
+    max_rooms = MAX_ROOMS + (game_state.floor // 2)
+    max_items = MAX_ITEMS_PER_ROOM + (game_state.floor // 5)
 
     # 3. Clear existing non-persistent entities (Items/Enemies).
     # immediate=True so the floor is rebuilt to a clean state synchronously; esper's
@@ -50,8 +57,8 @@ def transition_to_next_floor():
     # 4. Generate new map
     new_map, player_start = generate_dungeon(
         max_rooms=max_rooms,
-        room_min_size=6,
-        room_max_size=10,
+        room_min_size=ROOM_MIN_SIZE,
+        room_max_size=ROOM_MAX_SIZE,
         max_items_per_room=max_items,
     )
 

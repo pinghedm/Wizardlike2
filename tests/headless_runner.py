@@ -15,6 +15,7 @@ from src.components import (
 )
 from src.constants import SCREEN_HEIGHT, SCREEN_WIDTH
 from src.data_loaders import AssetLoader, get_game_configs
+from src.layout import Layout
 from src.main import add_logic_systems, dispatch_input, init_game_world, update_pause_state
 from src.map_objects import Map, Tile
 from src.procgen import spawn_enemy
@@ -53,11 +54,12 @@ class HeadlessRunner:
         # instantiated but deliberately NOT registered with esper, so the
         # normal tick()/esper.process() path is unaffected.
         self.console = tcod.console.Console(SCREEN_WIDTH, SCREEN_HEIGHT)
+        self.layout = Layout(self.console)
         self._ui_systems = [
-            MenuSystem(self.console),
-            HUDSystem(self.console),
-            ModalSystem(self.console),
-            TargetingOverlaySystem(self.console),
+            MenuSystem(self.layout),
+            HUDSystem(self.layout),
+            ModalSystem(self.layout),
+            TargetingOverlaySystem(self.layout),
         ]
 
     def _inject_clean_room(self, width: int = 20, height: int = 20):

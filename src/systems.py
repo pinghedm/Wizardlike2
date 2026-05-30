@@ -41,6 +41,7 @@ from src.states import DisplayMode, GameState
 
 if TYPE_CHECKING:
     from src.data_loaders import AssetLoader
+    from src.layout import Layout
 
 
 def get_singleton(component_type):
@@ -341,9 +342,13 @@ class FOVSystem(esper.Processor):
 
 
 class RenderSystem(esper.Processor):
-    def __init__(self, console: tcod.console.Console, asset_loader: AssetLoader):
-        self.console = console
+    def __init__(self, layout: Layout, asset_loader: AssetLoader):
+        self.layout = layout
         self.asset_loader = asset_loader
+
+    @property
+    def console(self) -> tcod.console.Console:
+        return self.layout.console
 
     def process(self):
         game_state = get_singleton(GameState)
@@ -359,19 +364,34 @@ class RenderSystem(esper.Processor):
             return
 
         # 1. Get the Map and Player FOV
-        maps = esper.get_component(Map)
-        if not maps:
+        game_map = get_singleton(Map)
+        if not game_map:
             return
-        game_map = maps[0][1]
 
         player_fov = None
+        player_pos = None
         for _ent, (fov, _tag) in esper.get_components(FieldOfView, PlayerTag):
             player_fov = fov
             break
+        for _ent, (pos, _tag) in esper.get_components(Position, PlayerTag):
+            player_pos = pos
+            break
+
+        # The camera follows the player; map cells draw into the map viewport,
+        # converted from map space to screen space (the console cell to draw at):
+        #   screen = viewport.origin + map_cell - camera
+        view = self.layout.map_viewport
+        focus_x = player_pos.x if player_pos else game_map.width // 2
+        focus_y = player_pos.y if player_pos else game_map.height // 2
+        cam_x, cam_y = self.layout.camera_offset(focus_x, focus_y, game_map.width, game_map.height)
 
         # 2. Render the map
         for x in range(game_map.width):
             for y in range(game_map.height):
+                screen_x, screen_y = view.x + x - cam_x, view.y + y - cam_y
+                if not view.contains(screen_x, screen_y):
+                    continue
+
                 is_visible = player_fov is not None and Point(x, y) in player_fov.visible_tiles
                 is_explored = game_map.explored[x, y]
 
@@ -388,16 +408,20 @@ class RenderSystem(esper.Processor):
                     fg = tuple(int(c * 0.3) for c in fg)
                     bg = tuple(int(c * 0.3) for c in bg)
 
-                self.console.print(x=x, y=y, string=chr(codepoint), fg=fg, bg=bg)
+                self.console.print(x=screen_x, y=screen_y, string=chr(codepoint), fg=fg, bg=bg)
 
         # 3. Render all entities with Position and Renderable components that are visible
         for _ent, (pos, rend) in esper.get_components(Position, Renderable):
             if player_fov is not None and pos.point not in player_fov.visible_tiles:
                 continue
 
+            screen_x, screen_y = view.x + pos.x - cam_x, view.y + pos.y - cam_y
+            if not view.contains(screen_x, screen_y):
+                continue
+
             codepoint = self.asset_loader.get_codepoint(rend.sprite_id)
             debug_log(f'render entity {_ent} sprite={rend.sprite_id} cp={codepoint} at {(pos.x, pos.y)}')
-            self.console.print(x=pos.x, y=pos.y, string=chr(codepoint), fg=rend.color)
+            self.console.print(x=screen_x, y=screen_y, string=chr(codepoint), fg=rend.color)
 
 
 def _destination_blocked(mover: int, x: int, y: int) -> bool:

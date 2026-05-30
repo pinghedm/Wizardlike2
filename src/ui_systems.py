@@ -27,6 +27,8 @@ from src.constants import (
     UI_WHITE,
     UI_YELLOW,
 )
+from src.layout import Layout, Rect
+from src.map_objects import Map
 from src.states import (
     PAUSE_MENU_OPTIONS,
     TITLE_MENU_OPTIONS,
@@ -44,8 +46,12 @@ from src.ui_helpers import (
 
 
 class MenuSystem(esper.Processor):
-    def __init__(self, console: tcod.console.Console):
-        self.console = console
+    def __init__(self, layout: Layout):
+        self.layout = layout
+
+    @property
+    def console(self) -> tcod.console.Console:
+        return self.layout.console
 
     def process(self):
         game_state = get_singleton(GameState)
@@ -226,8 +232,12 @@ class MenuSystem(esper.Processor):
 
 
 class TargetingOverlaySystem(esper.Processor):
-    def __init__(self, console: tcod.console.Console):
-        self.console = console
+    def __init__(self, layout: Layout):
+        self.layout = layout
+
+    @property
+    def console(self) -> tcod.console.Console:
+        return self.layout.console
 
     def process(self):
         game_state = get_singleton(GameState)
@@ -244,25 +254,42 @@ class TargetingOverlaySystem(esper.Processor):
             return
         _player, (player_pos, _tag) = player_entities[0]
 
-        # Highlight Range and AOE
-        for y in range(self.console.height):
-            for x in range(self.console.width):
-                dist_to_reticle = math.sqrt((x - reticle.x) ** 2 + (y - reticle.y) ** 2)
-                dist_to_player = math.sqrt((x - player_pos.x) ** 2 + (y - player_pos.y) ** 2)
+        game_map = get_singleton(Map)
+        if not game_map:
+            return
+
+        # The overlay highlights tiles, so it shares the map's camera transform:
+        # iterate the viewport's screen cells, map each back to its map cell for
+        # the distance tests, and paint the screen cell.
+        view = self.layout.map_viewport
+        cam_x, cam_y = self.layout.camera_offset(player_pos.x, player_pos.y, game_map.width, game_map.height)
+
+        for screen_y in range(view.y, view.y + view.height):
+            for screen_x in range(view.x, view.x + view.width):
+                map_x = screen_x - view.x + cam_x
+                map_y = screen_y - view.y + cam_y
+                dist_to_reticle = math.sqrt((map_x - reticle.x) ** 2 + (map_y - reticle.y) ** 2)
+                dist_to_player = math.sqrt((map_x - player_pos.x) ** 2 + (map_y - player_pos.y) ** 2)
 
                 if dist_to_reticle <= reticle.radius:
-                    self.console.rgb[y, x]['bg'] = (100, 0, 0)
+                    self.console.rgb[screen_y, screen_x]['bg'] = (100, 0, 0)
                 elif dist_to_player <= reticle.range:
-                    self.console.rgb[y, x]['bg'] = (0, 0, 50)
+                    self.console.rgb[screen_y, screen_x]['bg'] = (0, 0, 50)
 
-        # Draw yellow reticle X
-        if 0 <= reticle.x < self.console.width and 0 <= reticle.y < self.console.height:
-            self.console.print(reticle.x, reticle.y, 'X', fg=UI_YELLOW)
+        # Draw yellow reticle X at its on-screen position.
+        screen_rx = view.x + reticle.x - cam_x
+        screen_ry = view.y + reticle.y - cam_y
+        if view.contains(screen_rx, screen_ry):
+            self.console.print(screen_rx, screen_ry, 'X', fg=UI_YELLOW)
 
 
 class ModalSystem(esper.Processor):
-    def __init__(self, console: tcod.console.Console):
-        self.console = console
+    def __init__(self, layout: Layout):
+        self.layout = layout
+
+    @property
+    def console(self) -> tcod.console.Console:
+        return self.layout.console
 
     def process(self):
         for _ent, modal in esper.get_component(Modal):
@@ -288,21 +315,16 @@ class ModalSystem(esper.Processor):
 
 
 class HUDSystem(esper.Processor):
-    # Layout Constants
-    MSG_BOX_X = 34
-    MSG_BOX_Y = 45
-    MSG_BOX_WIDTH = 46
-    MSG_BOX_HEIGHT = 5
-
-    HP_BAR_X = 2
-    HP_BAR_Y = 46
     HP_BAR_WIDTH = 20
+    # Width of the stats column on the left of the HUD bar; the log fills the rest.
+    HUD_STATS_WIDTH = 34
 
-    FLOOR_TEXT_X = 2
-    FLOOR_TEXT_Y = 48
+    def __init__(self, layout: Layout):
+        self.layout = layout
 
-    def __init__(self, console: tcod.console.Console):
-        self.console = console
+    @property
+    def console(self) -> tcod.console.Console:
+        return self.layout.console
 
     def process(self):
         game_state = get_singleton(GameState)
@@ -317,80 +339,64 @@ class HUDSystem(esper.Processor):
         ]:
             return
 
-        self.render_hp_bar()
-        self.render_floor_info(game_state.floor)
-        self.render_message_log()
+        # The HUD bar splits into a stats column and a message log.
+        stats_zone, log_zone = self.layout.hud.split_left(self.HUD_STATS_WIDTH)
+        self.render_hp_bar(stats_zone)
+        self.render_floor_info(stats_zone, game_state.floor)
+        self.render_message_log(log_zone)
 
-    def render_hp_bar(self):
+    def render_hp_bar(self, zone: Rect):
         player_stats = esper.get_components(Stats, PlayerTag)
         if not player_stats:
             return
         _player, (stats, _) = player_stats[0]
 
-        hp_text = f'HP: {stats.hp}/{stats.max_hp}'
-        self.console.print(self.HP_BAR_X, self.HP_BAR_Y, hp_text, fg=UI_WHITE)
+        hp_label_start_x, hp_label_y = zone.x + 2, zone.y + 1
 
-        start_x = self.HP_BAR_X + len(hp_text) + 1
+        hp_text = f'HP: {stats.hp}/{stats.max_hp}'
+        self.console.print(hp_label_start_x, hp_label_y, hp_text, fg=UI_WHITE)
+
+        hp_bar_start_x = hp_label_start_x + len(hp_text) + 1
         ratio = stats.hp / stats.max_hp
         filled_width = int(ratio * self.HP_BAR_WIDTH)
 
-        self.console.draw_rect(
-            start_x,
-            self.HP_BAR_Y,
-            self.HP_BAR_WIDTH,
-            1,
-            ch=ord('█'),
-            fg=UI_RED_DARK,
-        )
+        self.console.draw_rect(hp_bar_start_x, hp_label_y, self.HP_BAR_WIDTH, 1, ch=ord('█'), fg=UI_RED_DARK)
         if filled_width > 0:
-            self.console.draw_rect(
-                start_x,
-                self.HP_BAR_Y,
-                filled_width,
-                1,
-                ch=ord('█'),
-                fg=UI_RED,
-            )
+            self.console.draw_rect(hp_bar_start_x, hp_label_y, filled_width, 1, ch=ord('█'), fg=UI_RED)
 
-    def render_floor_info(self, floor: int):
-        self.console.print(
-            self.FLOOR_TEXT_X,
-            self.FLOOR_TEXT_Y,
-            f'Floor: {floor}',
-            fg=UI_WHITE,
-        )
+    def render_floor_info(self, zone: Rect, floor: int):
+        self.console.print(zone.x + 2, zone.y + 3, f'Floor: {floor}', fg=UI_WHITE)
 
-    def render_message_log(self):
+    def render_message_log(self, zone: Rect):
         log = get_singleton(MessageLog)
         if not log:
             return
 
-        # Draw frame
         draw_titled_frame(
             self.console,
-            self.MSG_BOX_X,
-            self.MSG_BOX_Y,
-            self.MSG_BOX_WIDTH,
-            self.MSG_BOX_HEIGHT,
+            zone.x,
+            zone.y,
+            zone.width,
+            zone.height,
             title='Messages',
             fg=UI_WHITE,
             bg=(0, 0, 0),
         )
 
-        usable_width = self.MSG_BOX_WIDTH - 4
+        usable_width = zone.width - 4
         all_lines = []
         for msg in log.messages:
             all_lines.extend(wrap_message(msg, usable_width))
 
-        visible_height = self.MSG_BOX_HEIGHT - 2
+        visible_height = zone.height - 2
 
         # Resolve the visible slice and write back the clamped scroll position
         log.scroll_index, start_idx, end_idx = compute_visible_slice(len(all_lines), log.scroll_index, visible_height)
         visible_lines = all_lines[start_idx:end_idx]
 
         for i, line in enumerate(visible_lines):
-            msg_x = self.MSG_BOX_X + 2
-            msg_y = self.MSG_BOX_Y + 1 + i
+            msg_x = zone.x + 2
+            msg_y = zone.y + 1 + i
             for text, color in line:
                 self.console.print(x=msg_x, y=msg_y, string=text, fg=color)
                 msg_x += len(text)

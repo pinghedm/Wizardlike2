@@ -1,10 +1,29 @@
 import os
 
-MAP_WIDTH = 80
-MAP_HEIGHT = 45
+# Dungeon size in tiles. Independent of the screen — kept larger than the map
+# viewport so the camera scrolls to follow the player rather than showing it all.
+MAP_WIDTH = 140
+MAP_HEIGHT = 90
 SCREEN_WIDTH = 80
 SCREEN_HEIGHT = 50
 TICKS_PER_SECOND = 30
+
+# Dungeon room generation. Rooms are placed by rejection sampling, so MAX_ROOMS is
+# an attempt count rather than a guarantee; a higher count packs the large map with
+# rooms instead of long stretches of corridor.
+MAX_ROOMS = 60
+ROOM_MIN_SIZE = 9
+ROOM_MAX_SIZE = 16
+
+# Items scattered per room, drawn uniformly from 0..N. Scales up slightly with
+# depth (see transition_to_next_floor).
+MAX_ITEMS_PER_ROOM = 4
+
+# Each logical console cell is drawn at this multiple of the tileset's native tile
+# size, so the 10x10 font reads as chunky cells instead of tiny ones. The console
+# is sized to window_pixels / (native_tile_px * DISPLAY_SCALE), so enlarging the
+# window shows more cells (more map and HUD room) rather than just zooming in.
+DISPLAY_SCALE = 2
 
 # Number of floors in a full run. Reaching the exit on this floor wins the game;
 # earlier floors descend deeper. Tune for run length / difficulty.
