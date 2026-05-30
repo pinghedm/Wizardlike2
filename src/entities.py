@@ -6,6 +6,7 @@ from src.components import (
     Configuration,
     FieldOfView,
     Inventory,
+    ItemType,
     Keybindings,
     KnownRecipes,
     MessageLog,
@@ -67,7 +68,7 @@ def create_keybindings():
     )
 
 
-def create_player(x, y, characters_config, initial_recipes=None):
+def create_player(x, y, characters_config, initial_recipes=None, initial_gold=0):
     """Factory function for the player entity."""
     # The ID 'player' is registered in AssetLoader (either as a sprite or char '@')
     sprite_id = 'player'
@@ -76,13 +77,17 @@ def create_player(x, y, characters_config, initial_recipes=None):
     if initial_recipes:
         known_recipes.recipes = initial_recipes
 
+    inventory = Inventory()
+    if initial_gold:
+        inventory.items[ItemType.GOLD] = initial_gold
+
     return esper.create_entity(
         Position(x, y),
         Actor(speed=0),
         FieldOfView(radius=8),
         Renderable(sprite_id=sprite_id, color=(255, 255, 255)),
         Stats(hp=100, max_hp=100),
-        Inventory(),
+        inventory,
         known_recipes,
         SpellInventory(),
         StatusEffects(),

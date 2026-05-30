@@ -32,3 +32,14 @@ enemies:
           power: 7
         - type: slow
           duration: 60
+  - id: test_looter
+    char: "l"
+    color: [255, 215, 0]
+    hp: 10
+    damage: 3
+    speed: 100
+    behavior: CHASE
+    floors: [1, 99]
+    drops:
+      - {type: gold, min: 2, max: 4, chance: 1}
+      - {type: reagent_a, min: 0, max: 1, chance: 1}

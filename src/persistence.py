@@ -4,10 +4,12 @@ import pickle
 
 import esper
 
-from src.components import ItemType, SpellType
+from src.components import Inventory, ItemType, KnownRecipes, SpellType
 from src.constants import SAVE_DIR
+from src.ecs_helpers import get_singleton
 
-GRIMOIRE_FILE = os.path.join(SAVE_DIR, 'grimoire.json')
+# Cross-run progression (grimoire + gold), one file so it can grow more fields later.
+META_FILE = os.path.join(SAVE_DIR, 'meta.json')
 SAVE_FILE = os.path.join(SAVE_DIR, 'savegame.sav')
 
 
@@ -16,35 +18,51 @@ def ensure_save_dir():
         os.makedirs(SAVE_DIR, exist_ok=True)
 
 
-def save_grimoire(recipes: dict):
-    ensure_save_dir()
+def _serialize_recipes(recipes: dict) -> dict:
     serialized = {}
     for spell_type, combinations in recipes.items():
         spell_id = spell_type.value if hasattr(spell_type, 'value') else spell_type
         serialized[spell_id] = [
             [item.value if hasattr(item, 'value') else item for item in combo] for combo in combinations
         ]
-
-    with open(GRIMOIRE_FILE, 'w') as f:
-        json.dump(serialized, f, indent=2)
+    return serialized
 
 
-def load_grimoire() -> dict:
-    if not os.path.exists(GRIMOIRE_FILE):
-        return {}
+def _deserialize_recipes(serialized: dict) -> dict:
+    recipes = {}
+    for spell_id, combos in serialized.items():
+        stype = SpellType(spell_id)
+        recipes[stype] = {tuple(ItemType(i) for i in combo) for combo in combos}
+    return recipes
+
+
+def save_meta():
+    """Persist cross-run progression, gathered from the live world."""
+    ensure_save_dir()
+    recipes = get_singleton(KnownRecipes)
+    inventory = get_singleton(Inventory)
+    data = {
+        'grimoire': _serialize_recipes(recipes.recipes if recipes else {}),
+        'gold': inventory.items.get(ItemType.GOLD, 0) if inventory else 0,
+    }
+    with open(META_FILE, 'w') as f:
+        json.dump(data, f, indent=2)
+
+
+def load_meta() -> dict:
+    """Load cross-run progression: {'recipes': ..., 'gold': ...}.
+
+    Falls back to an empty grimoire and zero gold when the file is absent or corrupt.
+    """
+    if not os.path.exists(META_FILE):
+        return {'recipes': {}, 'gold': 0}
 
     try:
-        with open(GRIMOIRE_FILE) as f:
+        with open(META_FILE) as f:
             data = json.load(f)
-
-        # Convert IDs back to Enums
-        recipes = {}
-        for spell_id, combos in data.items():
-            stype = SpellType(spell_id)
-            recipes[stype] = {tuple(ItemType(i) for i in combo) for combo in combos}
-        return recipes
+        return {'recipes': _deserialize_recipes(data.get('grimoire', {})), 'gold': data.get('gold', 0)}
     except json.JSONDecodeError, OSError, ValueError:
-        return {}
+        return {'recipes': {}, 'gold': 0}
 
 
 def save_game():

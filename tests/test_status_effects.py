@@ -2,7 +2,8 @@ import esper
 
 from src.components import Effect, EffectType, MessageLog, Stats, StatusEffects, StatusType
 from src.constants import STATUS_PULSE_INTERVAL
-from src.systems import apply_effect, get_cooldown, get_singleton
+from src.ecs_helpers import get_singleton
+from src.systems import apply_effect, get_cooldown
 from tests.headless_runner import HeadlessRunner
 
 # --- apply_effect: lingering effects are stored as their own copy --------------

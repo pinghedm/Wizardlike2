@@ -14,6 +14,7 @@ from src.components import (
     GuardTag,
     Item,
     ItemType,
+    Loot,
     MessageLog,
     PatrolTag,
     PlayerTag,
@@ -31,9 +32,9 @@ from src.constants import (
     ROOM_MAX_SIZE,
     ROOM_MIN_SIZE,
 )
+from src.ecs_helpers import get_singleton, spawn_item_entity
 from src.map_objects import Map, Tile
 from src.states import GameState
-from src.systems import get_singleton
 
 
 def transition_to_next_floor():
@@ -102,15 +103,7 @@ class RectangularRoom:
         # Items
         for p, item_list in self.items.items():
             for itype in item_list:
-                item_config = configs.ingredients.get(itype.value, {})
-                sprite_id = itype.value
-                color = tuple(item_config.get('color', (255, 255, 255)))
-
-                esper.create_entity(
-                    Position(p.x, p.y),
-                    Renderable(sprite_id=sprite_id, color=color),
-                    Item(itype),
-                )
+                spawn_item_entity(itype, p.x, p.y)
 
         # Enemies
         if spawn_enemies:
@@ -161,7 +154,7 @@ def spawn_enemy(
     else:
         behavior_tag = ChaseTag()
 
-    return esper.create_entity(
+    components = [
         Position(x, y),
         Renderable(sprite_id=enemy_cfg['id'], color=tuple(enemy_cfg['color'])),
         Actor(speed=enemy_cfg['speed']),
@@ -176,7 +169,10 @@ def spawn_enemy(
         Stats(hp=enemy_cfg['hp'], max_hp=enemy_cfg['hp']),
         StatusEffects(),
         FieldOfView(radius=8),
-    )
+    ]
+    if enemy_cfg.get('drops'):
+        components.append(Loot(drops=enemy_cfg['drops']))
+    return esper.create_entity(*components)
 
 
 def tunnel_between(start: Point, end: Point):

@@ -18,6 +18,7 @@ from src.constants import (
 )
 from src.data_loaders import AssetLoader, get_game_configs
 from src.debug import debug_log
+from src.ecs_helpers import get_singleton
 from src.entities import (
     create_configuration,
     create_game_state,
@@ -45,7 +46,6 @@ from src.systems import (
     FOVSystem,
     RenderSystem,
     StatusSystem,
-    get_singleton,
 )
 from src.ui_systems import (
     EffectOverlaySystem,
@@ -57,8 +57,8 @@ from src.ui_systems import (
 
 
 def init_game_world(asset_loader: AssetLoader):
-    # Load Meta-Persistence (Grimoire)
-    initial_recipes = persistence.load_grimoire()
+    # Load cross-run progression (grimoire + gold).
+    meta = persistence.load_meta()
 
     # Load Configs (memoized)
     configs = get_game_configs(asset_loader)
@@ -84,7 +84,8 @@ def init_game_world(asset_loader: AssetLoader):
         player_start.x,
         player_start.y,
         configs['characters'],
-        initial_recipes=initial_recipes,
+        initial_recipes=meta['recipes'],
+        initial_gold=meta['gold'],
     )
     return player
 

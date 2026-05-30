@@ -9,6 +9,7 @@ from src.components import (
     Enemy,
     Inventory,
     Item,
+    ItemType,
     Keybindings,
     KnownRecipes,
     MessageLog,
@@ -39,6 +40,7 @@ from src.systems import (
     get_display_name,
     get_spell_config,
     is_game_active,
+    is_reagent,
     match_recipe,
     move_entity,
 )
@@ -129,9 +131,11 @@ def handle_exploring_input(event):
         # Pickup Logic
         for ent, (pos, item) in esper.get_components(Position, Item):
             if pos.x == player_pos.x and pos.y == player_pos.y:
-                player_inv.items[item.type] = player_inv.items.get(item.type, 0) + 1
-                log.add_simple_message(f'Picked up {item.type.name}!', color=(200, 200, 200))
+                player_inv.items[item.type] = player_inv.items.get(item.type, 0) + item.count
+                log.add_simple_message(f'Picked up {item.count} {item.type.name}!', color=(200, 200, 200))
                 esper.delete_entity(ent)
+                if item.type == ItemType.GOLD:
+                    persistence.save_meta()
 
         # Check for exit
         maps = esper.get_component(Map)
@@ -253,7 +257,7 @@ def _handle_experiment_input(event, ui_state, keybindings):
         return DisplayMode.EXPLORING
     player, (player_inv, _tag) = player_entities[0]
 
-    inv_list = sorted(player_inv.items.keys())
+    inv_list = sorted(i for i in player_inv.items if is_reagent(i))
 
     if inv_list:
         ui_state.crafting_cursor %= len(inv_list)
@@ -308,7 +312,7 @@ def _handle_experiment_input(event, ui_state, keybindings):
         player_recipes.recipes[stype].add(flat_selection)
 
         # PERSISTENT META-PROGRESSION: Save grimoire on discovery
-        persistence.save_grimoire(player_recipes.recipes)
+        persistence.save_meta()
 
         # Grant charges
         player_spell_inv.spells[stype] = player_spell_inv.spells.get(stype, 0) + charges

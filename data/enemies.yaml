@@ -11,6 +11,9 @@ enemies:
     speed: 30
     behavior: CHASE
     floors: [1, 5]
+    drops:
+      - {type: gold, min: 3, max: 8, chance: 3}
+      - {type: fire_crystal, min: 0, max: 1, chance: 1}
   - id: slime
     sprite:
       path: data/People.png
@@ -23,6 +26,8 @@ enemies:
     speed: 40
     behavior: PATROL
     floors: [1, 10]
+    drops:
+      - {type: gold, min: 1, max: 5, chance: 1}
   - id: ghost
     sprite:
       path: data/People.png

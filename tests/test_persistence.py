@@ -1,8 +1,5 @@
-import os
-import shutil
-
 import esper
-import pytest
+import tcod.event
 
 from src import persistence
 from src.components import (
@@ -18,31 +15,41 @@ from src.components import (
     SpellType,
     Stats,
 )
-from src.constants import SAVE_DIR
+from src.ecs_helpers import spawn_item_entity
 from src.map_objects import Map
 from src.states import GameState
 from tests.headless_runner import HeadlessRunner
 
 
-# Ensure test_save_data is cleaned up
-@pytest.fixture(autouse=True)
-def clean_save_dir():
-    if os.path.exists(SAVE_DIR):
-        shutil.rmtree(SAVE_DIR)
-    yield
-    if os.path.exists(SAVE_DIR):
-        shutil.rmtree(SAVE_DIR)
-
-
-def test_grimoire_serialization():
+def test_meta_round_trips_grimoire_and_gold():
     # 'test_bolt' and 'test_blast' are in fixture spells.yaml
+    runner = HeadlessRunner(use_random_map=False)
     recipes = {
         SpellType('test_bolt'): {(ItemType('reagent_a'), ItemType('reagent_b'))},
         SpellType('test_blast'): {(ItemType('reagent_a'), ItemType('reagent_a'))},
     }
-    persistence.save_grimoire(recipes)
-    loaded = persistence.load_grimoire()
-    assert loaded == recipes
+    esper.component_for_entity(runner.player, KnownRecipes).recipes = recipes
+    esper.component_for_entity(runner.player, Inventory).items[ItemType('gold')] = 17
+
+    persistence.save_meta()
+    loaded = persistence.load_meta()
+
+    assert loaded['recipes'] == recipes
+    assert loaded['gold'] == 17
+
+
+def test_load_meta_defaults_when_file_absent():
+    assert persistence.load_meta() == {'recipes': {}, 'gold': 0}
+
+
+def test_gold_pickup_persists_to_meta():
+    runner = HeadlessRunner(use_random_map=False)
+    px, py = runner.player_pos
+    spawn_item_entity(ItemType('gold'), px + 1, py, count=5)
+
+    runner.simulate_key(tcod.event.KeySym.RIGHT)
+
+    assert persistence.load_meta()['gold'] == 5
 
 
 def test_world_serialization():

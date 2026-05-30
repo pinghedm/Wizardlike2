@@ -11,3 +11,7 @@ ingredients:
     name: Mystic Herb
     char: "\u2588"
     color: [0, 255, 0]
+  - id: gold
+    name: Gold
+    char: "$"
+    color: [255, 215, 0]

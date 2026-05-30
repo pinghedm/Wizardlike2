@@ -56,6 +56,7 @@ class EnemyConfig(TypedDict):
     floors: list[int]
     blocks_movement: NotRequired[bool]
     guardian: NotRequired[bool]
+    drops: NotRequired[list[LootDrop]]
 
 
 class CharacterConfig(TypedDict):
@@ -153,6 +154,24 @@ class Renderable:
 @dataclass
 class Item:
     type: ItemType
+    count: int = 1
+
+
+@dataclass
+class LootDrop:
+    """One entry in an enemy's loot table; `chance` is a relative weight."""
+
+    type: ItemType
+    min: int = 1
+    max: int = 1
+    chance: float = 1.0
+
+
+@dataclass
+class Loot:
+    """What an enemy drops on death: a list of independent LootDrops."""
+
+    drops: list[LootDrop] = field(default_factory=list[LootDrop])
 
 
 @dataclass

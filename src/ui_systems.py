@@ -9,6 +9,7 @@ from src import persistence
 from src.components import (
     CastVisual,
     Inventory,
+    ItemType,
     Keybindings,
     KnownRecipes,
     MessageLog,
@@ -31,6 +32,7 @@ from src.constants import (
     UI_WHITE,
     UI_YELLOW,
 )
+from src.ecs_helpers import get_singleton
 from src.layout import Layout, Rect
 from src.map_objects import Map
 from src.states import (
@@ -41,7 +43,7 @@ from src.states import (
     GameState,
     MenuOption,
 )
-from src.systems import can_craft_known_spell, get_singleton, get_spell_config, is_game_active
+from src.systems import can_craft_known_spell, get_spell_config, is_game_active, is_reagent
 from src.ui_helpers import (
     blend,
     compute_visible_slice,
@@ -137,7 +139,7 @@ class MenuSystem(esper.Processor):
     def _render_experiment(self, x, y, ui_state, player_inv):
         self.console.print(x + 2, y + 3, 'Combine ingredients to discover spells:', fg=UI_CYAN)
 
-        inv_list = sorted(player_inv.items.keys())
+        inv_list = sorted(i for i in player_inv.items if is_reagent(i))
         if not inv_list:
             self.console.print(x + 2, y + 5, 'No ingredients to combine.', fg=UI_GRAY_DARK)
             return
@@ -475,6 +477,7 @@ class HUDSystem(esper.Processor):
         stats_zone, log_zone = self.layout.hud.split_left(self.HUD_STATS_WIDTH)
         self.render_hp_bar(stats_zone)
         self.render_floor_info(stats_zone, game_state.floor)
+        self.render_gold(stats_zone)
         self.render_message_log(log_zone)
 
     def render_hp_bar(self, zone: Rect):
@@ -498,6 +501,13 @@ class HUDSystem(esper.Processor):
 
     def render_floor_info(self, zone: Rect, floor: int):
         self.console.print(zone.x + 2, zone.y + 3, f'Floor: {floor}', fg=UI_WHITE)
+
+    def render_gold(self, zone: Rect):
+        inv = get_singleton(Inventory)
+        if not inv:
+            return
+        gold = inv.items.get(ItemType.GOLD, 0)
+        self.console.print(zone.x + 14, zone.y + 3, f'Gold: {gold}', fg=UI_YELLOW)
 
     def render_message_log(self, zone: Rect):
         log = get_singleton(MessageLog)

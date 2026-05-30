@@ -1,3 +1,4 @@
+import random
 import sys
 from collections import Counter
 from dataclasses import replace
@@ -23,7 +24,9 @@ from src.components import (
     FleeTag,
     GuardTag,
     Inventory,
+    ItemType,
     KnownRecipes,
+    Loot,
     MessageLog,
     Modal,
     PatrolTag,
@@ -49,18 +52,13 @@ from src.constants import (
     UI_YELLOW,
 )
 from src.debug import debug_log
+from src.ecs_helpers import get_singleton, spawn_item_entity
 from src.map_objects import Map
 from src.states import DisplayMode, GameState
 
 if TYPE_CHECKING:
     from src.data_loaders import AssetLoader
     from src.layout import Layout
-
-
-def get_singleton(component_type):
-    """Return the single instance of a singleton component, or None if absent."""
-    components = esper.get_component(component_type)
-    return components[0][1] if components else None
 
 
 def is_game_active() -> bool:
@@ -121,6 +119,18 @@ def deal_damage(target_ent: int, amount: int, message: str, color: tuple[int, in
         log.add_simple_message(message, color=color)
 
 
+def roll_loot(loot: Loot) -> tuple[ItemType, int] | None:
+    """Pick one drop by relative `chance` weight, then roll its quantity.
+
+    A quantity of 0 means the pick yields nothing, returning None.
+    """
+    if not loot.drops:
+        return None
+    drop = random.choices(loot.drops, weights=[d.chance for d in loot.drops])[0]
+    count = random.randint(drop.min, drop.max)
+    return (drop.type, count) if count > 0 else None
+
+
 class DeathSystem(esper.Processor):
     """Handles death for all entities with Stats."""
 
@@ -142,7 +152,19 @@ class DeathSystem(esper.Processor):
                     debug_log(f'DeathSystem: deleting {ent} ({get_display_name(ent)})')
                     if log:
                         log.add_simple_message(f'The {get_display_name(ent)} dies!', color=(255, 255, 0))
+                    self._drop_loot(ent)
                     esper.delete_entity(ent)
+
+    def _drop_loot(self, ent: int):
+        """Scatter a slain enemy's rolled loot onto its tile."""
+        if not (esper.has_component(ent, Position) and esper.has_component(ent, Loot)):
+            return
+        drop = roll_loot(esper.component_for_entity(ent, Loot))
+        if drop is None:
+            return
+        pos = esper.component_for_entity(ent, Position)
+        itype, count = drop
+        spawn_item_entity(itype, pos.x, pos.y, count)
 
 
 class ActionSystem(esper.Processor):
@@ -245,16 +267,20 @@ def _process_chase(ent: int, pos: Position, pathfinding_context: dict):
 
 def _process_patrol(ent: int, pos: Position, pathfinding_context: dict):
     patrol = esper.component_for_entity(ent, PatrolTag)
-    target = patrol.path[patrol.index]
-    if pos.x == target.x and pos.y == target.y:
+    if pos.point == patrol.path[patrol.index]:
         patrol.index = (patrol.index + 1) % len(patrol.path)
-        target = patrol.path[patrol.index]
+    target = patrol.path[patrol.index]
 
+    before = (pos.x, pos.y)
     path = _compute_path(ent, target, pathfinding_context)
     if path and len(path) > 1:
         move_x, move_y = path[-2]
-        if get_singleton(Map).is_walkable(move_x, move_y):
-            move_entity(ent, move_x - pos.x, move_y - pos.y)
+        move_entity(ent, move_x - pos.x, move_y - pos.y)
+
+    # Couldn't progress toward this waypoint (unreachable, or blocked by the exit
+    # tile / a guardian) — give up on it and head for the next one.
+    if (pos.x, pos.y) == before:
+        patrol.index = (patrol.index + 1) % len(patrol.path)
 
 
 def _process_guard(ent: int, pos: Position, pathfinding_context: dict):
@@ -586,6 +612,15 @@ def get_spell_config(spell_id: str) -> SpellConfig | None:
     if configs is None:
         return None
     return configs.spells_by_id.get(spell_id)
+
+
+# Item types that are pickups but not crafting reagents (currency, etc.).
+NON_REAGENT_ITEMS = {ItemType.GOLD}
+
+
+def is_reagent(itype: ItemType) -> bool:
+    """Whether an item type can be used as a crafting reagent."""
+    return itype not in NON_REAGENT_ITEMS
 
 
 def match_recipe(selection: tuple) -> tuple[SpellType, int] | None:

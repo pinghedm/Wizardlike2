@@ -1,6 +1,6 @@
 import esper
 
-from src.components import AI, FieldOfView, PatrolTag, Point, Position
+from src.components import AI, Actor, FieldOfView, PatrolTag, Point, Position
 from src.map_objects import Map
 from src.procgen import RectangularRoom
 from src.systems import _process_chase, _process_flee, _process_guard, _process_patrol
@@ -65,6 +65,19 @@ def test_patrol_advances_to_the_next_waypoint_upon_arrival():
 
     assert esper.component_for_entity(enemy, PatrolTag).index == 1
     assert (pos.x, pos.y) == (3, 4)  # then stepped toward the new waypoint (3, 8)
+
+
+def test_patrol_advances_when_blocked_from_its_waypoint():
+    runner = HeadlessRunner(use_random_map=False)
+    # Heading from (5, 3) toward waypoint (3, 3), the next step is (4, 3) — block it.
+    enemy = runner.spawn_enemy(5, 3, {**runner.enemy_config(), 'behavior': 'PATROL'}, rooms=_patrol_rooms())
+    esper.create_entity(Position(4, 3), Actor())
+    pos = esper.component_for_entity(enemy, Position)
+
+    _process_patrol(enemy, pos, {})
+
+    assert (pos.x, pos.y) == (5, 3)  # couldn't step past the blocker
+    assert esper.component_for_entity(enemy, PatrolTag).index == 1  # gave up, retargets
 
 
 # --- _process_flee -------------------------------------------------------------

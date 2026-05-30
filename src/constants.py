@@ -42,7 +42,7 @@ STATUS_PULSE_INTERVAL = 30
 # Directory holding game-content YAML (ingredients, spells, tiles, etc.).
 DATA_DIR = os.environ.get('WIZARDLIKE_DATA_DIR', 'data')
 
-# Directory for save games and persistent meta-data (grimoire).
+# Directory for save games and persistent meta-data (metaprogression).
 SAVE_DIR = os.environ.get('WIZARDLIKE_SAVE_DIR', 'save_data')
 
 # UI colors

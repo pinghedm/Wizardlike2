@@ -8,7 +8,7 @@ import tcod
 import yaml
 from PIL import Image
 
-from src.components import Effect, EffectType, EnemyAbility, ItemType
+from src.components import Effect, EffectType, EnemyAbility, ItemType, LootDrop
 from src.constants import DATA_DIR
 
 
@@ -104,6 +104,16 @@ def load_enemies_config(asset_loader: AssetLoader):
                         range=config['ability']['range'],
                         effects=_parse_effects(config['ability'].get('effects', [])),
                     )
+                if 'drops' in config:
+                    config['drops'] = [
+                        LootDrop(
+                            type=ItemType(d['type']),
+                            min=d.get('min', 1),
+                            max=d.get('max', 1),
+                            chance=d.get('chance', 1.0),
+                        )
+                        for d in config['drops']
+                    ]
                 if 'sprite' in config:
                     asset_loader.register_sprite(eid, config['sprite'])
                 else:

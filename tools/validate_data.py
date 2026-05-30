@@ -40,7 +40,10 @@ ALLOWED_ENEMY_FIELDS = {
     'ability',
     'blocks_movement',
     'guardian',
+    'drops',
 }
+
+ALLOWED_DROP_FIELDS = {'type', 'min', 'max', 'chance'}
 
 
 def validate_effects(effects, context_label: str) -> int:
@@ -74,6 +77,47 @@ def validate_effects(effects, context_label: str) -> int:
             elif not isinstance(effect[req_field], int) or effect[req_field] <= 0:
                 print(f'ERROR: {context_label} effect #{eff_idx} field "{req_field}" must be a positive integer.')
                 errors += 1
+    return errors
+
+
+def validate_drops(drops, ing_ids, context_label: str) -> int:
+    """Validate an enemy's loot `drops` list. Returns the number of errors found."""
+    if not isinstance(drops, list):
+        print(f'ERROR: {context_label} "drops" must be a list.')
+        return 1
+
+    errors = 0
+    for idx, drop in enumerate(drops):
+        if not isinstance(drop, dict):
+            print(f'ERROR: {context_label} drop #{idx} must be a mapping.')
+            errors += 1
+            continue
+
+        for key in sorted(set(drop) - ALLOWED_DROP_FIELDS):
+            print(f'ERROR: {context_label} drop #{idx} has unexpected field "{key}".')
+            errors += 1
+
+        if 'type' not in drop:
+            print(f'ERROR: {context_label} drop #{idx} missing "type".')
+            errors += 1
+        elif drop['type'] not in ing_ids:
+            print(f'ERROR: {context_label} drop #{idx} uses unknown item: "{drop["type"]}".')
+            errors += 1
+
+        for f in ('min', 'max'):
+            if f in drop and (not isinstance(drop[f], int) or drop[f] < 0):
+                print(f'ERROR: {context_label} drop #{idx} "{f}" must be a non-negative integer.')
+                errors += 1
+
+        lo, hi = drop.get('min'), drop.get('max')
+        if isinstance(lo, int) and isinstance(hi, int) and lo > hi:
+            print(f'ERROR: {context_label} drop #{idx} min must be <= max.')
+            errors += 1
+
+        if 'chance' in drop and (not isinstance(drop['chance'], (int, float)) or drop['chance'] <= 0):
+            print(f'ERROR: {context_label} drop #{idx} "chance" must be a positive number.')
+            errors += 1
+
     return errors
 
 
@@ -290,6 +334,9 @@ def validate_data() -> bool:
                     print(f'ERROR: Enemy "{eid}" ability range must be a non-negative integer.')
                     errors += 1
                 errors += validate_effects(ability.get('effects', []), f'Enemy "{eid}" ability')
+
+            if 'drops' in enemy:
+                errors += validate_drops(enemy['drops'], ing_ids, f'Enemy "{eid}"')
 
     if errors == 0:
         print('SUCCESS: All data files are valid.')

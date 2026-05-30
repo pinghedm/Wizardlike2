@@ -11,3 +11,7 @@ ingredients:
     name: Reagent C
     char: "c"
     color: [0, 0, 255]
+  - id: gold
+    name: Gold
+    char: "$"
+    color: [255, 215, 0]
