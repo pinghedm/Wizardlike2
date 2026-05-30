@@ -391,7 +391,9 @@ def handle_targeting_input(event):
         return DisplayMode.EXPLORING
     _player, (player_pos, _tag) = player_entities[0]
 
-    if event.sym == keybindings.bindings['CANCEL']:
+    # Esc or the casting key both back out to the spell picker (the key that
+    # opened targeting also closes it).
+    if event.sym in (keybindings.bindings['CANCEL'], keybindings.bindings['OPEN_CASTING']):
         esper.delete_entity(ret_ent)
         ui_state.active_targeting_spell_id = None
         return DisplayMode.CASTING
@@ -433,6 +435,8 @@ def handle_targeting_input(event):
 
         esper.delete_entity(ret_ent)
         ui_state.active_targeting_spell_id = None
-        return DisplayMode.EXPLORING
+        # Back to the picker so the player can chain casts; they leave it with
+        # Esc or the casting key.
+        return DisplayMode.CASTING
 
     return DisplayMode.TARGETING

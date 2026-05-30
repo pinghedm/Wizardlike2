@@ -48,7 +48,7 @@ def test_full_gameplay_loop():
     # Move the reticle to the enemy's position.
     runner.simulate_key(tcod.event.KeySym.RIGHT)
     runner.simulate_key(tcod.event.KeySym.RETURN)  # Confirm targeting
-    assert runner.display_mode == DisplayMode.EXPLORING
+    assert runner.display_mode == DisplayMode.CASTING
 
     # 9. Tick to process damage
     runner.tick(2)

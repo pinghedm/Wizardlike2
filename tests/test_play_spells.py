@@ -1,4 +1,5 @@
 import esper
+import pytest
 import tcod.event
 
 from src.components import SpellInventory, SpellType, Stats, StatusEffects, StatusType
@@ -23,10 +24,27 @@ def test_full_cast_cycle_applies_fixture_effects():
     runner.simulate_key(tcod.event.KeySym.RIGHT)
     runner.simulate_key(tcod.event.KeySym.RETURN)  # cast
 
-    assert runner.display_mode == DisplayMode.EXPLORING
+    # Casting returns to the spell picker so the player can chain casts.
+    assert runner.display_mode == DisplayMode.CASTING
     assert esper.component_for_entity(runner.player, SpellInventory).spells[SpellType('test_bolt')] == 0
     assert esper.component_for_entity(enemy, Stats).hp == 30 - 12
     assert esper.component_for_entity(enemy, StatusEffects).active[StatusType.SLOW].duration == 40
+
+
+@pytest.mark.parametrize('cancel_key', [tcod.event.KeySym.ESCAPE, tcod.event.KeySym.s])
+def test_targeting_cancels_back_to_picker_without_casting(cancel_key):
+    # Both Esc and the casting key (S) back out of targeting to the spell picker,
+    # discarding the reticle and leaving the charge unspent.
+    runner = HeadlessRunner(use_random_map=False)
+    runner.give_spell('test_bolt', 1)
+
+    runner.simulate_key(tcod.event.KeySym.s)  # EXPLORING -> CASTING
+    runner.simulate_key(tcod.event.KeySym.RETURN)  # -> TARGETING
+    assert runner.display_mode == DisplayMode.TARGETING
+
+    runner.simulate_key(cancel_key)
+    assert runner.display_mode == DisplayMode.CASTING
+    assert esper.component_for_entity(runner.player, SpellInventory).spells[SpellType('test_bolt')] == 1
 
 
 def test_spell_radius_hits_only_targets_within_radius():
