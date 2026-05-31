@@ -10,8 +10,10 @@ class DisplayMode(enum.Enum):
     TARGETING = enum.auto()
     SHOPPING = enum.auto()
     SETTINGS = enum.auto()
+    GAME_OVER = enum.auto()
     LOADING_SAVE = enum.auto()
     STARTING_NEW_GAME = enum.auto()
+    RETURN_TO_TITLE = enum.auto()
     SAVING = enum.auto()
     EXITING = enum.auto()
 

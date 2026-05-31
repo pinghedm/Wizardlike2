@@ -82,6 +82,7 @@ class HeadlessRunner:
             create_keybindings,
             create_message_log,
             create_player,
+            create_run_stats,
             create_ui_state,
         )
 
@@ -92,6 +93,7 @@ class HeadlessRunner:
         create_configuration(configs)
         create_ui_state()
         create_keybindings()
+        create_run_stats()
 
         # 3. Create a basic floor tile
         floor_cfg = next(t for t in configs['tiles'] if t['type'] == 'floor')

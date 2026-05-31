@@ -1,10 +1,11 @@
 import esper
-import pytest
 import tcod.event
 
-from src.components import Modal, Position, Stats
+from src.components import Modal, Position, RunStats, Stats
 from src.constants import MAX_FLOORS
+from src.ecs_helpers import get_singleton
 from src.map_objects import Map, Tile
+from src.states import DisplayMode
 from src.systems import get_display_name
 from tests.headless_runner import HeadlessRunner
 
@@ -56,18 +57,19 @@ def test_descend_modal_ignores_non_enter_keys():
     assert runner.game_state.floor == 2
 
 
-def test_player_death_spawns_a_modal_that_exits_only_on_enter():
+def test_player_death_shows_the_game_over_screen_and_enter_returns_to_title():
     runner = HeadlessRunner(use_random_map=False)
     esper.component_for_entity(runner.player, Stats).hp = 0
 
-    runner.tick(1)  # DeathSystem sees hp <= 0 and raises the death modal
-    assert esper.get_component(Modal)
+    runner.tick(1)  # DeathSystem sees hp <= 0 and ends the run
+    assert runner.display_mode == DisplayMode.GAME_OVER
+    assert not esper.get_component(Modal)
 
-    runner.simulate_key(tcod.event.KeySym.LEFT)  # a stray key must not quit the game
-    assert esper.get_component(Modal)
+    runner.simulate_key(tcod.event.KeySym.LEFT)  # a stray key stays on the summary
+    assert runner.display_mode == DisplayMode.GAME_OVER
 
-    with pytest.raises(SystemExit):  # Enter fires on_close=sys.exit
-        runner.simulate_key(tcod.event.KeySym.RETURN)
+    runner.simulate_key(tcod.event.KeySym.RETURN)  # Confirm leaves toward the title menu
+    assert runner.display_mode == DisplayMode.RETURN_TO_TITLE
 
 
 def test_enemy_death_removes_the_entity_and_logs_a_death_message():
@@ -89,7 +91,8 @@ def test_reaching_final_floor_exit_wins_instead_of_descending():
     runner.game_state.floor = MAX_FLOORS
     _make_exit_above_player(runner)
 
-    # On the final floor the exit ends the run rather than spawning a descend modal.
-    with pytest.raises(SystemExit):
-        runner.simulate_key(tcod.event.KeySym.UP)
-    assert not esper.get_component(Modal)
+    runner.simulate_key(tcod.event.KeySym.UP)  # step onto the final exit -> victory
+
+    assert runner.display_mode == DisplayMode.GAME_OVER
+    assert get_singleton(RunStats).won is True
+    assert not esper.get_component(Modal)  # no descend modal on the final floor

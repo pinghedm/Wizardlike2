@@ -16,6 +16,7 @@ from src.components import (
     Modal,
     PlayerTag,
     Position,
+    RunStats,
     ScreenFlash,
     Shopkeeper,
     SpellInventory,
@@ -79,6 +80,8 @@ class MenuSystem(esper.Processor):
             self.render_shop_menu()
         elif game_state.display_mode == DisplayMode.SETTINGS:
             self.render_settings_menu()
+        elif game_state.display_mode == DisplayMode.GAME_OVER:
+            self.render_game_over()
 
     def render_main_menu(self):
         ui_state = get_singleton(UIState)
@@ -326,6 +329,51 @@ class MenuSystem(esper.Processor):
             'Arrows: Select | Enter: Remap | Esc: Back',
             fg=UI_GRAY,
         )
+
+    def render_game_over(self):
+        game_state = get_singleton(GameState)
+        run_stats = get_singleton(RunStats)
+        if not game_state or not run_stats:
+            return
+
+        spells = sorted(run_stats.spells_cast.items(), key=lambda kv: kv[0].name)
+        ingredients = sorted(run_stats.ingredients_collected.items(), key=lambda kv: kv[0].name)
+        totals = [
+            f'Floor reached:     {game_state.floor}',
+            f'Enemies defeated:  {run_stats.enemies_defeated}',
+            f'Gold collected:    {run_stats.gold_collected}',
+            f'Spells discovered: {run_stats.spells_discovered}',
+            f'Damage dealt:      {run_stats.damage_dealt}',
+        ]
+
+        # Two label rows + a blank separator each, and at least one row per section.
+        body_rows = len(totals) + 2 + max(1, len(spells)) + 2 + max(1, len(ingredients))
+        width, height = 44, body_rows + 5
+        title = 'Victory!' if run_stats.won else 'You Died'
+        x, y = draw_centered_frame(self.console, width, height, title=title)
+
+        row = y + 2
+        for line in totals:
+            self.console.print(x + 2, row, line, fg=UI_WHITE)
+            row += 1
+
+        row = self._render_count_section(x, row + 1, 'Spells cast:', spells)
+        self._render_count_section(x, row + 1, 'Ingredients collected:', ingredients)
+
+        self.console.print(x + 2, y + height - 2, 'Enter: Title', fg=UI_GRAY)
+
+    def _render_count_section(self, x: int, row: int, label: str, entries: list) -> int:
+        """Print a `label` header then one indented `Name xN` line per entry (or
+        '(none)' when empty). Returns the next free row."""
+        self.console.print(x + 2, row, label, fg=UI_CYAN)
+        row += 1
+        if not entries:
+            self.console.print(x + 4, row, '(none)', fg=UI_GRAY_DARK)
+            return row + 1
+        for key, count in entries:
+            self.console.print(x + 4, row, f'{key.name} x{count}', fg=UI_WHITE)
+            row += 1
+        return row
 
 
 class TargetingOverlaySystem(esper.Processor):

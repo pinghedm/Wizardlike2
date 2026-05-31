@@ -16,6 +16,7 @@ from src.components import (
     Modal,
     PlayerTag,
     Position,
+    RunStats,
     Shopkeeper,
     SpellInventory,
     StatusEffects,
@@ -24,6 +25,7 @@ from src.components import (
     UIState,
 )
 from src.constants import MAX_FLOORS
+from src.ecs_helpers import get_singleton
 from src.map_objects import Map
 from src.procgen import transition_to_next_floor
 from src.shop import purchase_offer
@@ -60,6 +62,15 @@ def handle_modal_input(event):
         if modal.on_close:
             modal.on_close()
         esper.delete_entity(ent)
+
+
+def handle_game_over_input(event):
+    """The run-summary screen: Confirm returns to the title menu, nothing else acts."""
+    if isinstance(event, tcod.event.KeyDown):
+        keybindings = esper.get_component(Keybindings)[0][1]
+        if event.sym == keybindings.bindings['CONFIRM']:
+            return DisplayMode.RETURN_TO_TITLE
+    return DisplayMode.GAME_OVER
 
 
 def _player_is_slowed(player: int) -> bool:
@@ -141,13 +152,18 @@ def handle_exploring_input(event):
         log = esper.get_component(MessageLog)[0][1]
 
         # Pickup Logic
+        run_stats = get_singleton(RunStats)
         for ent, (pos, item) in esper.get_components(Position, Item):
             if pos.x == player_pos.x and pos.y == player_pos.y:
                 player_inv.items[item.type] = player_inv.items.get(item.type, 0) + item.count
                 log.add_simple_message(f'Picked up {item.count} {item.type.name}!', color=(200, 200, 200))
                 esper.delete_entity(ent)
                 if item.type == ItemType.GOLD:
+                    if run_stats:
+                        run_stats.gold_collected += item.count
                     persistence.save_meta()
+                elif run_stats:
+                    run_stats.ingredients_collected[item.type] += item.count
 
         # Check for exit
         maps = esper.get_component(Map)
@@ -156,7 +172,9 @@ def handle_exploring_input(event):
             if game_map.tiles[player_pos.x][player_pos.y].is_exit:
                 if game_state.floor >= MAX_FLOORS:
                     log.add_simple_message('Level Complete!', color=(255, 255, 0))
-                    raise SystemExit()
+                    if run_stats:
+                        run_stats.won = True
+                    return DisplayMode.GAME_OVER
                 else:
                     esper.create_entity(
                         Modal(
@@ -321,6 +339,9 @@ def _handle_experiment_input(event, ui_state, keybindings):
         # Record the recipe discovery
         if stype not in player_recipes.recipes:
             player_recipes.recipes[stype] = set()
+            run_stats = get_singleton(RunStats)
+            if run_stats:
+                run_stats.spells_discovered += 1
         player_recipes.recipes[stype].add(flat_selection)
 
         # PERSISTENT META-PROGRESSION: Save grimoire on discovery

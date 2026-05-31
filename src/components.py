@@ -1,4 +1,5 @@
 import enum
+from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, ClassVar, NamedTuple, NotRequired, TypedDict
@@ -401,3 +402,17 @@ class Shopkeeper:
     stock rolled when this shop floor was generated."""
 
     offers: list[ShopOffer] = field(default_factory=list[ShopOffer])
+
+
+@dataclass
+class RunStats:
+    """Per-run tally shown on the game-over / victory summary. A fresh one is created
+    each new run; the deepest floor is read from GameState at display time."""
+
+    enemies_defeated: int = 0
+    gold_collected: int = 0
+    spells_discovered: int = 0
+    damage_dealt: int = 0
+    spells_cast: Counter[SpellType] = field(default_factory=Counter[SpellType])
+    ingredients_collected: Counter[ItemType] = field(default_factory=Counter[ItemType])
+    won: bool = False

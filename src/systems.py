@@ -1,5 +1,4 @@
 import random
-import sys
 from collections import Counter
 from dataclasses import replace
 from typing import TYPE_CHECKING
@@ -28,12 +27,12 @@ from src.components import (
     KnownRecipes,
     Loot,
     MessageLog,
-    Modal,
     PatrolTag,
     PlayerTag,
     Point,
     Position,
     Renderable,
+    RunStats,
     ScreenFlash,
     SpellConfig,
     SpellInventory,
@@ -109,10 +108,21 @@ def trigger_cast_visual(center: Point, radius: int, color: tuple[int, int, int])
     )
 
 
+def record_damage_dealt(target_ent: int, amount: int):
+    """Tally damage the player caused for the run summary. Enemies only ever damage
+    the player, so counting damage to any non-player entity equals player-dealt damage."""
+    if esper.has_component(target_ent, PlayerTag):
+        return
+    run_stats = get_singleton(RunStats)
+    if run_stats:
+        run_stats.damage_dealt += amount
+
+
 def deal_damage(target_ent: int, amount: int, message: str, color: tuple[int, int, int]):
     """Apply damage to a target's Stats and log a message."""
     stats = esper.component_for_entity(target_ent, Stats)
     stats.hp -= amount
+    record_damage_dealt(target_ent, amount)
     trigger_screen_flash(ent=target_ent, color=UI_RED)
     log = get_singleton(MessageLog)
     if log:
@@ -141,17 +151,14 @@ class DeathSystem(esper.Processor):
             if stats.hp <= 0:
                 if esper.has_component(ent, PlayerTag):
                     debug_log(f'DeathSystem: player {ent} died (hp={stats.hp})')
-                    if not esper.get_component(Modal):
-                        esper.create_entity(
-                            Modal(
-                                message='You have died! Press Enter to quit.',
-                                on_close=lambda: sys.exit(),
-                            )
-                        )
+                    get_singleton(GameState).display_mode = DisplayMode.GAME_OVER
                 else:
                     debug_log(f'DeathSystem: deleting {ent} ({get_display_name(ent)})')
                     if log:
                         log.add_simple_message(f'The {get_display_name(ent)} dies!', color=(255, 255, 0))
+                    run_stats = get_singleton(RunStats)
+                    if run_stats:
+                        run_stats.enemies_defeated += 1
                     self._drop_loot(ent)
                     esper.delete_entity(ent)
 
@@ -187,6 +194,7 @@ def _apply_status_pulse(ent: int, status_type: StatusType, power: int, log: Mess
 
     if status_type == StatusType.POISON:
         stats.hp -= power
+        record_damage_dealt(ent, power)
         trigger_screen_flash(ent=ent, color=UI_GREEN)
         if log:
             log.add_simple_message(f'{name} took {power} poison damage!', color=(50, 200, 50))
@@ -582,6 +590,7 @@ def apply_effect(target_ent: int, effect: Effect, log: MessageLog):
 
     if effect.type == EffectType.DAMAGE:
         stats.hp -= effect.power
+        record_damage_dealt(target_ent, effect.power)
         trigger_screen_flash(ent=target_ent, color=UI_RED)
         log.add_simple_message(f'{target_name} took {effect.power} damage!', color=(255, 100, 0))
 
@@ -698,6 +707,10 @@ def cast_spell(spell_id: str, target_x: int, target_y: int):
 
     # Consume charge
     player_spell_inv.spells[stype] -= 1
+
+    run_stats = get_singleton(RunStats)
+    if run_stats:
+        run_stats.spells_cast[stype] += 1
 
     # Look up config
     s_conf = get_spell_config(spell_id)

@@ -13,6 +13,7 @@ from src.components import (
     PlayerTag,
     Position,
     Renderable,
+    RunStats,
     SpellInventory,
     Stats,
     StatusEffects,
@@ -47,6 +48,11 @@ def create_configuration(configs):
 def create_ui_state():
     """Create the singleton UIState entity."""
     return esper.create_entity(UIState())
+
+
+def create_run_stats():
+    """Create the singleton RunStats entity for a fresh run."""
+    return esper.create_entity(RunStats())
 
 
 def create_keybindings():

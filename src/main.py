@@ -25,12 +25,14 @@ from src.entities import (
     create_keybindings,
     create_message_log,
     create_player,
+    create_run_stats,
     create_ui_state,
 )
 from src.input_handlers import (
     handle_casting_input,
     handle_combining_input,
     handle_exploring_input,
+    handle_game_over_input,
     handle_menu_input,
     handle_modal_input,
     handle_settings_input,
@@ -70,6 +72,7 @@ def init_game_world(asset_loader: AssetLoader):
     create_configuration(configs)
     create_ui_state()
     create_keybindings()
+    create_run_stats()
 
     # Generate Dungeon & Spawns
     game_map, player_start = generate_dungeon(
@@ -145,6 +148,8 @@ def dispatch_input(event: tcod.event.Event, game_state: GameState):
         game_state.display_mode = handle_shop_input(event)
     elif game_state.display_mode == DisplayMode.SETTINGS:
         game_state.display_mode = handle_settings_input(event)
+    elif game_state.display_mode == DisplayMode.GAME_OVER:
+        game_state.display_mode = handle_game_over_input(event)
 
 
 def apply_pending_transition(game_state: GameState, asset_loader: AssetLoader) -> None:
@@ -164,6 +169,9 @@ def apply_pending_transition(game_state: GameState, asset_loader: AssetLoader) -
         esper.clear_database()
         init_game_world(asset_loader)
         get_singleton(GameState).display_mode = DisplayMode.EXPLORING
+    elif mode == DisplayMode.RETURN_TO_TITLE:
+        esper.clear_database()
+        init_main_menu()
     elif mode == DisplayMode.SAVING:
         persistence.save_game()
         log = get_singleton(MessageLog)
