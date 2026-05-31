@@ -12,6 +12,9 @@ spells:
         charges: 3
       - ingredients: [fire_crystal, fire_crystal, fire_crystal]
         charges: 7
+    shop:
+      price: 40
+      charges: 3
   - id: ice_lance
     name: Ice Lance
     description: A spear of ice that pierces and chills its target.
@@ -36,6 +39,9 @@ spells:
     recipes:
       - ingredients: [mystic_herb, mystic_herb]
         charges: 2
+    shop:
+      price: 30
+      charges: 2
   - id: steam_blast
     name: Steam Blast
     description: A scalding burst of steam that scorches a small area.
@@ -86,3 +92,18 @@ spells:
     recipes:
       - ingredients: [fire_crystal, mystic_herb]
         charges: 3
+  - id: meteor
+    name: Meteor
+    description: Calls down a devastating meteor, scorching a wide area.
+    rare: true
+    range: 7
+    radius: 2
+    effects:
+      - type: damage
+        power: 50
+    recipes:
+      - ingredients: [fire_crystal, fire_crystal, ice_shard, mystic_herb]
+        charges: 1
+    shop:
+      price: 120
+      charges: 1

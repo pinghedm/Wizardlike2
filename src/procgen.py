@@ -21,6 +21,7 @@ from src.components import (
     Point,
     Position,
     Renderable,
+    Shopkeeper,
     Stats,
     StatusEffects,
 )
@@ -34,7 +35,13 @@ from src.constants import (
 )
 from src.ecs_helpers import get_singleton, spawn_item_entity
 from src.map_objects import Map, Tile
+from src.shop import build_shop_offers
 from src.states import GameState
+
+
+def is_shop_floor(floor: int) -> bool:
+    """Whether `floor` is a safe shop floor rather than a combat level."""
+    return floor % 3 == 0
 
 
 def transition_to_next_floor():
@@ -46,7 +53,7 @@ def transition_to_next_floor():
     max_rooms = MAX_ROOMS + (game_state.floor // 2)
     max_items = MAX_ITEMS_PER_ROOM + (game_state.floor // 5)
 
-    # 3. Clear existing non-persistent entities (Items/Enemies).
+    # 3. Clear existing non-persistent entities (Items/Enemies/Shopkeeper).
     # immediate=True so the floor is rebuilt to a clean state synchronously; esper's
     # default deferred delete would leave stale entities visible to get_component until
     # the next process() tick.
@@ -54,14 +61,19 @@ def transition_to_next_floor():
         esper.delete_entity(ent, immediate=True)
     for ent, _ in esper.get_component(Enemy):
         esper.delete_entity(ent, immediate=True)
+    for ent, _ in esper.get_component(Shopkeeper):
+        esper.delete_entity(ent, immediate=True)
 
-    # 4. Generate new map
-    new_map, player_start = generate_dungeon(
-        max_rooms=max_rooms,
-        room_min_size=ROOM_MIN_SIZE,
-        room_max_size=ROOM_MAX_SIZE,
-        max_items_per_room=max_items,
-    )
+    # 4. Generate the new floor (a shop floor on every third level).
+    if is_shop_floor(game_state.floor):
+        new_map, player_start = generate_shop_floor()
+    else:
+        new_map, player_start = generate_dungeon(
+            max_rooms=max_rooms,
+            room_min_size=ROOM_MIN_SIZE,
+            room_max_size=ROOM_MAX_SIZE,
+            max_items_per_room=max_items,
+        )
 
     # 5. Replace the Map entity. immediate=True so the stale map is gone before
     # anything queries the singleton Map again (see note above).
@@ -175,6 +187,16 @@ def spawn_enemy(
     return esper.create_entity(*components)
 
 
+def spawn_shopkeeper(x: int, y: int) -> int:
+    """Create the vendor at (x, y) with freshly rolled stock. Open the shop by
+    pressing Confirm while standing next to it."""
+    return esper.create_entity(
+        Position(x, y),
+        Renderable(sprite_id='shopkeeper', color=(255, 215, 0)),
+        Shopkeeper(offers=build_shop_offers()),
+    )
+
+
 def tunnel_between(start: Point, end: Point):
     x1, y1 = start
     x2, y2 = end
@@ -247,28 +269,17 @@ def _spawn_exit_guardians(dungeon: Map, exit_room: RectangularRoom, rooms: list[
         spawn_enemy(guardian_cfg, entrance.x, entrance.y, rooms)
 
 
-def generate_dungeon(
-    max_rooms: int,
-    room_min_size: int,
-    room_max_size: int,
-    max_items_per_room: int,
-) -> tuple[Map, Point]:
-    # Retrieve current floor from GameState
-    try:
-        game_state = esper.get_component(GameState)[0][1]
-        floor_number = game_state.floor
-    except IndexError, KeyError:
-        floor_number = 1
+def _current_floor() -> int:
+    game_state = get_singleton(GameState)
+    return game_state.floor if game_state else 1
 
-    # 1. Select tiles for this floor based on depth. Tiles live on the
-    # Configuration singleton (created at startup), so query it directly rather
-    # than threading the config through every call site.
+
+def _select_floor_tiles(floor_number: int) -> tuple[Tile, Tile, Tile]:
+    """Pick (wall, floor, exit) tiles appropriate to `floor_number`'s depth. Tiles
+    live on the Configuration singleton, so query it directly rather than threading
+    the config through every call site."""
     tiles_config = get_singleton(Configuration).tiles
     available_tiles = [t for t in tiles_config if t['depth'][0] <= floor_number <= t['depth'][1]]
-
-    wall_cfg = random.choice([t for t in available_tiles if t['type'] == 'wall'])
-    floor_cfg = random.choice([t for t in available_tiles if t['type'] == 'floor'])
-    exit_cfg = random.choice([t for t in available_tiles if t['type'] == 'exit'])
 
     def make_tile(cfg, walkable, transparent, is_exit=False):
         return Tile(
@@ -280,15 +291,31 @@ def generate_dungeon(
             is_exit=is_exit,
         )
 
-    wall_tile = make_tile(wall_cfg, False, False)
-    floor_tile = make_tile(floor_cfg, True, True)
-    exit_tile = make_tile(exit_cfg, True, True, is_exit=True)
+    wall_tile = make_tile(random.choice([t for t in available_tiles if t['type'] == 'wall']), False, False)
+    floor_tile = make_tile(random.choice([t for t in available_tiles if t['type'] == 'floor']), True, True)
+    exit_tile = make_tile(random.choice([t for t in available_tiles if t['type'] == 'exit']), True, True, is_exit=True)
+    return wall_tile, floor_tile, exit_tile
 
+
+def _announce_floor(floor_number: int):
+    logs = esper.get_component(MessageLog)
+    if logs:
+        logs[0][1].add_simple_message(f'Entered level {floor_number}', color=(255, 255, 255))
+
+
+def generate_dungeon(
+    max_rooms: int,
+    room_min_size: int,
+    room_max_size: int,
+    max_items_per_room: int,
+) -> tuple[Map, Point]:
+    floor_number = _current_floor()
+    wall_tile, floor_tile, exit_tile = _select_floor_tiles(floor_number)
     item_types = list(ItemType)
 
-    # Build rooms until the exit can sit at least EXIT_MIN_ROOM_DISTANCE rooms from
-    # the player's start. Rooms form a linear chain, so this is essentially always
-    # satisfied on the first attempt; the retry is a safety net for sparse maps.
+    # Retry until the exit can sit at least EXIT_MIN_ROOM_DISTANCE rooms from the
+    # player's start; rooms form a linear chain, so this almost always holds on
+    # the first attempt.
     for _attempt in range(10):
         dungeon = Map(MAP_WIDTH, MAP_HEIGHT, wall_tile)
         rooms: list[RectangularRoom] = []
@@ -304,7 +331,6 @@ def generate_dungeon(
             if any(new_room.intersects(other) for other in rooms):
                 continue
 
-            # Dig room
             for rx in range(new_room.x1 + 1, new_room.x2):
                 for ry in range(new_room.y1 + 1, new_room.y2):
                     dungeon.set_tile(rx, ry, floor_tile)
@@ -315,37 +341,48 @@ def generate_dungeon(
                 for p in tunnel_between(rooms[-1].center, new_room.center):
                     dungeon.set_tile(p.x, p.y, floor_tile)
 
-                # Populate room item data
                 num_items = random.randint(0, max_items_per_room)
                 for _ in range(num_items):
                     ix = random.randint(new_room.x1 + 1, new_room.x2 - 1)
                     iy = random.randint(new_room.y1 + 1, new_room.y2 - 1)
                     p = Point(ix, iy)
-                    if p not in new_room.items:
-                        new_room.items[p] = []
-                    new_room.items[p].append(random.choice(item_types))
+                    new_room.items.setdefault(p, []).append(random.choice(item_types))
 
             rooms.append(new_room)
 
         if _select_exit_room(rooms) is not None:
             break
 
-    # Spawn all items/enemies
     for i, room in enumerate(rooms):
-        # Don't spawn enemies in the player's starting room (the first room)
         room.spawn_entities(rooms, spawn_enemies=(i > 0))
 
-    # Place the exit at least EXIT_MIN_ROOM_DISTANCE rooms from the player, then
-    # guard every entrance to its room with non-walkable sentinels.
     exit_room = _select_exit_room(rooms) or (rooms[-1] if rooms else None)
     if exit_room is not None:
         exit_p = exit_room.center
         dungeon.set_tile(exit_p.x, exit_p.y, exit_tile)
         _spawn_exit_guardians(dungeon, exit_room, rooms, floor_number)
 
-    # Announce floor entry
-    logs = esper.get_component(MessageLog)
-    if logs:
-        log = logs[0][1]
-        log.add_simple_message(f'Entered level {floor_number}', color=(255, 255, 255))
+    _announce_floor(floor_number)
+    return dungeon, player_start
+
+
+def generate_shop_floor() -> tuple[Map, Point]:
+    """A safe single-room shop: the player enters beside the shopkeeper, with an
+    exit across the room to descend. No items, enemies, or guardians."""
+    floor_number = _current_floor()
+    wall_tile, floor_tile, exit_tile = _select_floor_tiles(floor_number)
+
+    dungeon = Map(MAP_WIDTH, MAP_HEIGHT, wall_tile)
+    w, h = ROOM_MAX_SIZE, ROOM_MIN_SIZE
+    room = RectangularRoom((MAP_WIDTH - w) // 2, (MAP_HEIGHT - h) // 2, w, h, dungeon)
+    for rx in range(room.x1 + 1, room.x2):
+        for ry in range(room.y1 + 1, room.y2):
+            dungeon.set_tile(rx, ry, floor_tile)
+
+    cy = room.center.y
+    player_start = Point(room.x1 + 2, cy)
+    spawn_shopkeeper(player_start.x + 1, cy)
+    dungeon.set_tile(room.x2 - 2, cy, exit_tile)
+
+    _announce_floor(floor_number)
     return dungeon, player_start

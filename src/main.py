@@ -34,6 +34,7 @@ from src.input_handlers import (
     handle_menu_input,
     handle_modal_input,
     handle_settings_input,
+    handle_shop_input,
     handle_targeting_input,
 )
 from src.layout import Layout
@@ -140,6 +141,8 @@ def dispatch_input(event: tcod.event.Event, game_state: GameState):
         game_state.display_mode = handle_casting_input(event)
     elif game_state.display_mode == DisplayMode.TARGETING:
         game_state.display_mode = handle_targeting_input(event)
+    elif game_state.display_mode == DisplayMode.SHOPPING:
+        game_state.display_mode = handle_shop_input(event)
     elif game_state.display_mode == DisplayMode.SETTINGS:
         game_state.display_mode = handle_settings_input(event)
 

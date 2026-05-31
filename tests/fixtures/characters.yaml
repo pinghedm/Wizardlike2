@@ -1,3 +1,5 @@
 characters:
   - id: player
     char: "@"
+  - id: shopkeeper
+    char: "M"

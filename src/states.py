@@ -8,6 +8,7 @@ class DisplayMode(enum.Enum):
     COMBINING = enum.auto()
     CASTING = enum.auto()
     TARGETING = enum.auto()
+    SHOPPING = enum.auto()
     SETTINGS = enum.auto()
     LOADING_SAVE = enum.auto()
     STARTING_NEW_GAME = enum.auto()

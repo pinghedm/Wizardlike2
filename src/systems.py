@@ -434,6 +434,7 @@ class RenderSystem(esper.Processor):
             DisplayMode.CASTING,
             DisplayMode.COMBINING,
             DisplayMode.TARGETING,
+            DisplayMode.SHOPPING,
         ]:
             return
 
@@ -623,13 +624,17 @@ def is_reagent(itype: ItemType) -> bool:
     return itype not in NON_REAGENT_ITEMS
 
 
-def match_recipe(selection: tuple) -> tuple[SpellType, int] | None:
+def match_recipe(selection: tuple, hide_rare: bool = True) -> tuple[SpellType, int] | None:
     """Match a sorted ingredient selection to a spell recipe.
 
-    Returns (spell_type, charges) for the first matching recipe, or None.
+    Returns (spell_type, charges) for the first matching recipe, or None. Rare
+    spells are shop-only and can't be discovered by combining, so they're skipped
+    unless `hide_rare` is False (e.g. re-crafting one already learned at a shop).
     """
     configs = esper.get_component(Configuration)[0][1]
     for s_conf in configs.spells:
+        if hide_rare and s_conf.get('rare'):
+            continue
         for r_data in s_conf['recipes']:
             if r_data['ingredients'] == selection:
                 return SpellType(s_conf['id']), r_data['charges']
@@ -669,7 +674,7 @@ def craft_known_spell(stype: SpellType) -> int | None:
     combo = _affordable_recipe(inventory, recipes.recipes.get(stype, set()))
     if combo is None:
         return None
-    match = match_recipe(combo)
+    match = match_recipe(combo, hide_rare=False)
     if match is None:
         return None
     charges = match[1]

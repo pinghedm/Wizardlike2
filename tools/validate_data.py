@@ -25,7 +25,13 @@ ALLOWED_SPELL_FIELDS = {
     'radius',
     'effects',
     'recipes',
+    'shop',
+    'rare',
 }
+
+ALLOWED_INGREDIENT_FIELDS = {'id', 'name', 'char', 'sprite', 'color', 'price'}
+
+ALLOWED_SHOP_FIELDS = {'price', 'charges'}
 
 ALLOWED_ENEMY_FIELDS = {
     'id',
@@ -77,6 +83,26 @@ def validate_effects(effects, context_label: str) -> int:
             elif not isinstance(effect[req_field], int) or effect[req_field] <= 0:
                 print(f'ERROR: {context_label} effect #{eff_idx} field "{req_field}" must be a positive integer.')
                 errors += 1
+    return errors
+
+
+def validate_shop(shop, context_label: str) -> int:
+    """Validate a spell's `shop` listing. Returns the number of errors found."""
+    if not isinstance(shop, dict):
+        print(f'ERROR: {context_label} "shop" must be a mapping.')
+        return 1
+
+    errors = 0
+    for key in sorted(set(shop) - ALLOWED_SHOP_FIELDS):
+        print(f'ERROR: {context_label} shop has unexpected field "{key}".')
+        errors += 1
+    for f in ('price', 'charges'):
+        if f not in shop:
+            print(f'ERROR: {context_label} shop missing "{f}".')
+            errors += 1
+        elif not isinstance(shop[f], int) or shop[f] <= 0:
+            print(f'ERROR: {context_label} shop "{f}" must be a positive integer.')
+            errors += 1
     return errors
 
 
@@ -158,6 +184,14 @@ def validate_data() -> bool:
                 print(f'ERROR: Ingredient "{iid}" missing "{field}".')
                 errors += 1
 
+        for field in sorted(set(ing) - ALLOWED_INGREDIENT_FIELDS):
+            print(f'ERROR: Ingredient "{iid}" has unexpected field "{field}".')
+            errors += 1
+
+        if 'price' in ing and (not isinstance(ing['price'], int) or ing['price'] <= 0):
+            print(f'ERROR: Ingredient "{iid}" price must be a positive integer.')
+            errors += 1
+
     # 2. Validate Spells
     if not spells_file.exists():
         print(f'Note: {spells_file} not found, skipping spell validation.')
@@ -194,6 +228,13 @@ def validate_data() -> bool:
             if 'description' in spell and not isinstance(spell['description'], str):
                 print(f'ERROR: Spell "{sid}" description must be a string.')
                 errors += 1
+
+            if 'rare' in spell and not isinstance(spell['rare'], bool):
+                print(f'ERROR: Spell "{sid}" rare must be a boolean.')
+                errors += 1
+
+            if 'shop' in spell:
+                errors += validate_shop(spell['shop'], f'Spell "{sid}"')
 
             for field in ['range', 'radius']:
                 if field not in spell:

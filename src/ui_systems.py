@@ -17,6 +17,7 @@ from src.components import (
     PlayerTag,
     Position,
     ScreenFlash,
+    Shopkeeper,
     SpellInventory,
     Stats,
     TargetingReticle,
@@ -74,6 +75,8 @@ class MenuSystem(esper.Processor):
             self.render_combining_menu()
         elif game_state.display_mode == DisplayMode.CASTING:
             self.render_casting_menu()
+        elif game_state.display_mode == DisplayMode.SHOPPING:
+            self.render_shop_menu()
         elif game_state.display_mode == DisplayMode.SETTINGS:
             self.render_settings_menu()
 
@@ -261,6 +264,37 @@ class MenuSystem(esper.Processor):
             'Arrows: Select | Enter: Target | S/Esc: Cancel',
             fg=UI_GRAY,
         )
+
+    def render_shop_menu(self):
+        ui_state = get_singleton(UIState)
+        shopkeepers = esper.get_component(Shopkeeper)
+        player_inv = get_singleton(Inventory)
+        if not ui_state or not shopkeepers or not player_inv:
+            return
+        offers = shopkeepers[0][1].offers
+        gold = player_inv.items.get(ItemType.GOLD, 0)
+
+        width, height = 58, 14
+        x, y = draw_centered_frame(self.console, width, height, title='Shop')
+        self.console.print(x + 2, y + 1, f'Gold: {gold}', fg=UI_YELLOW)
+
+        if not offers:
+            self.console.print(x + 2, y + 3, 'Sold out.', fg=UI_GRAY_DARK)
+        else:
+            cursor = ui_state.shop_cursor % len(offers)
+            for i, offer in enumerate(offers):
+                selected = i == cursor
+                affordable = gold >= offer.price
+                color = (UI_YELLOW if selected else UI_WHITE) if affordable else UI_GRAY_DARK
+                marker = '> ' if selected else '  '
+                row_text = f'{marker}{offer.label:<30}{offer.price:>4} G'
+                self.console.print(x + 2, y + 3 + i, row_text, fg=color)
+                if selected:
+                    qty = ui_state.shop_quantity
+                    detail = f'x{qty} ({offer.price * qty} G)'
+                    self.console.print(x + 2 + len(row_text) + 2, y + 3 + i, detail, fg=color)
+
+        self.console.print(x + 2, y + height - 2, 'L/R: Qty | Enter: Buy | Esc: Leave', fg=UI_GRAY)
 
     def render_settings_menu(self):
         ui_state = get_singleton(UIState)
@@ -470,6 +504,7 @@ class HUDSystem(esper.Processor):
             DisplayMode.CASTING,
             DisplayMode.COMBINING,
             DisplayMode.TARGETING,
+            DisplayMode.SHOPPING,
         ]:
             return
 

@@ -3,14 +3,17 @@ ingredients:
     name: Fire Crystal
     char: "\u2588"
     color: [255, 0, 0]
+    price: 8
   - id: ice_shard
     name: Ice Shard
     char: "\u2588"
     color: [0, 255, 255]
+    price: 8
   - id: mystic_herb
     name: Mystic Herb
     char: "\u2588"
     color: [0, 255, 0]
+    price: 10
   - id: gold
     name: Gold
     char: "$"

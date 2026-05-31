@@ -29,6 +29,15 @@ DISPLAY_SCALE = 2
 # earlier floors descend deeper. Tune for run length / difficulty.
 MAX_FLOORS = 10
 
+# Bases for the shopkeeper's healing service. Each shop scales both the gold cost
+# and the HP restored up with depth from these values.
+SHOP_HEAL_BASE_PRICE = 20
+SHOP_HEAL_BASE_AMOUNT = 50
+
+# Chance per shop tier (floor // 3) that a shop also stocks a rare, shop-only spell:
+# ~10% at floor 3, ~20% at 6, ~30% at 9.
+SHOP_RARE_SPELL_CHANCE = 0.1
+
 # Cooldown (in ticks) the player incurs per move/cast, before status modifiers.
 # At TICKS_PER_SECOND this caps the player's action rate; SLOW doubles it and
 # HASTE halves it (see get_cooldown). Lower = more responsive movement.

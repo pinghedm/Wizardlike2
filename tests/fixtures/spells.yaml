@@ -12,6 +12,9 @@ spells:
     recipes:
       - ingredients: [reagent_a, reagent_b]
         charges: 3
+    shop:
+      price: 25
+      charges: 4
   - id: test_blast
     name: Test Blast
     description: A test blast that damages a small area.
@@ -23,3 +26,18 @@ spells:
     recipes:
       - ingredients: [reagent_a, reagent_a]
         charges: 5
+  - id: test_rare
+    name: Test Rare
+    description: A rare spell sold only at shops.
+    rare: true
+    range: 6
+    radius: 1
+    effects:
+      - type: damage
+        power: 40
+    recipes:
+      - ingredients: [reagent_a, reagent_b, reagent_c]
+        charges: 1
+    shop:
+      price: 50
+      charges: 1

@@ -26,6 +26,8 @@ class SpellConfig(TypedDict):
     radius: int
     effects: list[Effect]
     recipes: list[RecipeConfig]
+    shop: NotRequired[ShopConfig]
+    rare: NotRequired[bool]
 
 
 class IngredientConfig(TypedDict):
@@ -33,6 +35,14 @@ class IngredientConfig(TypedDict):
     name: str
     char: str
     color: list[int]
+    price: NotRequired[int]
+
+
+class ShopConfig(TypedDict):
+    """A spell's shop listing: gold cost and charges granted per purchase."""
+
+    price: int
+    charges: int
 
 
 class TileConfig(TypedDict):
@@ -83,6 +93,12 @@ class EffectType(enum.StrEnum):
     HASTE = 'haste'
     POISON = 'poison'
     REGEN = 'regen'
+
+
+class ShopOfferKind(enum.StrEnum):
+    INGREDIENT = 'ingredient'
+    SPELL = 'spell'
+    HEAL = 'heal'
 
 
 @dataclass
@@ -211,6 +227,8 @@ class UIState:
     active_targeting_spell_id: str | None = None
     crafting_view: CraftingView = CraftingView.EXPERIMENT
     spellbook_cursor: int = 0
+    shop_cursor: int = 0
+    shop_quantity: int = 1
 
 
 @dataclass
@@ -363,3 +381,23 @@ class CastVisual:
 
 class PlayerTag:
     pass
+
+
+@dataclass
+class ShopOffer:
+    """One line in the shopkeeper's stock. `purchaseable` is the ingredient or
+    spell bought (None for heal); `amount` is the per-unit count, charges, or HP."""
+
+    kind: ShopOfferKind
+    price: int
+    label: str
+    purchaseable: ItemType | SpellType | None = None
+    amount: int = 0
+
+
+@dataclass
+class Shopkeeper:
+    """A non-hostile vendor; press Confirm while adjacent to trade. Holds the
+    stock rolled when this shop floor was generated."""
+
+    offers: list[ShopOffer] = field(default_factory=list[ShopOffer])

@@ -16,6 +16,7 @@ from src.components import (
     Modal,
     PlayerTag,
     Position,
+    Shopkeeper,
     SpellInventory,
     StatusEffects,
     StatusType,
@@ -25,6 +26,7 @@ from src.components import (
 from src.constants import MAX_FLOORS
 from src.map_objects import Map
 from src.procgen import transition_to_next_floor
+from src.shop import purchase_offer
 from src.states import (
     PAUSE_MENU_OPTIONS,
     TITLE_MENU_OPTIONS,
@@ -67,6 +69,14 @@ def _player_is_slowed(player: int) -> bool:
     return StatusType.SLOW in esper.component_for_entity(player, StatusEffects).active
 
 
+def _adjacent_shopkeeper(player_pos: Position) -> bool:
+    """True if a shopkeeper is within one tile of the player (including their tile)."""
+    for _ent, (pos, _sk) in esper.get_components(Position, Shopkeeper):
+        if max(abs(pos.x - player_pos.x), abs(pos.y - player_pos.y)) <= 1:
+            return True
+    return False
+
+
 def handle_exploring_input(event):
     game_state = esper.get_component(GameState)[0][1]
     keybindings = esper.get_component(Keybindings)[0][1]
@@ -94,6 +104,8 @@ def handle_exploring_input(event):
         return DisplayMode.COMBINING
     elif event.sym == keybindings.bindings['OPEN_CASTING']:
         return DisplayMode.CASTING
+    elif event.sym == keybindings.bindings['CONFIRM'] and _adjacent_shopkeeper(player_pos):
+        return DisplayMode.SHOPPING
     elif event.sym == tcod.event.KeySym.PAGEUP:
         log = esper.get_component(MessageLog)[0][1]
         log.scroll_index += 1
@@ -503,3 +515,49 @@ def handle_targeting_input(event):
         return DisplayMode.CASTING
 
     return DisplayMode.TARGETING
+
+
+def handle_shop_input(event):
+    if not isinstance(event, tcod.event.KeyDown):
+        return DisplayMode.SHOPPING
+
+    ui_state = esper.get_component(UIState)[0][1]
+    keybindings = esper.get_component(Keybindings)[0][1]
+
+    shopkeepers = esper.get_component(Shopkeeper)
+    player_entities = esper.get_components(Inventory, PlayerTag)
+    if not shopkeepers or not player_entities:
+        return DisplayMode.EXPLORING
+    offers = shopkeepers[0][1].offers
+    _player, (player_inv, _tag) = player_entities[0]
+
+    if event.sym == keybindings.bindings['CANCEL']:
+        return DisplayMode.EXPLORING
+    if not offers:
+        return DisplayMode.SHOPPING
+
+    ui_state.shop_cursor %= len(offers)
+    offer = offers[ui_state.shop_cursor]
+    max_qty = max(1, player_inv.items.get(ItemType.GOLD, 0) // offer.price)
+    ui_state.shop_quantity = max(1, min(ui_state.shop_quantity, max_qty))
+
+    if event.sym == keybindings.bindings['MOVE_UP']:
+        ui_state.shop_cursor = (ui_state.shop_cursor - 1) % len(offers)
+        ui_state.shop_quantity = 1
+    elif event.sym == keybindings.bindings['MOVE_DOWN']:
+        ui_state.shop_cursor = (ui_state.shop_cursor + 1) % len(offers)
+        ui_state.shop_quantity = 1
+    elif event.sym == keybindings.bindings['MOVE_LEFT']:
+        ui_state.shop_quantity = max(1, ui_state.shop_quantity - 1)
+    elif event.sym == keybindings.bindings['MOVE_RIGHT']:
+        ui_state.shop_quantity = min(max_qty, ui_state.shop_quantity + 1)
+    elif event.sym == keybindings.bindings['CONFIRM']:
+        log = esper.get_component(MessageLog)[0][1]
+        quantity = ui_state.shop_quantity
+        if purchase_offer(offer, quantity):
+            log.add_simple_message(f'Bought {quantity}x {offer.label}.', color=(0, 255, 255))
+        else:
+            log.add_simple_message('Not enough gold.', color=(255, 100, 100))
+        ui_state.shop_quantity = 1
+
+    return DisplayMode.SHOPPING
