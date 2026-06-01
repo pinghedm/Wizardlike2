@@ -1,4 +1,15 @@
 import os
+from collections.abc import Sequence
+
+# An (r, g, b) color, the form tcod consoles consume directly.
+type RGB = tuple[int, int, int]
+
+
+def to_rgb(color: Sequence[int]) -> RGB:
+    """Coerce a 3-element color sequence (e.g. a YAML list or numpy pixel) into an RGB tuple."""
+    r, g, b = color
+    return (int(r), int(g), int(b))
+
 
 # Dungeon size in tiles. Independent of the screen — kept larger than the map
 # viewport so the camera scrolls to follow the player rather than showing it all.
@@ -55,14 +66,15 @@ DATA_DIR = os.environ.get('WIZARDLIKE_DATA_DIR', 'data')
 SAVE_DIR = os.environ.get('WIZARDLIKE_SAVE_DIR', 'save_data')
 
 # UI colors
-UI_WHITE = (255, 255, 255)
-UI_YELLOW = (255, 255, 0)
-UI_GRAY = (200, 200, 200)
-UI_GRAY_DARK = (100, 100, 100)
-UI_CYAN = (0, 255, 255)
-UI_CYAN_DARK = (0, 200, 200)
-UI_RED = (255, 0, 0)
-UI_RED_DARK = (50, 0, 0)
-UI_GREEN = (40, 160, 40)
-UI_ORANGE = (255, 120, 0)
-UI_BLUE = (80, 120, 255)
+UI_BLACK: RGB = (0, 0, 0)
+UI_WHITE: RGB = (255, 255, 255)
+UI_YELLOW: RGB = (255, 255, 0)
+UI_GRAY: RGB = (200, 200, 200)
+UI_GRAY_DARK: RGB = (100, 100, 100)
+UI_CYAN: RGB = (0, 255, 255)
+UI_CYAN_DARK: RGB = (0, 200, 200)
+UI_RED: RGB = (255, 0, 0)
+UI_RED_DARK: RGB = (50, 0, 0)
+UI_GREEN: RGB = (40, 160, 40)
+UI_ORANGE: RGB = (255, 120, 0)
+UI_BLUE: RGB = (80, 120, 255)

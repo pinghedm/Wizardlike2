@@ -9,7 +9,7 @@ from collections import Counter
 import tcod
 
 from src.components import Effect, EffectType, ItemType, Message
-from src.constants import TICKS_PER_SECOND, UI_WHITE
+from src.constants import RGB, TICKS_PER_SECOND, UI_WHITE
 
 
 def format_recipe(combo: tuple[ItemType, ...]) -> str:
@@ -46,9 +46,10 @@ def _format_effect(effect: Effect) -> str:
     return by_type.get(effect.type, effect.type.value)
 
 
-def blend(base: tuple[int, int, int], color: tuple[int, int, int], alpha: float) -> tuple[int, int, int]:
+def blend(base: RGB, color: RGB, alpha: float) -> RGB:
     """Linearly blend `color` over `base` by `alpha` (0 -> base, 1 -> color)."""
-    return tuple(round(b * (1 - alpha) + c * alpha) for b, c in zip(base, color, strict=True))
+    r, g, b = (round(p * (1 - alpha) + q * alpha) for p, q in zip(base, color, strict=True))
+    return r, g, b
 
 
 def center_origin(console: tcod.console.Console, width: int, height: int) -> tuple[int, int]:

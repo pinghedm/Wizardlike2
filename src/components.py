@@ -4,9 +4,6 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, ClassVar, NamedTuple, NotRequired, TypedDict
 
-if TYPE_CHECKING:
-    from src.data_loaders import SpriteDefinition
-
 import tcod
 
 from src.constants import DATA_DIR
@@ -15,7 +12,9 @@ from src.states import CraftingView
 
 
 class RecipeConfig(TypedDict):
-    ingredients: list[ItemType]
+    # Stored as a sorted tuple (see load_spells_config) so it's hashable and can key
+    # the discovered-recipe sets in KnownRecipes.
+    ingredients: tuple[ItemType, ...]
     charges: int
 
 
@@ -53,12 +52,10 @@ class TileConfig(TypedDict):
     fg: list[int] | None
     bg: list[int] | None
     depth: list[int]
-    sprite: SpriteDefinition | None
 
 
 class EnemyConfig(TypedDict):
     id: str
-    sprite: SpriteDefinition
     color: list[int]
     hp: int
     damage: int
@@ -72,7 +69,17 @@ class EnemyConfig(TypedDict):
 
 class CharacterConfig(TypedDict):
     id: str
-    sprite: SpriteDefinition
+
+
+class GameConfigs(TypedDict):
+    """The bundle of parsed config returned by `get_game_configs`, used to build the
+    `Configuration` singleton."""
+
+    ingredients: dict[ItemType, IngredientConfig]
+    spells: list[SpellConfig]
+    characters: dict[str, CharacterConfig]
+    tiles: list[TileConfig]
+    enemies: dict[str, EnemyConfig]
 
 
 class Point(NamedTuple):
@@ -127,9 +134,10 @@ class EnemyAbility:
 
 
 if TYPE_CHECKING:
-
+    # The real enums are built from YAML at runtime (below); these stubs exist only so
+    # the type checker knows the members the code references by name.
     class ItemType(enum.StrEnum):
-        pass
+        GOLD = 'gold'
 
     class SpellType(enum.StrEnum):
         pass

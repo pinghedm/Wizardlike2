@@ -49,9 +49,10 @@ from src.constants import (
     UI_ORANGE,
     UI_RED,
     UI_YELLOW,
+    to_rgb,
 )
 from src.debug import debug_log
-from src.ecs_helpers import get_singleton, spawn_item_entity
+from src.ecs_helpers import get_singleton, spawn_item_entity, try_get_singleton
 from src.map_objects import Map
 from src.states import DisplayMode, GameState
 
@@ -65,7 +66,7 @@ def is_game_active() -> bool:
 
     Used to decide between the title menu and the in-game pause menu.
     """
-    return bool(esper.get_components(PlayerTag))
+    return bool(esper.get_component(PlayerTag))
 
 
 def get_display_name(entity: int) -> str:
@@ -73,6 +74,10 @@ def get_display_name(entity: int) -> str:
     if esper.has_component(entity, Renderable):
         return esper.component_for_entity(entity, Renderable).sprite_id
     return 'enemy'
+
+
+# Memoized Dijkstra maps, keyed by goal tile, so each target's map is built once per AI tick.
+type PathContext = dict[Point, tcod.path.Dijkstra]
 
 
 # Color a cast spell's impact burst by its first effect type.
@@ -113,7 +118,7 @@ def record_damage_dealt(target_ent: int, amount: int):
     the player, so counting damage to any non-player entity equals player-dealt damage."""
     if esper.has_component(target_ent, PlayerTag):
         return
-    run_stats = get_singleton(RunStats)
+    run_stats = try_get_singleton(RunStats)
     if run_stats:
         run_stats.damage_dealt += amount
 
@@ -124,7 +129,7 @@ def deal_damage(target_ent: int, amount: int, message: str, color: tuple[int, in
     stats.hp -= amount
     record_damage_dealt(target_ent, amount)
     trigger_screen_flash(ent=target_ent, color=UI_RED)
-    log = get_singleton(MessageLog)
+    log = try_get_singleton(MessageLog)
     if log:
         log.add_simple_message(message, color=color)
 
@@ -145,7 +150,7 @@ class DeathSystem(esper.Processor):
     """Handles death for all entities with Stats."""
 
     def process(self):
-        log = get_singleton(MessageLog)
+        log = try_get_singleton(MessageLog)
 
         for ent, stats in esper.get_component(Stats):
             if stats.hp <= 0:
@@ -156,7 +161,7 @@ class DeathSystem(esper.Processor):
                     debug_log(f'DeathSystem: deleting {ent} ({get_display_name(ent)})')
                     if log:
                         log.add_simple_message(f'The {get_display_name(ent)} dies!', color=(255, 255, 0))
-                    run_stats = get_singleton(RunStats)
+                    run_stats = try_get_singleton(RunStats)
                     if run_stats:
                         run_stats.enemies_defeated += 1
                     self._drop_loot(ent)
@@ -212,7 +217,7 @@ class StatusSystem(esper.Processor):
         if game_state.time_paused:
             return
 
-        log = get_singleton(MessageLog)
+        log = try_get_singleton(MessageLog)
         for ent, status in esper.get_component(StatusEffects):
             for status_type in list(status.active.keys()):
                 effect = status.active[status_type]
@@ -232,7 +237,7 @@ def _ai_target(ent: int) -> Point | None:
     return esper.component_for_entity(ent, AI).last_known_player_position
 
 
-def _compute_path(ent: int, target: Point | None, pathfinding_context: dict) -> list | None:
+def _compute_path(ent: int, target: Point | None, pathfinding_context: PathContext) -> list[tuple[int, int]] | None:
     """Dijkstra path from the entity to target, reusing a precomputed map if available."""
     if not target:
         return None
@@ -246,12 +251,10 @@ def _compute_path(ent: int, target: Point | None, pathfinding_context: dict) -> 
         pf.set_goal(target.x, target.y)
 
     path = pf.get_path(pos.x, pos.y)
-    if isinstance(path, np.ndarray):
-        path = path.tolist()
 
     # tcod's Dijkstra path excludes the goal; add it back if reachable.
     if path and (path[0][0] != target.x or path[0][1] != target.y):
-        path.insert(0, [target.x, target.y])
+        path.insert(0, (target.x, target.y))
 
     return path
 
@@ -264,7 +267,7 @@ def _remember_player_if_seen(ent: int):
         esper.component_for_entity(ent, AI).last_known_player_position = player_pos.point
 
 
-def _process_chase(ent: int, pos: Position, pathfinding_context: dict):
+def _process_chase(ent: int, pos: Position, pathfinding_context: PathContext):
     _remember_player_if_seen(ent)
     target = esper.component_for_entity(ent, AI).last_known_player_position
     path = _compute_path(ent, target, pathfinding_context)
@@ -273,7 +276,7 @@ def _process_chase(ent: int, pos: Position, pathfinding_context: dict):
         move_entity(ent, move_x - pos.x, move_y - pos.y)
 
 
-def _process_patrol(ent: int, pos: Position, pathfinding_context: dict):
+def _process_patrol(ent: int, pos: Position, pathfinding_context: PathContext):
     patrol = esper.component_for_entity(ent, PatrolTag)
     if pos.point == patrol.path[patrol.index]:
         patrol.index = (patrol.index + 1) % len(patrol.path)
@@ -291,13 +294,13 @@ def _process_patrol(ent: int, pos: Position, pathfinding_context: dict):
         patrol.index = (patrol.index + 1) % len(patrol.path)
 
 
-def _process_guard(ent: int, pos: Position, pathfinding_context: dict):
+def _process_guard(ent: int, pos: Position, pathfinding_context: PathContext):
     """Hold position. Guards never move; the AISystem still handles their melee
     and ranged attacks before reaching this movement branch."""
     pass
 
 
-def _process_flee(ent: int, pos: Position, pathfinding_context: dict):
+def _process_flee(ent: int, pos: Position, pathfinding_context: PathContext):
     _remember_player_if_seen(ent)
     target = esper.component_for_entity(ent, AI).last_known_player_position
     path = _compute_path(ent, target, pathfinding_context)
@@ -334,7 +337,7 @@ class AISystem(esper.Processor):
         if game_state.time_paused or game_state.display_mode != DisplayMode.EXPLORING:
             return
 
-        game_map = get_singleton(Map)
+        game_map = try_get_singleton(Map)
         if not game_map:
             return
 
@@ -351,7 +354,7 @@ class AISystem(esper.Processor):
                 targets_to_compute.add(target)
 
         cost = game_map.walkable.astype(np.int32)
-        pathfinding_context = {}
+        pathfinding_context: PathContext = {}
         for target in targets_to_compute:
             pf = tcod.path.Dijkstra(cost, diagonal=1.41)
             pf.set_goal(target.x, target.y)
@@ -364,10 +367,10 @@ class AISystem(esper.Processor):
                 continue
 
             enemy = esper.component_for_entity(ent, Enemy) if esper.has_component(ent, Enemy) else None
-            adjacent = enemy and abs(player_pos.x - pos.x) <= 1 and abs(player_pos.y - pos.y) <= 1
+            adjacent = abs(player_pos.x - pos.x) <= 1 and abs(player_pos.y - pos.y) <= 1
 
             # Melee if adjacent, else fire a ranged ability if one is in range, else move.
-            if adjacent:
+            if enemy and adjacent:
                 debug_log(f'AI {ent} ({get_display_name(ent)}) melee at {(pos.x, pos.y)}')
                 deal_damage(
                     player_ent,
@@ -434,9 +437,6 @@ class RenderSystem(esper.Processor):
 
     def process(self):
         game_state = get_singleton(GameState)
-        if not game_state:
-            return
-
         if game_state.display_mode not in [
             DisplayMode.EXPLORING,
             DisplayMode.CASTING,
@@ -447,7 +447,7 @@ class RenderSystem(esper.Processor):
             return
 
         # 1. Get the Map and Player FOV
-        game_map = get_singleton(Map)
+        game_map = try_get_singleton(Map)
         if not game_map:
             return
 
@@ -488,10 +488,10 @@ class RenderSystem(esper.Processor):
 
                 if not is_visible:
                     # Dim the colors for explored but not visible tiles
-                    fg = tuple(int(c * 0.3) for c in fg)
-                    bg = tuple(int(c * 0.3) for c in bg)
+                    fg = to_rgb([int(c * 0.3) for c in fg])
+                    bg = to_rgb([int(c * 0.3) for c in bg])
 
-                self.console.print(x=screen_x, y=screen_y, string=chr(codepoint), fg=fg, bg=bg)
+                self.console.print(x=screen_x, y=screen_y, text=chr(codepoint), fg=fg, bg=bg)
 
         # 3. Render all entities with Position and Renderable components that are visible
         for _ent, (pos, rend) in esper.get_components(Position, Renderable):
@@ -504,7 +504,7 @@ class RenderSystem(esper.Processor):
 
             codepoint = self.asset_loader.get_codepoint(rend.sprite_id)
             debug_log(f'render entity {_ent} sprite={rend.sprite_id} cp={codepoint} at {(pos.x, pos.y)}')
-            self.console.print(x=screen_x, y=screen_y, string=chr(codepoint), fg=rend.color)
+            self.console.print(x=screen_x, y=screen_y, text=chr(codepoint), fg=rend.color)
 
 
 def _destination_blocked(mover: int, x: int, y: int) -> bool:
@@ -535,7 +535,7 @@ def move_entity(entity: int, dx: int, dy: int):
     new_x = pos.x + dx
     new_y = pos.y + dy
 
-    game_map = get_singleton(Map)
+    game_map = try_get_singleton(Map)
     if not game_map:
         return
 
@@ -618,7 +618,7 @@ def apply_effect(target_ent: int, effect: Effect, log: MessageLog):
 
 def get_spell_config(spell_id: str) -> SpellConfig | None:
     """Look up a spell's config by id via the Configuration index (O(1))."""
-    configs = get_singleton(Configuration)
+    configs = try_get_singleton(Configuration)
     if configs is None:
         return None
     return configs.spells_by_id.get(spell_id)
@@ -633,7 +633,7 @@ def is_reagent(itype: ItemType) -> bool:
     return itype not in NON_REAGENT_ITEMS
 
 
-def match_recipe(selection: tuple, hide_rare: bool = True) -> tuple[SpellType, int] | None:
+def match_recipe(selection: tuple[ItemType, ...], hide_rare: bool = True) -> tuple[SpellType, int] | None:
     """Match a sorted ingredient selection to a spell recipe.
 
     Returns (spell_type, charges) for the first matching recipe, or None. Rare
@@ -650,7 +650,7 @@ def match_recipe(selection: tuple, hide_rare: bool = True) -> tuple[SpellType, i
     return None
 
 
-def _affordable_recipe(inventory: Inventory, combos) -> tuple | None:
+def _affordable_recipe(inventory: Inventory, combos: set[tuple[ItemType, ...]]) -> tuple[ItemType, ...] | None:
     """The cheapest combo (fewest ingredients) the inventory can fully pay for, or None."""
     for combo in sorted(combos, key=len):
         if all(inventory.items.get(itype, 0) >= count for itype, count in Counter(combo).items()):
@@ -660,8 +660,8 @@ def _affordable_recipe(inventory: Inventory, combos) -> tuple | None:
 
 def can_craft_known_spell(stype: SpellType) -> bool:
     """Whether the player can afford any known recipe for `stype` from current stock."""
-    recipes = get_singleton(KnownRecipes)
-    inventory = get_singleton(Inventory)
+    recipes = try_get_singleton(KnownRecipes)
+    inventory = try_get_singleton(Inventory)
     if recipes is None or inventory is None:
         return False
     return _affordable_recipe(inventory, recipes.recipes.get(stype, set())) is not None
@@ -674,9 +674,9 @@ def craft_known_spell(stype: SpellType) -> int | None:
     consumes those ingredients, and grants its charges. Returns the charges
     granted, or None if no known recipe for the spell is affordable.
     """
-    recipes = get_singleton(KnownRecipes)
-    inventory = get_singleton(Inventory)
-    spell_inv = get_singleton(SpellInventory)
+    recipes = try_get_singleton(KnownRecipes)
+    inventory = try_get_singleton(Inventory)
+    spell_inv = try_get_singleton(SpellInventory)
     if recipes is None or inventory is None or spell_inv is None:
         return None
 
@@ -708,7 +708,7 @@ def cast_spell(spell_id: str, target_x: int, target_y: int):
     # Consume charge
     player_spell_inv.spells[stype] -= 1
 
-    run_stats = get_singleton(RunStats)
+    run_stats = try_get_singleton(RunStats)
     if run_stats:
         run_stats.spells_cast[stype] += 1
 
@@ -728,7 +728,7 @@ def cast_spell(spell_id: str, target_x: int, target_y: int):
         trigger_cast_visual(center=Point(target_x, target_y), radius=radius, color=burst_color)
 
     # Find all entities in impact zone using Euclidean distance
-    targets = []
+    targets: list[int] = []
     for ent, (pos, _stats) in esper.get_components(Position, Stats):
         if not esper.has_component(ent, StatusEffects):
             continue

@@ -1,5 +1,6 @@
 import math
 from collections import Counter
+from collections.abc import Sequence
 
 import esper
 import numpy as np
@@ -12,6 +13,7 @@ from src.components import (
     ItemType,
     Keybindings,
     KnownRecipes,
+    Message,
     MessageLog,
     Modal,
     PlayerTag,
@@ -20,6 +22,7 @@ from src.components import (
     ScreenFlash,
     Shopkeeper,
     SpellInventory,
+    SpellType,
     Stats,
     TargetingReticle,
     UIState,
@@ -33,8 +36,9 @@ from src.constants import (
     UI_RED_DARK,
     UI_WHITE,
     UI_YELLOW,
+    to_rgb,
 )
-from src.ecs_helpers import get_singleton
+from src.ecs_helpers import get_singleton, try_get_singleton
 from src.layout import Layout, Rect
 from src.map_objects import Map
 from src.states import (
@@ -67,9 +71,6 @@ class MenuSystem(esper.Processor):
 
     def process(self):
         game_state = get_singleton(GameState)
-        if not game_state:
-            return
-
         if game_state.display_mode == DisplayMode.MENU:
             self.render_main_menu()
         elif game_state.display_mode == DisplayMode.COMBINING:
@@ -85,9 +86,6 @@ class MenuSystem(esper.Processor):
 
     def render_main_menu(self):
         ui_state = get_singleton(UIState)
-        if not ui_state:
-            return
-
         game_active = is_game_active()
         options = PAUSE_MENU_OPTIONS if game_active else TITLE_MENU_OPTIONS
         title = 'Paused' if game_active else 'WizardLike'
@@ -117,11 +115,11 @@ class MenuSystem(esper.Processor):
 
     def render_combining_menu(self):
         ui_state = get_singleton(UIState)
-        player_inv = get_singleton(Inventory)
-        player_recipes = get_singleton(KnownRecipes)
-        player_spell_inv = get_singleton(SpellInventory)
+        player_inv = try_get_singleton(Inventory)
+        player_recipes = try_get_singleton(KnownRecipes)
+        player_spell_inv = try_get_singleton(SpellInventory)
 
-        if not all([ui_state, player_inv, player_recipes, player_spell_inv]):
+        if player_inv is None or player_recipes is None or player_spell_inv is None:
             return
 
         width, height = 72, 24
@@ -138,11 +136,11 @@ class MenuSystem(esper.Processor):
 
         self.console.print(x + 2, y + height - 2, footer, fg=UI_GRAY)
 
-    def _render_crafting_tabs(self, tx, ty, view):
+    def _render_crafting_tabs(self, tx: int, ty: int, view: CraftingView):
         self.console.print(tx, ty, 'Experiment', fg=UI_YELLOW if view == CraftingView.EXPERIMENT else UI_GRAY_DARK)
         self.console.print(tx + 13, ty, 'Spellbook', fg=UI_YELLOW if view == CraftingView.SPELLBOOK else UI_GRAY_DARK)
 
-    def _render_experiment(self, x, y, ui_state, player_inv):
+    def _render_experiment(self, x: int, y: int, ui_state: UIState, player_inv: Inventory):
         self.console.print(x + 2, y + 3, 'Combine ingredients to discover spells:', fg=UI_CYAN)
 
         inv_list = sorted(i for i in player_inv.items if is_reagent(i))
@@ -162,7 +160,16 @@ class MenuSystem(esper.Processor):
                 fg=UI_WHITE if selected else UI_GRAY_DARK,
             )
 
-    def _render_spellbook(self, x, y, width, ui_state, player_recipes, player_spell_inv, player_inv):
+    def _render_spellbook(
+        self,
+        x: int,
+        y: int,
+        width: int,
+        ui_state: UIState,
+        player_recipes: KnownRecipes,
+        player_spell_inv: SpellInventory,
+        player_inv: Inventory,
+    ):
         known = sorted(player_recipes.recipes.keys(), key=lambda s: s.name)
         list_x = x + 2
         detail_x = x + 26
@@ -186,7 +193,15 @@ class MenuSystem(esper.Processor):
 
         self._render_spell_detail(detail_x, y + 4, width - 28, known[cursor], player_recipes, player_inv)
 
-    def _render_spell_detail(self, dx, dy, detail_width, stype, player_recipes, player_inv):
+    def _render_spell_detail(
+        self,
+        dx: int,
+        dy: int,
+        detail_width: int,
+        stype: SpellType,
+        player_recipes: KnownRecipes,
+        player_inv: Inventory,
+    ):
         s_conf = get_spell_config(stype.value)
         if not s_conf:
             return
@@ -217,7 +232,7 @@ class MenuSystem(esper.Processor):
                 self._print_segments(dx, row, line)
                 row += 1
 
-    def _print_segments(self, x, y, segments):
+    def _print_segments(self, x: int, y: int, segments: Message):
         cx = x
         for text, color in segments:
             self.console.print(cx, y, text, fg=color)
@@ -225,8 +240,8 @@ class MenuSystem(esper.Processor):
 
     def render_casting_menu(self):
         ui_state = get_singleton(UIState)
-        player_spell_inv = get_singleton(SpellInventory)
-        if not ui_state or not player_spell_inv:
+        player_spell_inv = try_get_singleton(SpellInventory)
+        if not player_spell_inv:
             return
 
         width = 50
@@ -271,8 +286,8 @@ class MenuSystem(esper.Processor):
     def render_shop_menu(self):
         ui_state = get_singleton(UIState)
         shopkeepers = esper.get_component(Shopkeeper)
-        player_inv = get_singleton(Inventory)
-        if not ui_state or not shopkeepers or not player_inv:
+        player_inv = try_get_singleton(Inventory)
+        if not shopkeepers or not player_inv:
             return
         offers = shopkeepers[0][1].offers
         gold = player_inv.items.get(ItemType.GOLD, 0)
@@ -301,8 +316,8 @@ class MenuSystem(esper.Processor):
 
     def render_settings_menu(self):
         ui_state = get_singleton(UIState)
-        keybindings = get_singleton(Keybindings)
-        if not ui_state or not keybindings:
+        keybindings = try_get_singleton(Keybindings)
+        if not keybindings:
             return
 
         actions = list(keybindings.bindings.keys())
@@ -332,8 +347,8 @@ class MenuSystem(esper.Processor):
 
     def render_game_over(self):
         game_state = get_singleton(GameState)
-        run_stats = get_singleton(RunStats)
-        if not game_state or not run_stats:
+        run_stats = try_get_singleton(RunStats)
+        if not run_stats:
             return
 
         spells = sorted(run_stats.spells_cast.items(), key=lambda kv: kv[0].name)
@@ -362,7 +377,9 @@ class MenuSystem(esper.Processor):
 
         self.console.print(x + 2, y + height - 2, 'Enter: Title', fg=UI_GRAY)
 
-    def _render_count_section(self, x: int, row: int, label: str, entries: list) -> int:
+    def _render_count_section(
+        self, x: int, row: int, label: str, entries: Sequence[tuple[ItemType | SpellType, int]]
+    ) -> int:
         """Print a `label` header then one indented `Name xN` line per entry (or
         '(none)' when empty). Returns the next free row."""
         self.console.print(x + 2, row, label, fg=UI_CYAN)
@@ -386,7 +403,7 @@ class TargetingOverlaySystem(esper.Processor):
 
     def process(self):
         game_state = get_singleton(GameState)
-        if not game_state or game_state.display_mode != DisplayMode.TARGETING:
+        if game_state.display_mode != DisplayMode.TARGETING:
             return
 
         reticles = esper.get_component(TargetingReticle)
@@ -399,7 +416,7 @@ class TargetingOverlaySystem(esper.Processor):
             return
         _player, (player_pos, _tag) = player_entities[0]
 
-        game_map = get_singleton(Map)
+        game_map = try_get_singleton(Map)
         if not game_map:
             return
 
@@ -449,7 +466,7 @@ class EffectOverlaySystem(esper.Processor):
 
     def process(self):
         game_state = get_singleton(GameState)
-        if not game_state or game_state.display_mode not in self.VISUAL_MODES:
+        if game_state.display_mode not in self.VISUAL_MODES:
             return
         self._render_cast_visual()
         self._render_screen_flash()
@@ -466,7 +483,7 @@ class EffectOverlaySystem(esper.Processor):
 
     def _draw_cast_burst(self, visual: CastVisual):
         player = esper.get_components(Position, PlayerTag)
-        game_map = get_singleton(Map)
+        game_map = try_get_singleton(Map)
         if not player or not game_map:
             return
         _p, (player_pos, _tag) = player[0]
@@ -480,7 +497,7 @@ class EffectOverlaySystem(esper.Processor):
                 map_x = screen_x - view.x + cam_x
                 map_y = screen_y - view.y + cam_y
                 if math.sqrt((map_x - visual.center.x) ** 2 + (map_y - visual.center.y) ** 2) <= visual.radius:
-                    base = tuple(int(c) for c in self.console.rgb[screen_y, screen_x]['bg'])
+                    base = to_rgb(self.console.rgb[screen_y, screen_x]['bg'])
                     self.console.rgb[screen_y, screen_x]['bg'] = blend(base, visual.color, alpha)
 
     def _render_screen_flash(self):
@@ -544,9 +561,6 @@ class HUDSystem(esper.Processor):
 
     def process(self):
         game_state = get_singleton(GameState)
-        if not game_state:
-            return
-
         if game_state.display_mode not in [
             DisplayMode.EXPLORING,
             DisplayMode.CASTING,
@@ -586,14 +600,14 @@ class HUDSystem(esper.Processor):
         self.console.print(zone.x + 2, zone.y + 3, f'Floor: {floor}', fg=UI_WHITE)
 
     def render_gold(self, zone: Rect):
-        inv = get_singleton(Inventory)
+        inv = try_get_singleton(Inventory)
         if not inv:
             return
         gold = inv.items.get(ItemType.GOLD, 0)
         self.console.print(zone.x + 14, zone.y + 3, f'Gold: {gold}', fg=UI_YELLOW)
 
     def render_message_log(self, zone: Rect):
-        log = get_singleton(MessageLog)
+        log = try_get_singleton(MessageLog)
         if not log:
             return
 
@@ -609,7 +623,7 @@ class HUDSystem(esper.Processor):
         )
 
         usable_width = zone.width - 4
-        all_lines = []
+        all_lines: list[Message] = []
         for msg in log.messages:
             all_lines.extend(wrap_message(msg, usable_width))
 
@@ -623,5 +637,5 @@ class HUDSystem(esper.Processor):
             msg_x = zone.x + 2
             msg_y = zone.y + 1 + i
             for text, color in line:
-                self.console.print(x=msg_x, y=msg_y, string=text, fg=color)
+                self.console.print(x=msg_x, y=msg_y, text=text, fg=color)
                 msg_x += len(text)

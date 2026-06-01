@@ -5,6 +5,7 @@ from src.components import (
     Actor,
     Configuration,
     FieldOfView,
+    GameConfigs,
     Inventory,
     ItemType,
     Keybindings,
@@ -19,10 +20,11 @@ from src.components import (
     StatusEffects,
     UIState,
 )
+from src.persistence import MetaData
 from src.states import GameState
 
 
-def create_game_state(floor=1):
+def create_game_state(floor: int = 1):
     """Create the singleton GameState entity."""
     return esper.create_entity(GameState(floor=floor))
 
@@ -32,7 +34,7 @@ def create_message_log():
     return esper.create_entity(MessageLog())
 
 
-def create_configuration(configs):
+def create_configuration(configs: GameConfigs):
     """Create the singleton Configuration entity."""
     return esper.create_entity(
         Configuration(
@@ -64,8 +66,8 @@ def create_keybindings():
                 'MOVE_DOWN': tcod.event.KeySym.DOWN,
                 'MOVE_LEFT': tcod.event.KeySym.LEFT,
                 'MOVE_RIGHT': tcod.event.KeySym.RIGHT,
-                'OPEN_CRAFTING': tcod.event.KeySym.c,
-                'OPEN_CASTING': tcod.event.KeySym.s,
+                'OPEN_CRAFTING': tcod.event.KeySym.C,
+                'OPEN_CASTING': tcod.event.KeySym.S,
                 'CONFIRM': tcod.event.KeySym.RETURN,
                 'CANCEL': tcod.event.KeySym.ESCAPE,
                 'CYCLE_TAB': tcod.event.KeySym.TAB,
@@ -74,18 +76,18 @@ def create_keybindings():
     )
 
 
-def create_player(x, y, characters_config, initial_recipes=None, initial_gold=0):
-    """Factory function for the player entity."""
+def create_player(x: int, y: int, meta: MetaData | None = None):
+    """Factory function for the player entity, seeded with cross-run progression."""
     # The ID 'player' is registered in AssetLoader (either as a sprite or char '@')
     sprite_id = 'player'
 
     known_recipes = KnownRecipes()
-    if initial_recipes:
-        known_recipes.recipes = initial_recipes
+    if meta:
+        known_recipes.recipes = meta['recipes']
 
     inventory = Inventory()
-    if initial_gold:
-        inventory.items[ItemType.GOLD] = initial_gold
+    if meta and meta['gold']:
+        inventory.items[ItemType.GOLD] = meta['gold']
 
     return esper.create_entity(
         Position(x, y),

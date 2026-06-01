@@ -2,19 +2,43 @@ import warnings
 from dataclasses import dataclass
 from enum import Enum, auto
 from functools import lru_cache
+from typing import NotRequired, TypedDict
 
 import numpy as np
 import tcod
 import yaml
 from PIL import Image
 
-from src.components import Effect, EffectType, EnemyAbility, ItemType, LootDrop
+from src.components import (
+    CharacterConfig,
+    Effect,
+    EffectType,
+    EnemyAbility,
+    EnemyConfig,
+    GameConfigs,
+    IngredientConfig,
+    ItemType,
+    LootDrop,
+    RecipeConfig,
+    SpellConfig,
+    TileConfig,
+)
 from src.constants import DATA_DIR
 
 
 class AssetType(Enum):
     FILE = auto()
     REGION = auto()
+
+
+class _RawSprite(TypedDict):
+    """A sprite as authored in YAML, before the AssetLoader parses it into a
+    SpriteDefinition. Loader-internal: the rest of the app references sprites by id."""
+
+    path: str
+    type: NotRequired[str]
+    region: NotRequired[list[int]]
+    scale: NotRequired[float]
 
 
 @dataclass
@@ -28,21 +52,29 @@ class SpriteDefinition:
     codepoint: int | None = None
 
 
-def load_ingredients_config(asset_loader: AssetLoader):
+def load_ingredients_config(asset_loader: AssetLoader) -> dict[ItemType, IngredientConfig]:
     with open(f'{DATA_DIR}/ingredients.yaml') as f:
         data = yaml.safe_load(f)['ingredients']
-        items = {item['id']: item for item in data}
-        for iid, config in items.items():
+        items = {ItemType(item['id']): item for item in data}
+        for itype, config in items.items():
             if 'sprite' in config:
-                asset_loader.register_sprite(iid, config['sprite'])
+                asset_loader.register_sprite(itype.value, config['sprite'])
             else:
                 # Use the character defined in YAML, or a block fallback
                 char = config.get('char', '\u2588')
-                asset_loader.register_char(iid, char)
+                asset_loader.register_char(itype.value, char)
         return items
 
 
-def _parse_effects(raw: list[dict]) -> list[Effect]:
+class _RawEffect(TypedDict):
+    """An effect as authored in YAML, before parsing into an `Effect`."""
+
+    type: str
+    power: NotRequired[int]
+    duration: NotRequired[int]
+
+
+def _parse_effects(raw: list[_RawEffect]) -> list[Effect]:
     return [
         Effect(
             type=EffectType(effect['type']),
@@ -53,17 +85,17 @@ def _parse_effects(raw: list[dict]) -> list[Effect]:
     ]
 
 
-def load_spells_config(asset_loader: AssetLoader):
+def load_spells_config(asset_loader: AssetLoader) -> list[SpellConfig]:
     with open(f'{DATA_DIR}/spells.yaml') as f:
         data = yaml.safe_load(f)['spells']
         for spell in data:
             spell['effects'] = _parse_effects(spell.get('effects', []))
 
-            processed_recipes = []
+            processed_recipes: list[RecipeConfig] = []
             for r_data in spell['recipes']:
                 processed_recipes.append(
                     {
-                        'ingredients': tuple(sorted([ItemType(id) for id in r_data['ingredients']])),
+                        'ingredients': tuple(sorted(ItemType(id) for id in r_data['ingredients'])),
                         'charges': r_data['charges'],
                     }
                 )
@@ -77,7 +109,7 @@ def load_spells_config(asset_loader: AssetLoader):
         return data
 
 
-def load_characters_config(asset_loader: AssetLoader):
+def load_characters_config(asset_loader: AssetLoader) -> dict[str, CharacterConfig]:
     try:
         with open(f'{DATA_DIR}/characters.yaml') as f:
             data = yaml.safe_load(f)['characters']
@@ -93,7 +125,7 @@ def load_characters_config(asset_loader: AssetLoader):
         return {}
 
 
-def load_enemies_config(asset_loader: AssetLoader):
+def load_enemies_config(asset_loader: AssetLoader) -> dict[str, EnemyConfig]:
     try:
         with open(f'{DATA_DIR}/enemies.yaml') as f:
             data = yaml.safe_load(f)['enemies']
@@ -124,7 +156,7 @@ def load_enemies_config(asset_loader: AssetLoader):
         return {}
 
 
-def load_tiles_config(asset_loader: AssetLoader):
+def load_tiles_config(asset_loader: AssetLoader) -> list[TileConfig]:
     try:
         with open(f'{DATA_DIR}/tiles.yaml') as f:
             data = yaml.safe_load(f)['tiles']
@@ -140,7 +172,7 @@ def load_tiles_config(asset_loader: AssetLoader):
 
 
 @lru_cache(maxsize=1)
-def get_game_configs(asset_loader: AssetLoader):
+def get_game_configs(asset_loader: AssetLoader) -> GameConfigs:
     """
     Load and process all game configurations.
     Memoized to ensure sprite registration and disk I/O only happen once.
@@ -163,11 +195,13 @@ class AssetLoader:
         """Register a font-based character directly."""
         self._mapping[sprite_id] = SpriteDefinition(codepoint=ord(char))
 
-    def register_sprite(self, sprite_id: str, config: SpriteDefinition):
+    def register_sprite(self, sprite_id: str, config: _RawSprite):
         """Register an external graphical sprite."""
-        asset_type_str = config.get('type', 'FILE').upper()
-        asset_type = AssetType[asset_type_str]
-        region = tuple(config['region']) if 'region' in config else None
+        asset_type = AssetType[config.get('type', 'FILE').upper()]
+        region = None
+        if 'region' in config:
+            x, y, w, h = config['region']
+            region = (x, y, w, h)
 
         self._mapping[sprite_id] = SpriteDefinition(
             path=config['path'],
@@ -284,4 +318,4 @@ class AssetLoader:
     def get_codepoint(self, sprite_id: str) -> int:
         if sprite_id not in self._mapping:
             return ord('\u2588')
-        return self._mapping[sprite_id].codepoint
+        return self._mapping[sprite_id].codepoint or ord('\u2588')

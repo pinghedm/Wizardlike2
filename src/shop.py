@@ -1,4 +1,5 @@
 import random
+from typing import TypedDict
 
 import esper
 
@@ -11,28 +12,36 @@ from src.components import (
     PlayerTag,
     ShopOffer,
     ShopOfferKind,
+    SpellConfig,
     SpellInventory,
     SpellType,
     Stats,
 )
 from src.constants import SHOP_HEAL_BASE_AMOUNT, SHOP_HEAL_BASE_PRICE, SHOP_RARE_SPELL_CHANCE
-from src.ecs_helpers import get_singleton
+from src.ecs_helpers import get_singleton, try_get_singleton
 from src.states import GameState
 
 
-def shop_heal(floor: int) -> dict:
+class ShopHealConfig(TypedDict):
+    price: int
+    amount: int
+
+
+def shop_heal(floor: int) -> ShopHealConfig:
     """The heal service's gold cost and HP restored, scaled up with depth."""
     tier = max(1, floor // 3)
     return {'price': SHOP_HEAL_BASE_PRICE * tier, 'amount': SHOP_HEAL_BASE_AMOUNT * tier}
 
 
-def _spell_offer(s_conf: dict, known: KnownRecipes) -> ShopOffer:
+def _spell_offer(s_conf: SpellConfig, known: KnownRecipes) -> ShopOffer:
     stype = SpellType(s_conf['id'])
-    charges = s_conf['shop']['charges']
+    shop = s_conf.get('shop')
+    assert shop is not None  # caller only passes spells with a shop listing
+    charges = shop['charges']
     suffix = 'learn recipe' if stype not in known.recipes else f'+{charges} charges'
     return ShopOffer(
         kind=ShopOfferKind.SPELL,
-        price=s_conf['shop']['price'],
+        price=shop['price'],
         label=f'{s_conf["name"]} ({suffix})',
         purchaseable=stype,
         amount=charges,
@@ -42,10 +51,10 @@ def _spell_offer(s_conf: dict, known: KnownRecipes) -> ShopOffer:
 def build_shop_offers() -> list[ShopOffer]:
     """Roll a shop's stock for the current floor: a heal, one random ingredient,
     one random ordinary spell, and (at a depth-scaled chance) one rare spell."""
-    configs = get_singleton(Configuration)
-    known = get_singleton(KnownRecipes)
+    configs = try_get_singleton(Configuration)
+    known = try_get_singleton(KnownRecipes)
     game_state = get_singleton(GameState)
-    if configs is None or known is None or game_state is None:
+    if configs is None or known is None:
         return []
     floor = game_state.floor
 
@@ -87,7 +96,7 @@ def build_shop_offers() -> list[ShopOffer]:
 def purchase_offer(offer: ShopOffer, quantity: int = 1) -> bool:
     """Buy `quantity` units of `offer`. Returns False (no-op) if the quantity is
     invalid or unaffordable."""
-    inventory = get_singleton(Inventory)
+    inventory = try_get_singleton(Inventory)
     total = offer.price * quantity
     if inventory is None or quantity < 1 or inventory.items.get(ItemType.GOLD, 0) < total:
         return False
@@ -95,8 +104,10 @@ def purchase_offer(offer: ShopOffer, quantity: int = 1) -> bool:
 
     gained = offer.amount * quantity
     if offer.kind == ShopOfferKind.INGREDIENT:
+        assert isinstance(offer.purchaseable, ItemType)
         inventory.items[offer.purchaseable] = inventory.items.get(offer.purchaseable, 0) + gained
     elif offer.kind == ShopOfferKind.SPELL:
+        assert isinstance(offer.purchaseable, SpellType)
         _grant_shop_spell(offer.purchaseable, gained)
     elif offer.kind == ShopOfferKind.HEAL:
         _heal_player(gained)
@@ -107,9 +118,9 @@ def purchase_offer(offer: ShopOffer, quantity: int = 1) -> bool:
 
 def _grant_shop_spell(stype: SpellType, charges: int):
     """Grant `charges` of `stype`, teaching its first recipe if not yet known."""
-    configs = get_singleton(Configuration)
-    known = get_singleton(KnownRecipes)
-    spell_inv = get_singleton(SpellInventory)
+    configs = try_get_singleton(Configuration)
+    known = try_get_singleton(KnownRecipes)
+    spell_inv = try_get_singleton(SpellInventory)
     if configs is None or known is None or spell_inv is None:
         return
     if stype not in known.recipes:

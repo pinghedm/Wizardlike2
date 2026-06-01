@@ -24,6 +24,7 @@ from src.components import (
     Shopkeeper,
     Stats,
     StatusEffects,
+    TileConfig,
 )
 from src.constants import (
     MAP_HEIGHT,
@@ -32,6 +33,9 @@ from src.constants import (
     MAX_ROOMS,
     ROOM_MAX_SIZE,
     ROOM_MIN_SIZE,
+    UI_BLACK,
+    UI_WHITE,
+    to_rgb,
 )
 from src.ecs_helpers import get_singleton, spawn_item_entity
 from src.map_objects import Map, Tile
@@ -166,9 +170,9 @@ def spawn_enemy(
     else:
         behavior_tag = ChaseTag()
 
-    components = [
+    components: list[object] = [
         Position(x, y),
-        Renderable(sprite_id=enemy_cfg['id'], color=tuple(enemy_cfg['color'])),
+        Renderable(sprite_id=enemy_cfg['id'], color=to_rgb(enemy_cfg['color'])),
         Actor(speed=enemy_cfg['speed']),
         AI(),
         behavior_tag,
@@ -182,8 +186,9 @@ def spawn_enemy(
         StatusEffects(),
         FieldOfView(radius=8),
     ]
-    if enemy_cfg.get('drops'):
-        components.append(Loot(drops=enemy_cfg['drops']))
+    drops = enemy_cfg.get('drops')
+    if drops:
+        components.append(Loot(drops=drops))
     return esper.create_entity(*components)
 
 
@@ -244,7 +249,7 @@ def _room_entrances(room: RectangularRoom, dungeon: Map) -> list[Point]:
     alongside; blocking the crossing points still fully seals the room, since
     any path from outside to the interior must pass through one of them.
     """
-    entrances = []
+    entrances: list[Point] = []
     for x in range(room.x1, room.x2 + 1):
         for y in range(room.y1, room.y2 + 1):
             on_border = x in (room.x1, room.x2) or y in (room.y1, room.y2)
@@ -270,8 +275,7 @@ def _spawn_exit_guardians(dungeon: Map, exit_room: RectangularRoom, rooms: list[
 
 
 def _current_floor() -> int:
-    game_state = get_singleton(GameState)
-    return game_state.floor if game_state else 1
+    return get_singleton(GameState).floor
 
 
 def _select_floor_tiles(floor_number: int) -> tuple[Tile, Tile, Tile]:
@@ -281,13 +285,13 @@ def _select_floor_tiles(floor_number: int) -> tuple[Tile, Tile, Tile]:
     tiles_config = get_singleton(Configuration).tiles
     available_tiles = [t for t in tiles_config if t['depth'][0] <= floor_number <= t['depth'][1]]
 
-    def make_tile(cfg, walkable, transparent, is_exit=False):
+    def make_tile(cfg: TileConfig, walkable: bool, transparent: bool, is_exit: bool = False):
         return Tile(
             walkable=walkable,
             transparent=transparent,
             sprite_id=cfg['id'],
-            fg=tuple(cfg.get('fg', (255, 255, 255))),
-            bg=tuple(cfg.get('bg', (0, 0, 0))),
+            fg=to_rgb(cfg.get('fg') or UI_WHITE),
+            bg=to_rgb(cfg.get('bg') or UI_BLACK),
             is_exit=is_exit,
         )
 
@@ -313,10 +317,8 @@ def generate_dungeon(
     wall_tile, floor_tile, exit_tile = _select_floor_tiles(floor_number)
     item_types = list(ItemType)
 
-    # Retry until the exit can sit at least EXIT_MIN_ROOM_DISTANCE rooms from the
-    # player's start; rooms form a linear chain, so this almost always holds on
-    # the first attempt.
-    for _attempt in range(10):
+    def build_attempt() -> tuple[Map, list[RectangularRoom], Point]:
+        """Lay out one candidate dungeon: a chain of connected rooms with items."""
         dungeon = Map(MAP_WIDTH, MAP_HEIGHT, wall_tile)
         rooms: list[RectangularRoom] = []
         player_start = Point(MAP_WIDTH // 2, MAP_HEIGHT // 2)
@@ -349,9 +351,16 @@ def generate_dungeon(
                     new_room.items.setdefault(p, []).append(random.choice(item_types))
 
             rooms.append(new_room)
+        return dungeon, rooms, player_start
 
+    # Retry until the exit can sit at least EXIT_MIN_ROOM_DISTANCE rooms from the
+    # player's start; rooms form a linear chain, so this almost always holds on
+    # the first attempt.
+    dungeon, rooms, player_start = build_attempt()
+    for _attempt in range(9):
         if _select_exit_room(rooms) is not None:
             break
+        dungeon, rooms, player_start = build_attempt()
 
     for i, room in enumerate(rooms):
         room.spawn_entities(rooms, spawn_enemies=(i > 0))

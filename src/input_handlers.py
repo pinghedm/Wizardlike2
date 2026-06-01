@@ -25,7 +25,7 @@ from src.components import (
     UIState,
 )
 from src.constants import MAX_FLOORS
-from src.ecs_helpers import get_singleton
+from src.ecs_helpers import try_get_singleton
 from src.map_objects import Map
 from src.procgen import transition_to_next_floor
 from src.shop import purchase_offer
@@ -50,7 +50,7 @@ from src.systems import (
 )
 
 
-def handle_modal_input(event):
+def handle_modal_input(event: tcod.event.Event):
     # Only Enter dismisses a modal, so an arrow key can't accidentally confirm a
     # descent or blow past the death screen.
     if not isinstance(event, tcod.event.KeyDown) or event.sym != tcod.event.KeySym.RETURN:
@@ -64,7 +64,7 @@ def handle_modal_input(event):
         esper.delete_entity(ent)
 
 
-def handle_game_over_input(event):
+def handle_game_over_input(event: tcod.event.Event):
     """The run-summary screen: Confirm returns to the title menu, nothing else acts."""
     if isinstance(event, tcod.event.KeyDown):
         keybindings = esper.get_component(Keybindings)[0][1]
@@ -88,7 +88,7 @@ def _adjacent_shopkeeper(player_pos: Position) -> bool:
     return False
 
 
-def handle_exploring_input(event):
+def handle_exploring_input(event: tcod.event.Event):
     game_state = esper.get_component(GameState)[0][1]
     keybindings = esper.get_component(Keybindings)[0][1]
 
@@ -152,7 +152,7 @@ def handle_exploring_input(event):
         log = esper.get_component(MessageLog)[0][1]
 
         # Pickup Logic
-        run_stats = get_singleton(RunStats)
+        run_stats = try_get_singleton(RunStats)
         for ent, (pos, item) in esper.get_components(Position, Item):
             if pos.x == player_pos.x and pos.y == player_pos.y:
                 player_inv.items[item.type] = player_inv.items.get(item.type, 0) + item.count
@@ -186,12 +186,12 @@ def handle_exploring_input(event):
     return DisplayMode.EXPLORING
 
 
-def handle_settings_input(event):
+def handle_settings_input(event: tcod.event.Event):
     if not isinstance(event, tcod.event.KeyDown):
         return DisplayMode.SETTINGS
 
     ui_state = esper.get_component(UIState)[0][1]
-    kb_ent, keybindings = esper.get_component(Keybindings)[0]
+    _kb_ent, keybindings = esper.get_component(Keybindings)[0]
 
     actions = list(keybindings.bindings.keys())
 
@@ -216,7 +216,7 @@ def handle_settings_input(event):
     return DisplayMode.SETTINGS
 
 
-def handle_menu_input(event):
+def handle_menu_input(event: tcod.event.Event):
     if not isinstance(event, tcod.event.KeyDown):
         return DisplayMode.MENU
 
@@ -257,7 +257,7 @@ def handle_menu_input(event):
     return DisplayMode.MENU
 
 
-def handle_combining_input(event):
+def handle_combining_input(event: tcod.event.Event):
     if not isinstance(event, tcod.event.KeyDown):
         return DisplayMode.COMBINING
 
@@ -280,7 +280,7 @@ def handle_combining_input(event):
     return _handle_experiment_input(event, ui_state, keybindings)
 
 
-def _handle_experiment_input(event, ui_state, keybindings):
+def _handle_experiment_input(event: tcod.event.KeyDown, ui_state: UIState, keybindings: Keybindings):
     """Manual ingredient combining: select reagents and combine to discover recipes."""
     player_entities = esper.get_components(Inventory, PlayerTag)
     if not player_entities:
@@ -316,16 +316,16 @@ def _handle_experiment_input(event, ui_state, keybindings):
 
     elif event.sym == keybindings.bindings['CONFIRM']:
         # Try Combining
-        flat_selection = []
+        flat_selection: list[ItemType] = []
         for itype, count in ui_state.selected_for_crafting.items():
             flat_selection.extend([itype] * count)
-        flat_selection = tuple(sorted(flat_selection))
+        sorted_selection = tuple(sorted(flat_selection))
 
-        if not flat_selection:
+        if not sorted_selection:
             return DisplayMode.COMBINING
 
         log = esper.get_component(MessageLog)[0][1]
-        result = match_recipe(flat_selection)
+        result = match_recipe(sorted_selection)
 
         if result is None:
             log.add_simple_message('The combination fizzles...', color=(255, 0, 0))
@@ -339,10 +339,10 @@ def _handle_experiment_input(event, ui_state, keybindings):
         # Record the recipe discovery
         if stype not in player_recipes.recipes:
             player_recipes.recipes[stype] = set()
-            run_stats = get_singleton(RunStats)
+            run_stats = try_get_singleton(RunStats)
             if run_stats:
                 run_stats.spells_discovered += 1
-        player_recipes.recipes[stype].add(flat_selection)
+        player_recipes.recipes[stype].add(sorted_selection)
 
         # PERSISTENT META-PROGRESSION: Save grimoire on discovery
         persistence.save_meta()
@@ -368,7 +368,7 @@ def _handle_experiment_input(event, ui_state, keybindings):
     return DisplayMode.COMBINING
 
 
-def _handle_spellbook_input(event, ui_state, keybindings):
+def _handle_spellbook_input(event: tcod.event.KeyDown, ui_state: UIState, keybindings: Keybindings):
     """Browse known recipes and instantly re-craft the selected one from stock."""
     player_entities = esper.get_components(KnownRecipes, PlayerTag)
     if not player_entities:
@@ -410,7 +410,7 @@ def _handle_spellbook_input(event, ui_state, keybindings):
     return DisplayMode.COMBINING
 
 
-def handle_casting_input(event):
+def handle_casting_input(event: tcod.event.Event):
     if not isinstance(event, tcod.event.KeyDown):
         return DisplayMode.CASTING
 
@@ -470,7 +470,7 @@ def handle_casting_input(event):
     return DisplayMode.CASTING
 
 
-def handle_targeting_input(event):
+def handle_targeting_input(event: tcod.event.Event):
     if not isinstance(event, tcod.event.KeyDown):
         return DisplayMode.TARGETING
 
@@ -523,11 +523,12 @@ def handle_targeting_input(event):
 
     elif event.sym == keybindings.bindings['CONFIRM']:
         # EXECUTE SPELL
-        cast_spell(
-            spell_id=ui_state.active_targeting_spell_id,
-            target_x=reticle.x,
-            target_y=reticle.y,
-        )
+        if ui_state.active_targeting_spell_id is not None:
+            cast_spell(
+                spell_id=ui_state.active_targeting_spell_id,
+                target_x=reticle.x,
+                target_y=reticle.y,
+            )
 
         esper.delete_entity(ret_ent)
         ui_state.active_targeting_spell_id = None
@@ -538,7 +539,7 @@ def handle_targeting_input(event):
     return DisplayMode.TARGETING
 
 
-def handle_shop_input(event):
+def handle_shop_input(event: tcod.event.Event):
     if not isinstance(event, tcod.event.KeyDown):
         return DisplayMode.SHOPPING
 

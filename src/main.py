@@ -18,7 +18,7 @@ from src.constants import (
 )
 from src.data_loaders import AssetLoader, get_game_configs
 from src.debug import debug_log
-from src.ecs_helpers import get_singleton
+from src.ecs_helpers import get_singleton, try_get_singleton
 from src.entities import (
     create_configuration,
     create_game_state,
@@ -84,13 +84,7 @@ def init_game_world(asset_loader: AssetLoader):
     esper.create_entity(game_map)
 
     # ECS Entities
-    player = create_player(
-        player_start.x,
-        player_start.y,
-        configs['characters'],
-        initial_recipes=meta['recipes'],
-        initial_gold=meta['gold'],
-    )
+    player = create_player(x=player_start.x, y=player_start.y, meta=meta)
     return player
 
 
@@ -103,7 +97,7 @@ def add_logic_systems():
     esper.add_processor(FOVSystem())
 
 
-def add_render_systems(layout, asset_loader):
+def add_render_systems(layout: Layout, asset_loader: AssetLoader):
     esper.add_processor(RenderSystem(layout, asset_loader))
     esper.add_processor(TargetingOverlaySystem(layout))
     esper.add_processor(EffectOverlaySystem(layout))
@@ -174,7 +168,7 @@ def apply_pending_transition(game_state: GameState, asset_loader: AssetLoader) -
         init_main_menu()
     elif mode == DisplayMode.SAVING:
         persistence.save_game()
-        log = get_singleton(MessageLog)
+        log = try_get_singleton(MessageLog)
         if log:
             log.add_simple_message('Game saved.', color=(0, 255, 255))
         game_state.display_mode = DisplayMode.EXPLORING

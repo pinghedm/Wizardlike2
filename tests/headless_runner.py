@@ -110,7 +110,7 @@ class HeadlessRunner:
         esper.create_entity(clean_map)
 
         # 5. Create player at center
-        self.player = create_player(width // 2, height // 2, configs['characters'])
+        self.player = create_player(x=width // 2, y=height // 2)
 
         # 6. Finally, add systems
         add_logic_systems()
