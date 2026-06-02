@@ -12,6 +12,10 @@ VALID_EFFECT_INFO = {
     EffectType.HASTE: ['duration'],
     EffectType.POISON: ['power', 'duration'],
     EffectType.REGEN: ['power', 'duration'],
+    EffectType.STUN: ['duration'],
+    EffectType.SHIELD: ['power', 'duration'],
+    EffectType.DRAIN: ['power', 'lifesteal'],
+    EffectType.KNOCKBACK: ['power'],
 }
 
 

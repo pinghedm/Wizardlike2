@@ -44,10 +44,13 @@ from src.components import (
 from src.constants import (
     PLAYER_MOVE_COST,
     STATUS_PULSE_INTERVAL,
+    UI_BLACK,
     UI_BLUE,
+    UI_CYAN,
     UI_GREEN,
     UI_ORANGE,
     UI_RED,
+    UI_WHITE,
     UI_YELLOW,
     to_rgb,
 )
@@ -55,6 +58,7 @@ from src.debug import debug_log
 from src.ecs_helpers import get_singleton, spawn_item_entity, try_get_singleton
 from src.map_objects import Map
 from src.states import DisplayMode, GameState
+from src.ui_helpers import blend
 
 if TYPE_CHECKING:
     from src.data_loaders import AssetLoader
@@ -88,6 +92,10 @@ EFFECT_COLORS: dict[EffectType, tuple[int, int, int]] = {
     EffectType.POISON: UI_GREEN,
     EffectType.SLOW: UI_BLUE,
     EffectType.HASTE: UI_YELLOW,
+    EffectType.STUN: UI_YELLOW,
+    EffectType.SHIELD: UI_CYAN,
+    EffectType.DRAIN: UI_RED,
+    EffectType.KNOCKBACK: UI_WHITE,
 }
 
 
@@ -123,14 +131,37 @@ def record_damage_dealt(target_ent: int, amount: int):
         run_stats.damage_dealt += amount
 
 
+def mitigate_damage(target_ent: int, amount: int) -> int:
+    """Reduce a direct damage hit by the target's active SHIELD power (floored at 0).
+
+    Shields blunt discrete hits — melee, damage spells, drains — not damage-over-time,
+    so poison pulses deliberately bypass this."""
+    if esper.has_component(target_ent, StatusEffects):
+        shield = esper.component_for_entity(target_ent, StatusEffects).active.get(StatusType.SHIELD)
+        if shield:
+            return max(0, amount - shield.power)
+    return amount
+
+
+def _is_stunned(ent: int) -> bool:
+    """Whether `ent` currently has an active STUN status and so forfeits its turn."""
+    return (
+        esper.has_component(ent, StatusEffects)
+        and StatusType.STUN in esper.component_for_entity(ent, StatusEffects).active
+    )
+
+
 def deal_damage(target_ent: int, amount: int, message: str, color: tuple[int, int, int]):
     """Apply damage to a target's Stats and log a message."""
+    mitigated = mitigate_damage(target_ent, amount)
     stats = esper.component_for_entity(target_ent, Stats)
-    stats.hp -= amount
-    record_damage_dealt(target_ent, amount)
+    stats.hp -= mitigated
+    record_damage_dealt(target_ent, mitigated)
     trigger_screen_flash(ent=target_ent, color=UI_RED)
     log = try_get_singleton(MessageLog)
     if log:
+        if mitigated < amount:
+            message = f'{message} (shielded)'
         log.add_simple_message(message, color=color)
 
 
@@ -324,9 +355,10 @@ def _can_use_ability(ent: int, pos: Position, player_pos: Position, ability: Ene
 
 def _use_ability(ent: int, player_ent: int, ability: EnemyAbility, log: MessageLog):
     log.add_simple_message(f'The {get_display_name(ent)} attacks from afar!', color=(255, 0, 255))
+    origin = esper.component_for_entity(ent, Position).point
     for effect in ability.effects:
         debug_log(f'  ability effect {effect.type} power={effect.power} dur={effect.duration} -> player {player_ent}')
-        apply_effect(player_ent, effect, log)
+        apply_effect(player_ent, effect, origin=origin, caster_ent=ent)
 
 
 class AISystem(esper.Processor):
@@ -364,6 +396,9 @@ class AISystem(esper.Processor):
         for ent, (pos, _ai) in esper.get_components(Position, AI):
             actor = esper.component_for_entity(ent, Actor) if esper.has_component(ent, Actor) else None
             if actor and actor.cooldown > 0:
+                continue
+
+            if _is_stunned(ent):
                 continue
 
             enemy = esper.component_for_entity(ent, Enemy) if esper.has_component(ent, Enemy) else None
@@ -504,7 +539,13 @@ class RenderSystem(esper.Processor):
 
             codepoint = self.asset_loader.get_codepoint(rend.sprite_id)
             debug_log(f'render entity {_ent} sprite={rend.sprite_id} cp={codepoint} at {(pos.x, pos.y)}')
-            self.console.print(x=screen_x, y=screen_y, text=chr(codepoint), fg=rend.color)
+            # A stunned entity keeps its own glyph color over a yellow highlight.
+            if _is_stunned(_ent):
+                self.console.print(
+                    x=screen_x, y=screen_y, text=chr(codepoint), fg=rend.color, bg=blend(UI_BLACK, UI_YELLOW, 0.5)
+                )
+            else:
+                self.console.print(x=screen_x, y=screen_y, text=chr(codepoint), fg=rend.color)
 
 
 def _destination_blocked(mover: int, x: int, y: int) -> bool:
@@ -562,6 +603,32 @@ def move_entity(entity: int, dx: int, dy: int):
         actor.cooldown = get_cooldown(entity, PLAYER_MOVE_COST)
 
 
+def _apply_knockback(target_ent: int, origin: Point, distance: int):
+    """Shove `target_ent` up to `distance` tiles directly away from `origin`.
+
+    Steps one tile at a time along the away-from-origin direction, halting at the
+    first wall or occupied tile. A target sitting on the origin has no direction and
+    stays put."""
+    pos = esper.component_for_entity(target_ent, Position)
+    step_x = (pos.x > origin.x) - (pos.x < origin.x)
+    step_y = (pos.y > origin.y) - (pos.y < origin.y)
+    if step_x == 0 and step_y == 0:
+        return
+
+    game_map = try_get_singleton(Map)
+    if not game_map:
+        return
+
+    for _ in range(distance):
+        nx, ny = pos.x + step_x, pos.y + step_y
+        if not game_map.is_walkable(nx, ny) or _destination_blocked(target_ent, nx, ny):
+            break
+        pos.x, pos.y = nx, ny
+
+    if esper.has_component(target_ent, FieldOfView):
+        esper.component_for_entity(target_ent, FieldOfView).dirty = True
+
+
 def get_cooldown(entity: int, base_speed: int) -> int:
     """Calculate cooldown based on status effects."""
     if esper.has_component(entity, StatusEffects):
@@ -573,12 +640,15 @@ def get_cooldown(entity: int, base_speed: int) -> int:
     return max(0, base_speed)
 
 
-def apply_effect(target_ent: int, effect: Effect, log: MessageLog):
+def apply_effect(target_ent: int, effect: Effect, origin: Point | None = None, caster_ent: int | None = None):
     """Apply a single spell effect to a target entity.
 
-    Instant effects (damage/heal) resolve immediately; lingering ones store a
-    copy of the effect on the target's StatusEffects for StatusSystem to age.
+    Instant effects (damage/heal/drain) resolve immediately; lingering ones store a
+    copy of the effect on the target's StatusEffects for StatusSystem to age. `origin`
+    is the push source for knockback (the target is shoved away from it); `caster_ent`
+    is who cast the effect (drain heals them).
     """
+    log = get_singleton(MessageLog)
     stats = esper.component_for_entity(target_ent, Stats)
     status = esper.component_for_entity(target_ent, StatusEffects)
     is_player = esper.has_component(target_ent, PlayerTag)
@@ -589,14 +659,35 @@ def apply_effect(target_ent: int, effect: Effect, log: MessageLog):
         target_name = f'The {get_display_name(target_ent)}'
 
     if effect.type == EffectType.DAMAGE:
-        stats.hp -= effect.power
-        record_damage_dealt(target_ent, effect.power)
+        dmg = mitigate_damage(target_ent, effect.power)
+        stats.hp -= dmg
+        record_damage_dealt(target_ent, dmg)
         trigger_screen_flash(ent=target_ent, color=UI_RED)
-        log.add_simple_message(f'{target_name} took {effect.power} damage!', color=(255, 100, 0))
+        shielded = ' (shielded)' if dmg < effect.power else ''
+        log.add_simple_message(f'{target_name} took {dmg} damage!{shielded}', color=(255, 100, 0))
 
     elif effect.type == EffectType.HEAL:
         stats.hp = min(stats.max_hp, stats.hp + effect.power)
         log.add_simple_message(f'{target_name} healed for {effect.power} HP!', color=(0, 255, 0))
+
+    elif effect.type == EffectType.DRAIN:
+        dmg = mitigate_damage(target_ent, effect.power)
+        stats.hp -= dmg
+        record_damage_dealt(target_ent, dmg)
+        trigger_screen_flash(ent=target_ent, color=UI_RED)
+        shielded = ' (shielded)' if dmg < effect.power else ''
+        log.add_simple_message(f'{target_name} took {dmg} damage!{shielded}', color=(200, 0, 80))
+        if caster_ent is not None and esper.has_component(caster_ent, Stats):
+            caster_stats = esper.component_for_entity(caster_ent, Stats)
+            before = caster_stats.hp
+            caster_stats.hp = min(caster_stats.max_hp, caster_stats.hp + effect.lifesteal)
+            healed = caster_stats.hp - before
+            log.add_simple_message(f'{get_display_name(caster_ent)} drained {healed} HP!', color=(0, 255, 0))
+
+    elif effect.type == EffectType.KNOCKBACK:
+        if origin is not None:
+            _apply_knockback(target_ent, origin, effect.power)
+        log.add_simple_message(f'{target_name} is knocked back!', color=(220, 220, 220))
 
     elif effect.type == EffectType.SLOW:
         status.active[StatusType.SLOW] = replace(effect)
@@ -605,6 +696,14 @@ def apply_effect(target_ent: int, effect: Effect, log: MessageLog):
     elif effect.type == EffectType.HASTE:
         status.active[StatusType.HASTE] = replace(effect)
         log.add_simple_message(f'{target_name} speeds up!', color=(255, 255, 0))
+
+    elif effect.type == EffectType.STUN:
+        status.active[StatusType.STUN] = replace(effect)
+        log.add_simple_message(f'{target_name} is stunned!', color=(255, 255, 0))
+
+    elif effect.type == EffectType.SHIELD:
+        status.active[StatusType.SHIELD] = replace(effect)
+        log.add_simple_message(f'{target_name} is shielded!', color=(0, 255, 255))
 
     elif effect.type == EffectType.POISON:
         status.active[StatusType.POISON] = replace(effect)
@@ -701,7 +800,7 @@ def cast_spell(spell_id: str, target_x: int, target_y: int):
     player_ents = esper.get_components(SpellInventory, PlayerTag)
     if not player_ents:
         return
-    _player, (player_spell_inv, _tag) = player_ents[0]
+    player, (player_spell_inv, _tag) = player_ents[0]
 
     stype = SpellType(spell_id)
 
@@ -742,6 +841,8 @@ def cast_spell(spell_id: str, target_x: int, target_y: int):
         log.add_simple_message('The spell hits nothing.', color=(150, 150, 150))
         return
 
+    # Knockback shoves targets directly away from the caster.
+    caster_origin = esper.component_for_entity(player, Position).point
     for target in targets:
         for effect in s_conf['effects']:
-            apply_effect(target, effect, log)
+            apply_effect(target, effect, origin=caster_origin, caster_ent=player)

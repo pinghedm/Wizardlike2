@@ -72,6 +72,7 @@ class _RawEffect(TypedDict):
     type: str
     power: NotRequired[int]
     duration: NotRequired[int]
+    lifesteal: NotRequired[int]
 
 
 def _parse_effects(raw: list[_RawEffect]) -> list[Effect]:
@@ -80,6 +81,7 @@ def _parse_effects(raw: list[_RawEffect]) -> list[Effect]:
             type=EffectType(effect['type']),
             duration=effect.get('duration', 0),
             power=effect.get('power', 0),
+            lifesteal=effect.get('lifesteal', 0),
         )
         for effect in raw
     ]

@@ -2,6 +2,7 @@
 gemini-session.txt
 .antigravitycli/**
 save_data/**
+misc_ai_data/**
 # Coverage
 .coverage
 .coverage.*

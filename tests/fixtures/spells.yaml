@@ -41,3 +41,16 @@ spells:
     shop:
       price: 50
       charges: 1
+  - id: test_shove
+    name: Test Shove
+    description: A test spell that damages and knocks back its target.
+    range: 5
+    radius: 0
+    effects:
+      - type: damage
+        power: 5
+      - type: knockback
+        power: 2
+    recipes:
+      - ingredients: [reagent_a, reagent_c]
+        charges: 3

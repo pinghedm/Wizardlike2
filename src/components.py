@@ -92,6 +92,8 @@ class StatusType(enum.StrEnum):
     HASTE = 'haste'
     POISON = 'poison'
     REGEN = 'regen'
+    STUN = 'stun'
+    SHIELD = 'shield'
 
 
 class EffectType(enum.StrEnum):
@@ -101,6 +103,10 @@ class EffectType(enum.StrEnum):
     HASTE = 'haste'
     POISON = 'poison'
     REGEN = 'regen'
+    STUN = 'stun'
+    SHIELD = 'shield'
+    DRAIN = 'drain'
+    KNOCKBACK = 'knockback'
 
 
 class ShopOfferKind(enum.StrEnum):
@@ -115,13 +121,16 @@ class Effect:
 
     The same object is parsed from YAML and, for effects that linger, stored on
     an entity's StatusEffects. Instant effects (damage/heal) use `power` only;
-    markers (slow/haste) use `duration` only; recurring effects (poison/regen)
-    use both — `power` per pulse, `duration` ticking down to expiry.
+    markers (slow/haste/stun) use `duration` only; recurring effects (poison/regen)
+    and shields use both — `power` per pulse/per hit, `duration` ticking to expiry.
+    `lifesteal` is drain-only: HP returned to the caster (knockback uses `power`
+    as a tile distance).
     """
 
     type: EffectType
     duration: int = 0
     power: int = 0
+    lifesteal: int = 0
 
 
 @dataclass

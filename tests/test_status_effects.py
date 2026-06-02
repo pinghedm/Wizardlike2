@@ -1,8 +1,8 @@
 import esper
+import pytest
 
-from src.components import Effect, EffectType, MessageLog, Stats, StatusEffects, StatusType
+from src.components import Effect, EffectType, Stats, StatusEffects, StatusType
 from src.constants import STATUS_PULSE_INTERVAL
-from src.ecs_helpers import get_singleton
 from src.systems import apply_effect, get_cooldown
 from tests.headless_runner import HeadlessRunner
 
@@ -14,7 +14,7 @@ def test_apply_poison_stores_a_copy_carrying_power_and_duration():
     enemy = runner.spawn_enemy(*runner.player_pos)
     source = Effect(type=EffectType.POISON, power=4, duration=90)
 
-    apply_effect(enemy, source, get_singleton(MessageLog))
+    apply_effect(enemy, source)
     stored = esper.component_for_entity(enemy, StatusEffects).active[StatusType.POISON]
 
     assert stored.power == 4
@@ -53,17 +53,19 @@ def test_regen_pulses_healing_capped_at_max_hp():
     assert esper.component_for_entity(enemy, Stats).hp == 20  # one big pulse, clamped
 
 
-def test_marker_status_ages_without_dealing_damage():
+@pytest.mark.parametrize('status_type', [StatusType.SLOW, StatusType.HASTE, StatusType.STUN])
+def test_marker_status_ages_without_dealing_damage(status_type):
     runner = HeadlessRunner(use_random_map=False)
     enemy = runner.spawn_enemy(*runner.player_pos)
-    esper.component_for_entity(enemy, StatusEffects).active[StatusType.SLOW] = Effect(
-        type=EffectType.SLOW, duration=STATUS_PULSE_INTERVAL
+    hp = esper.component_for_entity(enemy, Stats).hp
+    esper.component_for_entity(enemy, StatusEffects).active[status_type] = Effect(
+        type=EffectType(status_type.value), duration=STATUS_PULSE_INTERVAL
     )
 
     runner.tick(STATUS_PULSE_INTERVAL)
 
-    assert esper.component_for_entity(enemy, Stats).hp == 30  # power 0 -> no pulse
-    assert StatusType.SLOW not in esper.component_for_entity(enemy, StatusEffects).active
+    assert esper.component_for_entity(enemy, Stats).hp == hp  # power 0 -> no pulse
+    assert status_type not in esper.component_for_entity(enemy, StatusEffects).active
 
 
 # --- get_cooldown: markers gate action speed -----------------------------------

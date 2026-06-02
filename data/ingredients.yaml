@@ -14,6 +14,21 @@ ingredients:
     char: "\u2588"
     color: [0, 255, 0]
     price: 10
+  - id: storm_shard
+    name: Storm Shard
+    char: "\u2588"
+    color: [255, 230, 60]
+    price: 9
+  - id: earth_stone
+    name: Earth Stone
+    char: "\u2588"
+    color: [150, 100, 50]
+    price: 8
+  - id: gale_feather
+    name: Gale Feather
+    char: "\u2588"
+    color: [200, 230, 255]
+    price: 9
   - id: gold
     name: Gold
     char: "$"

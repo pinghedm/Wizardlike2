@@ -24,6 +24,8 @@ from src.components import (
     SpellInventory,
     SpellType,
     Stats,
+    StatusEffects,
+    StatusType,
     TargetingReticle,
     UIState,
 )
@@ -573,6 +575,7 @@ class HUDSystem(esper.Processor):
         # The HUD bar splits into a stats column and a message log.
         stats_zone, log_zone = self.layout.hud.split_left(self.HUD_STATS_WIDTH)
         self.render_hp_bar(stats_zone)
+        self.render_shield(stats_zone)
         self.render_floor_info(stats_zone, game_state.floor)
         self.render_gold(stats_zone)
         self.render_message_log(log_zone)
@@ -595,6 +598,16 @@ class HUDSystem(esper.Processor):
         self.console.draw_rect(hp_bar_start_x, hp_label_y, self.HP_BAR_WIDTH, 1, ch=ord('█'), fg=UI_RED_DARK)
         if filled_width > 0:
             self.console.draw_rect(hp_bar_start_x, hp_label_y, filled_width, 1, ch=ord('█'), fg=UI_RED)
+
+    def render_shield(self, zone: Rect):
+        """Show the player's active shield (its remaining damage reduction per hit)."""
+        players = esper.get_components(StatusEffects, PlayerTag)
+        if not players:
+            return
+        _player, (status, _) = players[0]
+        shield = status.active.get(StatusType.SHIELD)
+        if shield:
+            self.console.print(zone.x + 2, zone.y + 2, f'Shield: {shield.power}', fg=UI_CYAN)
 
     def render_floor_info(self, zone: Rect, floor: int):
         self.console.print(zone.x + 2, zone.y + 3, f'Floor: {floor}', fg=UI_WHITE)

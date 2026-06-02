@@ -107,3 +107,53 @@ spells:
     shop:
       price: 120
       charges: 1
+  - id: concussion
+    name: Concussion
+    description: A close blast that batters the target and hurls it backward.
+    range: 4
+    radius: 0
+    effects:
+      - type: damage
+        power: 12
+      - type: knockback
+        power: 2
+    recipes:
+      - ingredients: [fire_crystal, gale_feather]
+        charges: 4
+  - id: cryo_lock
+    name: Cryo-Lock
+    description: Flash-freezes a foe, locking it in place for a few moments.
+    range: 7
+    radius: 0
+    effects:
+      - type: damage
+        power: 8
+      - type: stun
+        duration: 150
+    recipes:
+      - ingredients: [ice_shard, earth_stone]
+        charges: 3
+  - id: aegis
+    name: Aegis
+    description: Wraps you in a ward that blunts incoming blows.
+    range: 0
+    radius: 0
+    effects:
+      - type: shield
+        power: 5
+        duration: 150
+    recipes:
+      - ingredients: [earth_stone, mystic_herb]
+        charges: 3
+  - id: siphon
+    name: Siphon
+    description: Leeches an enemy's vitality, healing you for part of the harm.
+    range: 7
+    radius: 0
+    effects:
+      - type: drain
+        power: 14
+        lifesteal: 7
+    recipes:
+      - ingredients: [storm_shard, mystic_herb]
+        charges: 3
