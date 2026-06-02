@@ -2,11 +2,13 @@ import math
 
 import esper
 import tcod
+from tcod.sdl.joystick import ControllerAxis, ControllerButton
 
 from src import persistence
 from src.components import (
     Actor,
     Enemy,
+    InputAction,
     Inventory,
     Item,
     ItemType,
@@ -49,11 +51,152 @@ from src.systems import (
     move_entity,
 )
 
+# Controller buttons mapped to the logical actions the keyboard also binds. The
+# d-pad moves; A/B confirm/cancel; X/Y open casting/crafting; both shoulders cycle
+# tabs; Start cancels (pause / back out).
+CONTROLLER_ACTIONS: dict[ControllerButton, InputAction] = {
+    ControllerButton.DPAD_UP: InputAction.MOVE_UP,
+    ControllerButton.DPAD_DOWN: InputAction.MOVE_DOWN,
+    ControllerButton.DPAD_LEFT: InputAction.MOVE_LEFT,
+    ControllerButton.DPAD_RIGHT: InputAction.MOVE_RIGHT,
+    ControllerButton.A: InputAction.CONFIRM,
+    ControllerButton.B: InputAction.CANCEL,
+    ControllerButton.X: InputAction.OPEN_CASTING,
+    ControllerButton.Y: InputAction.OPEN_CRAFTING,
+    ControllerButton.LEFTSHOULDER: InputAction.CYCLE_TAB,
+    ControllerButton.RIGHTSHOULDER: InputAction.CYCLE_TAB,
+    ControllerButton.START: InputAction.CANCEL,
+}
 
-def handle_modal_input(event: tcod.event.Event):
-    # Only Enter dismisses a modal, so an arrow key can't accidentally confirm a
-    # descent or blow past the death screen.
-    if not isinstance(event, tcod.event.KeyDown) or event.sym != tcod.event.KeySym.RETURN:
+# How a movement action displaces the cursor / player on each axis.
+MOVE_DELTAS: dict[InputAction, tuple[int, int]] = {
+    InputAction.MOVE_UP: (0, -1),
+    InputAction.MOVE_DOWN: (0, 1),
+    InputAction.MOVE_LEFT: (-1, 0),
+    InputAction.MOVE_RIGHT: (1, 0),
+}
+
+
+def resolve_action(event: tcod.event.Event, keybindings: Keybindings) -> InputAction | None:
+    """Map a raw input event to the logical action it triggers, or None.
+
+    Keyboard presses resolve through the (remappable) keymap; controller button
+    presses resolve through a parallel fixed map. Button releases, axis motion,
+    unbound keys, and unmapped buttons all yield None. This is the single point
+    where both input devices become the InputActions the handlers speak.
+    """
+    if isinstance(event, tcod.event.KeyDown):
+        for action, sym in keybindings.bindings.items():
+            if sym == event.sym:
+                return action
+        return None
+    if isinstance(event, tcod.event.ControllerButton):
+        return CONTROLLER_ACTIONS.get(event.button) if event.pressed else None
+    return None
+
+
+def try_capture_remap(event: tcod.event.Event) -> bool:
+    """Bind the next raw keypress to a pending Settings remap, if one is waiting.
+
+    Returns True when the event was consumed as a remap. This bypasses
+    resolve_action on purpose: the captured key may currently be bound to another
+    action, and we want the literal key, not its current meaning.
+    """
+    ui_state = esper.get_component(UIState)[0][1]
+    if ui_state.remapping_action is None or not isinstance(event, tcod.event.KeyDown):
+        return False
+    keybindings = esper.get_component(Keybindings)[0][1]
+    keybindings.bindings[ui_state.remapping_action] = event.sym
+    ui_state.remapping_action = None
+    return True
+
+
+class AnalogInput:
+    """Translates the left stick and triggers into discrete, repeating actions.
+
+    Sticks and triggers stream axis values rather than press events, so this holds
+    the latest value per axis and derives one active action: the left stick acts
+    as a 4-way pad (dominant axis wins) for movement, and the triggers scroll the
+    log (L2 up, R2 down). A high engage threshold with a lower release threshold
+    (hysteresis) avoids edge jitter, and a repeat interval makes a held stick or
+    trigger step like a held key. Time is injected so repeats stay deterministic.
+    """
+
+    STICK_ENGAGE = 16384
+    STICK_RELEASE = 11000
+    TRIGGER_ENGAGE = 16384
+    TRIGGER_RELEASE = 8000
+    REPEAT_INTERVAL = 0.12
+
+    def __init__(self):
+        self.left_x = 0
+        self.left_y = 0
+        self.trigger_left = 0
+        self.trigger_right = 0
+        self.active: InputAction | None = None
+        self.next_repeat = 0.0
+
+    def update(self, event: tcod.event.ControllerAxis, now: float) -> InputAction | None:
+        """Record an axis value; return an action to fire now if it just engaged."""
+        if event.axis == ControllerAxis.LEFTX:
+            self.left_x = event.value
+        elif event.axis == ControllerAxis.LEFTY:
+            self.left_y = event.value
+        elif event.axis == ControllerAxis.TRIGGERLEFT:
+            self.trigger_left = event.value
+        elif event.axis == ControllerAxis.TRIGGERRIGHT:
+            self.trigger_right = event.value
+        else:
+            return None
+
+        desired = self._desired_action()
+        if desired == self.active:
+            return None
+        self.active = desired
+        if desired is None:
+            return None
+        self.next_repeat = now + self.REPEAT_INTERVAL
+        return desired
+
+    def tick(self, now: float) -> InputAction | None:
+        """Return the held action if it is due to repeat, else None."""
+        if self.active is None or now < self.next_repeat:
+            return None
+        self.next_repeat = now + self.REPEAT_INTERVAL
+        return self.active
+
+    def _desired_action(self) -> InputAction | None:
+        # Triggers take precedence over the stick; L2 scrolls up, R2 down.
+        if self.trigger_right >= self._trigger_threshold(InputAction.SCROLL_DOWN):
+            return InputAction.SCROLL_DOWN
+        if self.trigger_left >= self._trigger_threshold(InputAction.SCROLL_UP):
+            return InputAction.SCROLL_UP
+
+        threshold = self.STICK_RELEASE if self.active in MOVE_DELTAS else self.STICK_ENGAGE
+        if max(abs(self.left_x), abs(self.left_y)) < threshold:
+            return None
+        if abs(self.left_x) >= abs(self.left_y):
+            return InputAction.MOVE_RIGHT if self.left_x > 0 else InputAction.MOVE_LEFT
+        return InputAction.MOVE_DOWN if self.left_y > 0 else InputAction.MOVE_UP
+
+    def _trigger_threshold(self, action: InputAction) -> int:
+        return self.TRIGGER_RELEASE if self.active == action else self.TRIGGER_ENGAGE
+
+
+def controller_binding_label(action: InputAction) -> str:
+    """The controller buttons bound to an action, by enum name ('' if none)."""
+    return ' / '.join(button.name for button, bound in CONTROLLER_ACTIONS.items() if bound == action)
+
+
+def note_controller_button(button: ControllerButton) -> None:
+    """Record the last controller button pressed, for the Settings live readout."""
+    esper.get_component(UIState)[0][1].last_controller_input = button.name
+
+
+def handle_modal_input(action: InputAction | None):
+    # Only Confirm dismisses a modal, so a movement input can't accidentally
+    # confirm a descent or blow past the death screen.
+    if action != InputAction.CONFIRM:
         return
 
     modals = esper.get_component(Modal)
@@ -64,12 +207,10 @@ def handle_modal_input(event: tcod.event.Event):
         esper.delete_entity(ent)
 
 
-def handle_game_over_input(event: tcod.event.Event):
+def handle_game_over_input(action: InputAction | None):
     """The run-summary screen: Confirm returns to the title menu, nothing else acts."""
-    if isinstance(event, tcod.event.KeyDown):
-        keybindings = esper.get_component(Keybindings)[0][1]
-        if event.sym == keybindings.bindings['CONFIRM']:
-            return DisplayMode.RETURN_TO_TITLE
+    if action == InputAction.CONFIRM:
+        return DisplayMode.RETURN_TO_TITLE
     return DisplayMode.GAME_OVER
 
 
@@ -88,42 +229,28 @@ def _adjacent_shopkeeper(player_pos: Position) -> bool:
     return False
 
 
-def handle_exploring_input(event: tcod.event.Event):
+def handle_exploring_input(action: InputAction | None):
     game_state = esper.get_component(GameState)[0][1]
-    keybindings = esper.get_component(Keybindings)[0][1]
-
-    if not isinstance(event, tcod.event.KeyDown):
-        return DisplayMode.EXPLORING
 
     player_entities = esper.get_components(Position, PlayerTag)
     if not player_entities:
         return DisplayMode.EXPLORING
     player, (player_pos, _tag) = player_entities[0]
 
-    dx, dy = 0, 0
-    if event.sym == keybindings.bindings['MOVE_UP']:
-        dy = -1
-    elif event.sym == keybindings.bindings['MOVE_DOWN']:
-        dy = 1
-    elif event.sym == keybindings.bindings['MOVE_LEFT']:
-        dx = -1
-    elif event.sym == keybindings.bindings['MOVE_RIGHT']:
-        dx = 1
-    elif event.sym == keybindings.bindings['CANCEL']:
+    if action == InputAction.CANCEL:
         return DisplayMode.MENU
-    elif event.sym == keybindings.bindings['OPEN_CRAFTING']:
+    elif action == InputAction.OPEN_CRAFTING:
         return DisplayMode.COMBINING
-    elif event.sym == keybindings.bindings['OPEN_CASTING']:
+    elif action == InputAction.OPEN_CASTING:
         return DisplayMode.CASTING
-    elif event.sym == keybindings.bindings['CONFIRM'] and _adjacent_shopkeeper(player_pos):
+    elif action == InputAction.CONFIRM and _adjacent_shopkeeper(player_pos):
         return DisplayMode.SHOPPING
-    elif event.sym == tcod.event.KeySym.PAGEUP:
-        log = esper.get_component(MessageLog)[0][1]
-        log.scroll_index += 1
-    elif event.sym == tcod.event.KeySym.PAGEDOWN:
-        log = esper.get_component(MessageLog)[0][1]
-        log.scroll_index -= 1
+    elif action == InputAction.SCROLL_UP:
+        esper.get_component(MessageLog)[0][1].scroll_index += 1
+    elif action == InputAction.SCROLL_DOWN:
+        esper.get_component(MessageLog)[0][1].scroll_index -= 1
 
+    dx, dy = MOVE_DELTAS.get(action, (0, 0))
     if dx != 0 or dy != 0:
         # Default movement is uncapped (as fast as the player presses). Only a SLOW
         # status throttles it: each move sets a (doubled) cooldown via move_entity,
@@ -186,40 +313,25 @@ def handle_exploring_input(event: tcod.event.Event):
     return DisplayMode.EXPLORING
 
 
-def handle_settings_input(event: tcod.event.Event):
-    if not isinstance(event, tcod.event.KeyDown):
-        return DisplayMode.SETTINGS
-
+def handle_settings_input(action: InputAction | None):
     ui_state = esper.get_component(UIState)[0][1]
-    _kb_ent, keybindings = esper.get_component(Keybindings)[0]
-
+    keybindings = esper.get_component(Keybindings)[0][1]
     actions = list(keybindings.bindings.keys())
 
-    if ui_state.remapping_action:
-        # We are waiting for a new key
-        keybindings.bindings[ui_state.remapping_action] = event.sym
-        ui_state.remapping_action = None
-        return DisplayMode.SETTINGS
-
-    if event.sym == keybindings.bindings['CANCEL']:
+    if action == InputAction.CANCEL:
         return DisplayMode.MENU
-
-    elif event.sym == keybindings.bindings['MOVE_UP']:
+    elif action == InputAction.MOVE_UP:
         ui_state.settings_cursor = (ui_state.settings_cursor - 1) % len(actions)
-
-    elif event.sym == keybindings.bindings['MOVE_DOWN']:
+    elif action == InputAction.MOVE_DOWN:
         ui_state.settings_cursor = (ui_state.settings_cursor + 1) % len(actions)
-
-    elif event.sym == keybindings.bindings['CONFIRM']:
+    elif action == InputAction.CONFIRM:
+        # Arm the remap; try_capture_remap binds the next raw keypress.
         ui_state.remapping_action = actions[ui_state.settings_cursor]
 
     return DisplayMode.SETTINGS
 
 
-def handle_menu_input(event: tcod.event.Event):
-    if not isinstance(event, tcod.event.KeyDown):
-        return DisplayMode.MENU
-
+def handle_menu_input(action: InputAction | None):
     ui_state = esper.get_component(UIState)[0][1]
 
     # Title menu before a run starts, pause menu once a player exists.
@@ -227,18 +339,18 @@ def handle_menu_input(event: tcod.event.Event):
     options = PAUSE_MENU_OPTIONS if game_active else TITLE_MENU_OPTIONS
     ui_state.main_menu_cursor %= len(options)
 
-    if event.sym == tcod.event.KeySym.ESCAPE:
-        # Escape resumes an active game; at the title screen there is nothing
+    if action == InputAction.CANCEL:
+        # Cancel resumes an active game; at the title screen there is nothing
         # to resume, so stay on the menu.
         return DisplayMode.EXPLORING if game_active else DisplayMode.MENU
 
-    elif event.sym == tcod.event.KeySym.UP:
+    elif action == InputAction.MOVE_UP:
         ui_state.main_menu_cursor = (ui_state.main_menu_cursor - 1) % len(options)
 
-    elif event.sym == tcod.event.KeySym.DOWN:
+    elif action == InputAction.MOVE_DOWN:
         ui_state.main_menu_cursor = (ui_state.main_menu_cursor + 1) % len(options)
 
-    elif event.sym == tcod.event.KeySym.RETURN:
+    elif action == InputAction.CONFIRM:
         selection = options[ui_state.main_menu_cursor]
         if selection == MenuOption.QUIT:
             return DisplayMode.EXITING
@@ -257,30 +369,26 @@ def handle_menu_input(event: tcod.event.Event):
     return DisplayMode.MENU
 
 
-def handle_combining_input(event: tcod.event.Event):
-    if not isinstance(event, tcod.event.KeyDown):
-        return DisplayMode.COMBINING
-
+def handle_combining_input(action: InputAction | None):
     ui_state = esper.get_component(UIState)[0][1]
-    keybindings = esper.get_component(Keybindings)[0][1]
 
     # Cycle between the manual experiment view and the spellbook.
-    if event.sym == keybindings.bindings['CYCLE_TAB']:
+    if action == InputAction.CYCLE_TAB:
         ui_state.crafting_view = (
             CraftingView.SPELLBOOK if ui_state.crafting_view == CraftingView.EXPERIMENT else CraftingView.EXPERIMENT
         )
         return DisplayMode.COMBINING
 
-    # The crafting key or Esc closes the whole screen from either view.
-    if event.sym in (keybindings.bindings['CANCEL'], keybindings.bindings['OPEN_CRAFTING']):
+    # The crafting action or Cancel closes the whole screen from either view.
+    if action in (InputAction.CANCEL, InputAction.OPEN_CRAFTING):
         return DisplayMode.EXPLORING
 
     if ui_state.crafting_view == CraftingView.SPELLBOOK:
-        return _handle_spellbook_input(event, ui_state, keybindings)
-    return _handle_experiment_input(event, ui_state, keybindings)
+        return _handle_spellbook_input(action, ui_state)
+    return _handle_experiment_input(action, ui_state)
 
 
-def _handle_experiment_input(event: tcod.event.KeyDown, ui_state: UIState, keybindings: Keybindings):
+def _handle_experiment_input(action: InputAction | None, ui_state: UIState):
     """Manual ingredient combining: select reagents and combine to discover recipes."""
     player_entities = esper.get_components(Inventory, PlayerTag)
     if not player_entities:
@@ -294,27 +402,27 @@ def _handle_experiment_input(event: tcod.event.KeyDown, ui_state: UIState, keybi
     else:
         ui_state.crafting_cursor = 0
 
-    if event.sym == keybindings.bindings['MOVE_UP']:
+    if action == InputAction.MOVE_UP:
         if inv_list:
             ui_state.crafting_cursor = (ui_state.crafting_cursor - 1) % len(inv_list)
 
-    elif event.sym == keybindings.bindings['MOVE_DOWN']:
+    elif action == InputAction.MOVE_DOWN:
         if inv_list:
             ui_state.crafting_cursor = (ui_state.crafting_cursor + 1) % len(inv_list)
 
-    elif event.sym == keybindings.bindings['MOVE_RIGHT']:
+    elif action == InputAction.MOVE_RIGHT:
         if inv_list:
             itype = inv_list[ui_state.crafting_cursor]
             if ui_state.selected_for_crafting.get(itype, 0) < player_inv.items[itype]:
                 ui_state.selected_for_crafting[itype] = ui_state.selected_for_crafting.get(itype, 0) + 1
 
-    elif event.sym == keybindings.bindings['MOVE_LEFT']:
+    elif action == InputAction.MOVE_LEFT:
         if inv_list:
             itype = inv_list[ui_state.crafting_cursor]
             if ui_state.selected_for_crafting.get(itype, 0) > 0:
                 ui_state.selected_for_crafting[itype] -= 1
 
-    elif event.sym == keybindings.bindings['CONFIRM']:
+    elif action == InputAction.CONFIRM:
         # Try Combining
         flat_selection: list[ItemType] = []
         for itype, count in ui_state.selected_for_crafting.items():
@@ -368,7 +476,7 @@ def _handle_experiment_input(event: tcod.event.KeyDown, ui_state: UIState, keybi
     return DisplayMode.COMBINING
 
 
-def _handle_spellbook_input(event: tcod.event.KeyDown, ui_state: UIState, keybindings: Keybindings):
+def _handle_spellbook_input(action: InputAction | None, ui_state: UIState):
     """Browse known recipes and instantly re-craft the selected one from stock."""
     player_entities = esper.get_components(KnownRecipes, PlayerTag)
     if not player_entities:
@@ -381,15 +489,15 @@ def _handle_spellbook_input(event: tcod.event.KeyDown, ui_state: UIState, keybin
     else:
         ui_state.spellbook_cursor = 0
 
-    if event.sym == keybindings.bindings['MOVE_UP']:
+    if action == InputAction.MOVE_UP:
         if known:
             ui_state.spellbook_cursor = (ui_state.spellbook_cursor - 1) % len(known)
 
-    elif event.sym == keybindings.bindings['MOVE_DOWN']:
+    elif action == InputAction.MOVE_DOWN:
         if known:
             ui_state.spellbook_cursor = (ui_state.spellbook_cursor + 1) % len(known)
 
-    elif event.sym == keybindings.bindings['CONFIRM'] and known:
+    elif action == InputAction.CONFIRM and known:
         stype = known[ui_state.spellbook_cursor]
         log = esper.get_component(MessageLog)[0][1]
         charges = craft_known_spell(stype)
@@ -410,12 +518,8 @@ def _handle_spellbook_input(event: tcod.event.KeyDown, ui_state: UIState, keybin
     return DisplayMode.COMBINING
 
 
-def handle_casting_input(event: tcod.event.Event):
-    if not isinstance(event, tcod.event.KeyDown):
-        return DisplayMode.CASTING
-
+def handle_casting_input(action: InputAction | None):
     ui_state = esper.get_component(UIState)[0][1]
-    keybindings = esper.get_component(Keybindings)[0][1]
 
     player_entities = esper.get_components(SpellInventory, PlayerTag)
     if not player_entities:
@@ -433,18 +537,18 @@ def handle_casting_input(event: tcod.event.Event):
     else:
         ui_state.casting_cursor = 0
 
-    if event.sym == keybindings.bindings['CANCEL'] or event.sym == keybindings.bindings['OPEN_CASTING']:
+    if action in (InputAction.CANCEL, InputAction.OPEN_CASTING):
         return DisplayMode.EXPLORING
 
-    elif event.sym == keybindings.bindings['MOVE_UP']:
+    elif action == InputAction.MOVE_UP:
         if available_spells:
             ui_state.casting_cursor = (ui_state.casting_cursor - 1) % len(available_spells)
 
-    elif event.sym == keybindings.bindings['MOVE_DOWN']:
+    elif action == InputAction.MOVE_DOWN:
         if available_spells:
             ui_state.casting_cursor = (ui_state.casting_cursor + 1) % len(available_spells)
 
-    elif event.sym == keybindings.bindings['CONFIRM']:
+    elif action == InputAction.CONFIRM:
         if available_spells:
             stype = available_spells[ui_state.casting_cursor]
 
@@ -470,12 +574,8 @@ def handle_casting_input(event: tcod.event.Event):
     return DisplayMode.CASTING
 
 
-def handle_targeting_input(event: tcod.event.Event):
-    if not isinstance(event, tcod.event.KeyDown):
-        return DisplayMode.TARGETING
-
+def handle_targeting_input(action: InputAction | None):
     ui_state = esper.get_component(UIState)[0][1]
-    keybindings = esper.get_component(Keybindings)[0][1]
     reticles = esper.get_component(TargetingReticle)
     if not reticles:
         return DisplayMode.EXPLORING
@@ -487,23 +587,14 @@ def handle_targeting_input(event: tcod.event.Event):
         return DisplayMode.EXPLORING
     _player, (player_pos, _tag) = player_entities[0]
 
-    # Esc or the casting key both back out to the spell picker (the key that
-    # opened targeting also closes it).
-    if event.sym in (keybindings.bindings['CANCEL'], keybindings.bindings['OPEN_CASTING']):
+    # Cancel or the casting action both back out to the spell picker (the input
+    # that opened targeting also closes it).
+    if action in (InputAction.CANCEL, InputAction.OPEN_CASTING):
         esper.delete_entity(ret_ent)
         ui_state.active_targeting_spell_id = None
         return DisplayMode.CASTING
 
-    dx, dy = 0, 0
-    if event.sym == keybindings.bindings['MOVE_UP']:
-        dy = -1
-    elif event.sym == keybindings.bindings['MOVE_DOWN']:
-        dy = 1
-    elif event.sym == keybindings.bindings['MOVE_LEFT']:
-        dx = -1
-    elif event.sym == keybindings.bindings['MOVE_RIGHT']:
-        dx = 1
-
+    dx, dy = MOVE_DELTAS.get(action, (0, 0))
     if dx != 0 or dy != 0:
         new_x = reticle.x + dx
         new_y = reticle.y + dy
@@ -521,7 +612,7 @@ def handle_targeting_input(event: tcod.event.Event):
             reticle.x = new_x
             reticle.y = new_y
 
-    elif event.sym == keybindings.bindings['CONFIRM']:
+    elif action == InputAction.CONFIRM:
         # EXECUTE SPELL
         if ui_state.active_targeting_spell_id is not None:
             cast_spell(
@@ -533,18 +624,14 @@ def handle_targeting_input(event: tcod.event.Event):
         esper.delete_entity(ret_ent)
         ui_state.active_targeting_spell_id = None
         # Back to the picker so the player can chain casts; they leave it with
-        # Esc or the casting key.
+        # Cancel or the casting action.
         return DisplayMode.CASTING
 
     return DisplayMode.TARGETING
 
 
-def handle_shop_input(event: tcod.event.Event):
-    if not isinstance(event, tcod.event.KeyDown):
-        return DisplayMode.SHOPPING
-
+def handle_shop_input(action: InputAction | None):
     ui_state = esper.get_component(UIState)[0][1]
-    keybindings = esper.get_component(Keybindings)[0][1]
 
     shopkeepers = esper.get_component(Shopkeeper)
     player_entities = esper.get_components(Inventory, PlayerTag)
@@ -553,7 +640,7 @@ def handle_shop_input(event: tcod.event.Event):
     offers = shopkeepers[0][1].offers
     _player, (player_inv, _tag) = player_entities[0]
 
-    if event.sym == keybindings.bindings['CANCEL']:
+    if action == InputAction.CANCEL:
         return DisplayMode.EXPLORING
     if not offers:
         return DisplayMode.SHOPPING
@@ -563,17 +650,17 @@ def handle_shop_input(event: tcod.event.Event):
     max_qty = max(1, player_inv.items.get(ItemType.GOLD, 0) // offer.price)
     ui_state.shop_quantity = max(1, min(ui_state.shop_quantity, max_qty))
 
-    if event.sym == keybindings.bindings['MOVE_UP']:
+    if action == InputAction.MOVE_UP:
         ui_state.shop_cursor = (ui_state.shop_cursor - 1) % len(offers)
         ui_state.shop_quantity = 1
-    elif event.sym == keybindings.bindings['MOVE_DOWN']:
+    elif action == InputAction.MOVE_DOWN:
         ui_state.shop_cursor = (ui_state.shop_cursor + 1) % len(offers)
         ui_state.shop_quantity = 1
-    elif event.sym == keybindings.bindings['MOVE_LEFT']:
+    elif action == InputAction.MOVE_LEFT:
         ui_state.shop_quantity = max(1, ui_state.shop_quantity - 1)
-    elif event.sym == keybindings.bindings['MOVE_RIGHT']:
+    elif action == InputAction.MOVE_RIGHT:
         ui_state.shop_quantity = min(max_qty, ui_state.shop_quantity + 1)
-    elif event.sym == keybindings.bindings['CONFIRM']:
+    elif action == InputAction.CONFIRM:
         log = esper.get_component(MessageLog)[0][1]
         quantity = ui_state.shop_quantity
         if purchase_offer(offer, quantity):

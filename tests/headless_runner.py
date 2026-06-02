@@ -1,6 +1,7 @@
 import esper
 import tcod.console
 import tcod.event
+from tcod.sdl.joystick import ControllerButton
 
 from src.components import (
     Configuration,
@@ -130,6 +131,13 @@ class HeadlessRunner:
             mod=tcod.event.Modifier.NONE,
             repeat=False,
         )
+        game_state = esper.get_component(GameState)[0][1]
+        dispatch_input(event, game_state)
+        update_pause_state(game_state)
+
+    def simulate_controller_button(self, button: ControllerButton, pressed: bool = True):
+        """Simulate a controller button event and dispatch it like the game loop."""
+        event = tcod.event.ControllerButton(which=0, button=button, pressed=pressed)
         game_state = esper.get_component(GameState)[0][1]
         dispatch_input(event, game_state)
         update_pause_state(game_state)

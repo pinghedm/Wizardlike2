@@ -6,6 +6,7 @@ from src.components import (
     Configuration,
     FieldOfView,
     GameConfigs,
+    InputAction,
     Inventory,
     ItemType,
     Keybindings,
@@ -62,15 +63,17 @@ def create_keybindings():
     return esper.create_entity(
         Keybindings(
             bindings={
-                'MOVE_UP': tcod.event.KeySym.UP,
-                'MOVE_DOWN': tcod.event.KeySym.DOWN,
-                'MOVE_LEFT': tcod.event.KeySym.LEFT,
-                'MOVE_RIGHT': tcod.event.KeySym.RIGHT,
-                'OPEN_CRAFTING': tcod.event.KeySym.C,
-                'OPEN_CASTING': tcod.event.KeySym.S,
-                'CONFIRM': tcod.event.KeySym.RETURN,
-                'CANCEL': tcod.event.KeySym.ESCAPE,
-                'CYCLE_TAB': tcod.event.KeySym.TAB,
+                InputAction.MOVE_UP: tcod.event.KeySym.UP,
+                InputAction.MOVE_DOWN: tcod.event.KeySym.DOWN,
+                InputAction.MOVE_LEFT: tcod.event.KeySym.LEFT,
+                InputAction.MOVE_RIGHT: tcod.event.KeySym.RIGHT,
+                InputAction.OPEN_CRAFTING: tcod.event.KeySym.C,
+                InputAction.OPEN_CASTING: tcod.event.KeySym.S,
+                InputAction.CONFIRM: tcod.event.KeySym.RETURN,
+                InputAction.CANCEL: tcod.event.KeySym.ESCAPE,
+                InputAction.CYCLE_TAB: tcod.event.KeySym.TAB,
+                InputAction.SCROLL_UP: tcod.event.KeySym.PAGEUP,
+                InputAction.SCROLL_DOWN: tcod.event.KeySym.PAGEDOWN,
             }
         )
     )

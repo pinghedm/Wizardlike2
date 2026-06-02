@@ -225,11 +225,27 @@ class Configuration:
         self.spells_by_id = {s['id']: s for s in self.spells}
 
 
+class InputAction(enum.Enum):
+    """Logical input actions that keyboard keys and controller buttons map to."""
+
+    MOVE_UP = enum.auto()
+    MOVE_DOWN = enum.auto()
+    MOVE_LEFT = enum.auto()
+    MOVE_RIGHT = enum.auto()
+    OPEN_CRAFTING = enum.auto()
+    OPEN_CASTING = enum.auto()
+    CONFIRM = enum.auto()
+    CANCEL = enum.auto()
+    CYCLE_TAB = enum.auto()
+    SCROLL_UP = enum.auto()
+    SCROLL_DOWN = enum.auto()
+
+
 @dataclass
 class Keybindings:
     """Singleton component to hold gameplay keybindings."""
 
-    bindings: dict[str, tcod.event.KeySym]
+    bindings: dict[InputAction, tcod.event.KeySym]
 
 
 @dataclass
@@ -240,13 +256,15 @@ class UIState:
     crafting_cursor: int = 0
     casting_cursor: int = 0
     settings_cursor: int = 0
-    remapping_action: str | None = None
+    remapping_action: InputAction | None = None
     selected_for_crafting: dict[ItemType, int] = field(default_factory=dict[ItemType, int])
     active_targeting_spell_id: str | None = None
     crafting_view: CraftingView = CraftingView.EXPERIMENT
     spellbook_cursor: int = 0
     shop_cursor: int = 0
     shop_quantity: int = 1
+    # Label of the most recent controller button pressed, for the Settings readout.
+    last_controller_input: str | None = None
 
 
 @dataclass

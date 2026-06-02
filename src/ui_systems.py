@@ -5,6 +5,7 @@ from collections.abc import Sequence
 import esper
 import numpy as np
 import tcod
+import tcod.sdl.joystick
 
 from src import persistence
 from src.components import (
@@ -41,6 +42,7 @@ from src.constants import (
     to_rgb,
 )
 from src.ecs_helpers import get_singleton, try_get_singleton
+from src.input_handlers import controller_binding_label
 from src.layout import Layout, Rect
 from src.map_objects import Map
 from src.states import (
@@ -324,28 +326,31 @@ class MenuSystem(esper.Processor):
 
         actions = list(keybindings.bindings.keys())
 
-        width = 40
-        height = 15
+        width = 60
+        height = len(actions) + 8
         x, y = draw_centered_frame(self.console, width, height, title='Settings')
+
+        controllers = tcod.sdl.joystick.get_controllers()
+        controller_name = controllers[0].joystick.name if controllers else 'none detected'
+        self.console.print(x + 2, y + 1, f'Controller: {controller_name}', fg=UI_CYAN)
+        self.console.print(x + 2, y + 2, f'Last input: {ui_state.last_controller_input or "-"}', fg=UI_GRAY)
 
         for i, action in enumerate(actions):
             color = UI_YELLOW if i == ui_state.settings_cursor else UI_WHITE
-            key_name = keybindings.bindings[action].name
+            row = y + 4 + i
 
-            text = f'{"> " if i == ui_state.settings_cursor else "  "}{action}: '
+            marker = '> ' if i == ui_state.settings_cursor else '  '
             if ui_state.remapping_action == action:
-                text += '[Press any key...]'
+                self.console.print(x + 2, row, f'{marker}{action.name}: [Press any key...]', fg=color)
             else:
-                text += f'[{key_name}]'
+                # Keyboard binding (remappable) and the fixed controller binding side by side.
+                self.console.print(
+                    x + 2, row, f'{marker}{action.name}: [{keybindings.bindings[action].name}]', fg=color
+                )
+                self.console.print(x + 30, row, controller_binding_label(action), fg=color)
 
-            self.console.print(x + 2, y + 2 + i, text, fg=color)
-
-        self.console.print(
-            x + 2,
-            y + height - 2,
-            'Arrows: Select | Enter: Remap | Esc: Back',
-            fg=UI_GRAY,
-        )
+        self.console.print(x + 2, y + height - 3, 'Left stick: move    Triggers: scroll log', fg=UI_GRAY_DARK)
+        self.console.print(x + 2, y + height - 2, 'Arrows: Select | Enter: Remap | Esc: Back', fg=UI_GRAY)
 
     def render_game_over(self):
         game_state = get_singleton(GameState)

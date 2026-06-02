@@ -10,6 +10,7 @@ import pytest
 
 from src import persistence
 from src.components import (
+    InputAction,
     ItemType,
     KnownRecipes,
     MessageLog,
@@ -219,7 +220,7 @@ def test_settings_menu_shows_bindings():
 
 def test_settings_menu_shows_remapping_prompt():
     runner = HeadlessRunner(use_random_map=False)
-    _ui_state(runner).remapping_action = 'MOVE_UP'
+    _ui_state(runner).remapping_action = InputAction.MOVE_UP
     runner.game_state.display_mode = DisplayMode.SETTINGS
 
     assert 'MOVE_UP: [Press any key...]' in _full_text(runner)

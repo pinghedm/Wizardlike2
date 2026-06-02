@@ -3,9 +3,10 @@ import time
 
 import esper
 import tcod
+import tcod.sdl.joystick
 
 from src import persistence
-from src.components import MessageLog, Modal
+from src.components import InputAction, Keybindings, MessageLog, Modal
 from src.constants import (
     DISPLAY_SCALE,
     MAX_ITEMS_PER_ROOM,
@@ -29,6 +30,7 @@ from src.entities import (
     create_ui_state,
 )
 from src.input_handlers import (
+    AnalogInput,
     handle_casting_input,
     handle_combining_input,
     handle_exploring_input,
@@ -38,6 +40,9 @@ from src.input_handlers import (
     handle_settings_input,
     handle_shop_input,
     handle_targeting_input,
+    note_controller_button,
+    resolve_action,
+    try_capture_remap,
 )
 from src.layout import Layout
 from src.procgen import generate_dungeon
@@ -109,11 +114,14 @@ def add_render_systems(layout: Layout, asset_loader: AssetLoader):
 def init_main_menu():
     """Create the minimal state for the startup title screen.
 
-    Only GameState (in MENU mode) and UIState are needed; the title screen has
-    no player, map, or config. New Game / Continue build the full world from here.
+    GameState (in MENU mode), UIState, and Keybindings are needed; the title
+    screen has no player, map, or config. Keybindings let the menu resolve input
+    through the same action layer as the game. New Game / Continue build the full
+    world from here.
     """
     create_game_state()
     create_ui_state()
+    create_keybindings()
     get_singleton(GameState).display_mode = DisplayMode.MENU
 
 
@@ -124,26 +132,49 @@ def update_pause_state(game_state: GameState):
 
 
 def dispatch_input(event: tcod.event.Event, game_state: GameState):
+    keybindings = esper.get_component(Keybindings)[0][1]
+
+    if isinstance(event, tcod.event.ControllerButton) and event.pressed:
+        note_controller_button(event.button)
+
+    # A pending key remap captures the next raw keypress, before it resolves to
+    # whatever action it is currently bound to.
+    if game_state.display_mode == DisplayMode.SETTINGS and try_capture_remap(event):
+        return
+
+    dispatch_action(resolve_action(event, keybindings), game_state)
+
+
+def dispatch_action(action: InputAction | None, game_state: GameState):
+    """Route a resolved input action to the active mode's handler.
+
+    Both keyboard and controller input funnel through here as InputActions, so
+    the handlers never see raw keys or buttons. A None action (unbound input) is
+    a no-op.
+    """
+    if action is None:
+        return
+
     if esper.get_component(Modal):
-        handle_modal_input(event)
+        handle_modal_input(action)
         return
 
     if game_state.display_mode == DisplayMode.EXPLORING:
-        game_state.display_mode = handle_exploring_input(event)
+        game_state.display_mode = handle_exploring_input(action)
     elif game_state.display_mode == DisplayMode.MENU:
-        game_state.display_mode = handle_menu_input(event)
+        game_state.display_mode = handle_menu_input(action)
     elif game_state.display_mode == DisplayMode.COMBINING:
-        game_state.display_mode = handle_combining_input(event)
+        game_state.display_mode = handle_combining_input(action)
     elif game_state.display_mode == DisplayMode.CASTING:
-        game_state.display_mode = handle_casting_input(event)
+        game_state.display_mode = handle_casting_input(action)
     elif game_state.display_mode == DisplayMode.TARGETING:
-        game_state.display_mode = handle_targeting_input(event)
+        game_state.display_mode = handle_targeting_input(action)
     elif game_state.display_mode == DisplayMode.SHOPPING:
-        game_state.display_mode = handle_shop_input(event)
+        game_state.display_mode = handle_shop_input(action)
     elif game_state.display_mode == DisplayMode.SETTINGS:
-        game_state.display_mode = handle_settings_input(event)
+        game_state.display_mode = handle_settings_input(action)
     elif game_state.display_mode == DisplayMode.GAME_OVER:
-        game_state.display_mode = handle_game_over_input(event)
+        game_state.display_mode = handle_game_over_input(action)
 
 
 def apply_pending_transition(game_state: GameState, asset_loader: AssetLoader) -> None:
@@ -204,6 +235,16 @@ def main():
         # Boot into the title screen (New Game / Continue / Quit).
         init_main_menu()
 
+        # Enable gamepad input. Connected controllers are held in a list so SDL
+        # keeps them open and keeps delivering their button events; the list is
+        # refreshed when one is plugged in or removed.
+        tcod.sdl.joystick.init()
+        controllers = tcod.sdl.joystick.get_controllers()
+        debug_log(f'controllers connected: {len(controllers)}')
+
+        # Translates left-stick / trigger axis streams into repeating actions.
+        analog = AnalogInput()
+
         tick_rate = 1 / TICKS_PER_SECOND
 
         frame = 0
@@ -243,9 +284,18 @@ def main():
                 if isinstance(event, tcod.event.Quit):
                     sys.exit()
 
+                if isinstance(event, tcod.event.ControllerDevice):
+                    controllers = tcod.sdl.joystick.get_controllers()
+                    debug_log(f'controllers changed: {len(controllers)} connected')
+                    continue
+
                 old_mode = game_state.display_mode
                 debug_log(f'frame {frame}: dispatch {type(event).__name__}')
-                dispatch_input(event, game_state)
+                if isinstance(event, tcod.event.ControllerAxis):
+                    # Sticks/triggers resolve to a (possibly repeating) action here.
+                    dispatch_action(analog.update(event, frame_start), game_state)
+                else:
+                    dispatch_input(event, game_state)
 
                 # Handle world transitions. clear_database() wipes entities and
                 # components but leaves the (stateless) processors in place, so a
@@ -256,6 +306,13 @@ def main():
                 # If the state changed, break the event loop to redraw immediately
                 if game_state.display_mode != old_mode:
                     break
+
+            # A held stick / trigger repeats like a held key, once it is due.
+            repeat_action = analog.tick(frame_start)
+            if repeat_action is not None:
+                dispatch_action(repeat_action, game_state)
+                apply_pending_transition(game_state, asset_loader)
+                game_state = get_singleton(GameState)
 
             # Precise timing
             elapsed = time.perf_counter() - frame_start
