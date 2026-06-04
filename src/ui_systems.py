@@ -16,8 +16,10 @@ from src.components import (
     Message,
     MessageLog,
     Modal,
+    Particle,
     PlayerTag,
     Position,
+    Projectile,
     RunStats,
     ScreenFlash,
     Shopkeeper,
@@ -52,7 +54,14 @@ from src.states import (
     GameState,
     MenuOption,
 )
-from src.systems import can_craft_known_spell, get_spell_config, is_game_active, is_reagent
+from src.systems import (
+    can_craft_known_spell,
+    get_spell_config,
+    is_game_active,
+    is_reagent,
+    spawn_particle_burst,
+    trigger_cast_visual,
+)
 from src.ui_helpers import (
     blend,
     compute_visible_slice,
@@ -462,8 +471,7 @@ class TargetingOverlaySystem(esper.Processor):
                     self.console.rgb[screen_y, screen_x]['bg'] = (0, 0, 50)
 
         # Draw yellow reticle X at its on-screen position.
-        screen_rx = view.x + reticle.x - cam_x
-        screen_ry = view.y + reticle.y - cam_y
+        screen_rx, screen_ry = self.layout.map_to_screen(map_x=reticle.x, map_y=reticle.y, cam_x=cam_x, cam_y=cam_y)
         if view.contains(screen_rx, screen_ry):
             self.console.print(screen_rx, screen_ry, 'X', fg=UI_YELLOW)
 
@@ -493,6 +501,65 @@ class EffectOverlaySystem(esper.Processor):
             return
         self._render_cast_visual()
         self._render_screen_flash()
+        self._render_projectiles()
+        self._render_particles()
+
+    def _time_paused(self) -> bool:
+        return get_singleton(GameState).time_paused
+
+    def _camera(self) -> tuple[int, int] | None:
+        """The current camera offset, or None if there's no player or map to anchor to."""
+        player = esper.get_components(Position, PlayerTag)
+        game_map = try_get_singleton(Map)
+        if not player or not game_map:
+            return None
+        _p, (player_pos, _tag) = player[0]
+        return self.layout.camera_offset(player_pos.x, player_pos.y, game_map.width, game_map.height)
+
+    def _render_projectiles(self):
+        # Projectiles are part of game time: frozen in flight while a menu/modal pauses
+        # the game, advancing only when exploring.
+        paused = self._time_paused()
+        cam = self._camera()
+        view = self.layout.map_viewport
+        for ent, proj in esper.get_component(Projectile):
+            if not paused:
+                dist = max(1.0, math.hypot(proj.target.x - proj.start.x, proj.target.y - proj.start.y))
+                proj.progress += Projectile.SPEED / dist
+                if proj.progress >= 1.0:
+                    # Arrival: hand off to the impact burst and a particle spray.
+                    trigger_cast_visual(center=proj.target, radius=proj.burst_radius, color=proj.color)
+                    spawn_particle_burst(center=proj.target, color=proj.color, count=Particle.BURST_COUNT)
+                    esper.delete_entity(ent, immediate=True)
+                    continue
+            if cam is None:
+                continue
+            cell_x = round(proj.start.x + (proj.target.x - proj.start.x) * proj.progress)
+            cell_y = round(proj.start.y + (proj.target.y - proj.start.y) * proj.progress)
+            screen_x, screen_y = self.layout.map_to_screen(map_x=cell_x, map_y=cell_y, cam_x=cam[0], cam_y=cam[1])
+            if view.contains(screen_x, screen_y):
+                self.console.print(screen_x, screen_y, proj.glyph, fg=proj.color)
+
+    def _render_particles(self):
+        paused = self._time_paused()
+        cam = self._camera()
+        view = self.layout.map_viewport
+        for ent, particle in esper.get_component(Particle):
+            if not paused:
+                particle.x += particle.vx
+                particle.y += particle.vy
+            if cam is not None:
+                screen_x, screen_y = self.layout.map_to_screen(
+                    map_x=round(particle.x), map_y=round(particle.y), cam_x=cam[0], cam_y=cam[1]
+                )
+                if view.contains(screen_x, screen_y):
+                    ratio = particle.ticks / particle.max_ticks
+                    fg = to_rgb([int(c * ratio) for c in particle.color])
+                    self.console.print(screen_x, screen_y, particle.glyph, fg=fg)
+            if not paused:
+                particle.ticks -= 1
+                if particle.ticks <= 0:
+                    esper.delete_entity(ent, immediate=True)
 
     def _render_cast_visual(self):
         visuals = esper.get_component(CastVisual)

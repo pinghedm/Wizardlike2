@@ -89,3 +89,10 @@ class Layout:
         cam_x = min(max(player_x - view.width // 2, 0), max_x)
         cam_y = min(max(player_y - view.height // 2, 0), max_y)
         return cam_x, cam_y
+
+    def map_to_screen(self, map_x: int, map_y: int, cam_x: int, cam_y: int) -> tuple[int, int]:
+        """Convert a map cell to its console cell for the given camera offset (from
+        `camera_offset`). The result may fall outside `map_viewport`; callers that
+        need to clip should test it with `map_viewport.contains`."""
+        view = self.map_viewport
+        return view.x + map_x - cam_x, view.y + map_y - cam_y

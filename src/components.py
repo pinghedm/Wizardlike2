@@ -439,6 +439,47 @@ class CastVisual:
     max_ticks: int
 
 
+@dataclass
+class Projectile:
+    """A glyph flying from the caster to a spell's target point.
+
+    Purely cosmetic — the spell's effects already applied on cast. On arrival it
+    spawns the impact burst and a particle spray, then is removed. `progress`
+    advances from 0 toward 1.0 along start -> target each frame.
+    """
+
+    SPEED: ClassVar[float] = 0.5  # cells advanced per frame (~15 cells/s at ~30 tps)
+
+    start: Point
+    target: Point
+    glyph: str
+    color: tuple[int, int, int]
+    burst_radius: int
+    progress: float = 0.0
+
+
+@dataclass
+class Particle:
+    """One short-lived drifting glyph in an impact or hit spray.
+
+    Holds a sub-cell float position so it can move smoothly; drifts by (vx, vy)
+    each frame and fades as `ticks / max_ticks`. Drawn foreground-only.
+    """
+
+    DURATION: ClassVar[int] = 7  # frames a particle lives
+    BURST_COUNT: ClassVar[int] = 8  # particles per impact spray
+    HIT_COUNT: ClassVar[int] = 4  # particles per enemy-hit spray
+
+    x: float
+    y: float
+    vx: float
+    vy: float
+    glyph: str
+    color: tuple[int, int, int]
+    ticks: int
+    max_ticks: int
+
+
 class PlayerTag:
     pass
 

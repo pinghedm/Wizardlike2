@@ -4,8 +4,10 @@ from src.components import (
     CastVisual,
     Effect,
     EffectType,
+    Particle,
     Point,
     Position,
+    Projectile,
     ScreenFlash,
     Stats,
     StatusEffects,
@@ -14,11 +16,13 @@ from src.components import (
 from src.constants import STATUS_PULSE_INTERVAL, UI_GREEN, UI_ORANGE, UI_RED
 from src.systems import (
     EFFECT_COLORS,
+    PROJECTILE_GLYPHS,
     StatusSystem,
     apply_effect,
     cast_spell,
     deal_damage,
     get_spell_config,
+    spawn_particle_burst,
     trigger_screen_flash,
 )
 from src.ui_systems import EffectOverlaySystem
@@ -76,7 +80,7 @@ def test_poison_pulse_flashes_green_for_player():
     assert _flash() is not None and _flash().color == UI_GREEN
 
 
-def test_cast_spell_creates_burst_at_target_colored_by_first_effect():
+def test_cast_spell_launches_projectile_styled_by_first_effect_not_an_instant_burst():
     runner = HeadlessRunner(use_random_map=False)
     runner.give_spell('test_bolt', 1)
     px, py = runner.player_pos
@@ -84,13 +88,98 @@ def test_cast_spell_creates_burst_at_target_colored_by_first_effect():
 
     cast_spell(spell_id='test_bolt', target_x=tx, target_y=ty)
 
+    # The impact burst now waits for the projectile to land, so nothing flashes yet.
+    assert not esper.get_component(CastVisual)
+    projectiles = esper.get_component(Projectile)
+    assert len(projectiles) == 1
+    proj = projectiles[0][1]
+    assert proj.start == Point(px, py)
+    assert proj.target == Point(tx, ty)
+    # Glyph and color derive from the spell's own first effect, not hardcoded values.
+    first_effect = get_spell_config('test_bolt')['effects'][0].type
+    assert proj.glyph == PROJECTILE_GLYPHS[first_effect]
+    assert proj.color == EFFECT_COLORS[first_effect]
+
+
+def test_projectile_arrives_and_spawns_the_impact_burst():
+    runner = HeadlessRunner(use_random_map=False)
+    runner.give_spell('test_bolt', 1)
+    px, py = runner.player_pos
+    tx, ty = px + 2, py
+    cast_spell(spell_id='test_bolt', target_x=tx, target_y=ty)
+
+    overlay = EffectOverlaySystem(runner.layout)
+    # progress climbs SPEED/distance (0.5/2) per frame, so it lands on the 4th.
+    for _ in range(4):
+        overlay.process()
+
+    assert not esper.get_component(Projectile)
     visuals = esper.get_component(CastVisual)
     assert len(visuals) == 1
-    visual = visuals[0][1]
-    assert visual.center == Point(tx, ty)
-    # Color is derived from the spell's own first effect, not a hardcoded value.
-    expected = EFFECT_COLORS[get_spell_config('test_bolt')['effects'][0].type]
-    assert visual.color == expected
+    assert visuals[0][1].center == Point(tx, ty)
+
+
+def test_projectile_is_frozen_while_the_game_is_paused():
+    runner = HeadlessRunner(use_random_map=False)
+    runner.give_spell('test_bolt', 1)
+    px, py = runner.player_pos
+    cast_spell(spell_id='test_bolt', target_x=px + 2, target_y=py)
+    runner.game_state.time_paused = True
+
+    overlay = EffectOverlaySystem(runner.layout)
+    for _ in range(10):
+        overlay.process()
+
+    # Still in flight, no impact: a menu pauses the projectile like everything else.
+    assert esper.get_component(Projectile)
+    assert esper.get_component(Projectile)[0][1].progress == 0.0
+    assert not esper.get_component(CastVisual)
+
+
+def test_particle_does_not_age_while_the_game_is_paused():
+    runner = HeadlessRunner(use_random_map=False)
+    px, py = runner.player_pos
+    esper.create_entity(
+        Particle(x=float(px), y=float(py), vx=0.0, vy=0.0, glyph='*', color=UI_ORANGE, ticks=1, max_ticks=1)
+    )
+    runner.game_state.time_paused = True
+
+    EffectOverlaySystem(runner.layout).process()
+
+    assert esper.get_component(Particle)
+
+
+def test_particle_ages_out():
+    runner = HeadlessRunner(use_random_map=False)
+    px, py = runner.player_pos
+    esper.create_entity(
+        Particle(x=float(px), y=float(py), vx=0.0, vy=0.0, glyph='*', color=UI_ORANGE, ticks=1, max_ticks=1)
+    )
+
+    EffectOverlaySystem(runner.layout).process()
+
+    assert not esper.get_component(Particle)
+
+
+def test_burst_spawns_the_requested_particle_count():
+    runner = HeadlessRunner(use_random_map=False)
+    px, py = runner.player_pos
+
+    spawn_particle_burst(center=Point(px, py), color=UI_ORANGE, count=5)
+
+    assert len(esper.get_component(Particle)) == 5
+
+
+def test_damaging_an_enemy_sprays_particles_but_a_player_hit_does_not():
+    runner = HeadlessRunner(use_random_map=False)
+    px, py = runner.player_pos
+
+    apply_effect(runner.player, Effect(EffectType.DAMAGE, power=3))
+    assert not esper.get_component(Particle)  # player hit relies on the screen flash
+
+    enemy = runner.spawn_enemy(px + 2, py)
+    apply_effect(enemy, Effect(EffectType.DAMAGE, power=3))
+    assert len(esper.get_component(Particle)) == Particle.HIT_COUNT
 
 
 def test_effect_overlay_ages_out_screen_flash():

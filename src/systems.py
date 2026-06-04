@@ -1,3 +1,4 @@
+import math
 import random
 from collections import Counter
 from dataclasses import replace
@@ -27,10 +28,12 @@ from src.components import (
     KnownRecipes,
     Loot,
     MessageLog,
+    Particle,
     PatrolTag,
     PlayerTag,
     Point,
     Position,
+    Projectile,
     Renderable,
     RunStats,
     ScreenFlash,
@@ -98,6 +101,25 @@ EFFECT_COLORS: dict[EffectType, tuple[int, int, int]] = {
     EffectType.KNOCKBACK: UI_WHITE,
 }
 
+# Glyph a spell's projectile flies as, keyed by its primary effect (color comes from
+# EFFECT_COLORS). Anything unmapped falls back to PROJECTILE_GLYPH_DEFAULT.
+PROJECTILE_GLYPH_DEFAULT = '*'
+PROJECTILE_GLYPHS: dict[EffectType, str] = {
+    EffectType.DAMAGE: '*',
+    EffectType.HEAL: '+',
+    EffectType.REGEN: '+',
+    EffectType.POISON: '*',
+    EffectType.SLOW: '~',
+    EffectType.HASTE: '!',
+    EffectType.STUN: '?',
+    EffectType.SHIELD: 'O',
+    EffectType.DRAIN: '%',
+    EffectType.KNOCKBACK: '>',
+}
+
+# Glyphs a particle in a spray can take.
+PARTICLE_GLYPHS = ('*', '+', '.')
+
 
 def trigger_screen_flash(ent: int, color: tuple[int, int, int], ticks: int = ScreenFlash.DURATION):
     """Wash the map viewport with `color` when `ent` is the player.
@@ -119,6 +141,42 @@ def trigger_cast_visual(center: Point, radius: int, color: tuple[int, int, int])
     esper.create_entity(
         CastVisual(center=center, radius=radius, color=color, ticks=CastVisual.DURATION, max_ticks=CastVisual.DURATION)
     )
+
+
+def trigger_projectile(start: Point, target: Point, effect_type: EffectType, burst_radius: int):
+    """Launch a cosmetic glyph from `start` toward `target`, styled by `effect_type`.
+
+    The projectile spawns the impact burst and a particle spray on arrival (see
+    EffectOverlaySystem). Several projectiles may be in flight at once.
+    """
+    esper.create_entity(
+        Projectile(
+            start=start,
+            target=target,
+            glyph=PROJECTILE_GLYPHS.get(effect_type, PROJECTILE_GLYPH_DEFAULT),
+            color=EFFECT_COLORS.get(effect_type, UI_ORANGE),
+            burst_radius=burst_radius,
+        )
+    )
+
+
+def spawn_particle_burst(center: Point, color: tuple[int, int, int], count: int):
+    """Spray `count` particles radiating from `center` in random directions."""
+    for _ in range(count):
+        angle = random.uniform(0, 2 * math.pi)
+        speed = random.uniform(0.15, 0.45)
+        esper.create_entity(
+            Particle(
+                x=float(center.x),
+                y=float(center.y),
+                vx=math.cos(angle) * speed,
+                vy=math.sin(angle) * speed,
+                glyph=random.choice(PARTICLE_GLYPHS),
+                color=color,
+                ticks=Particle.DURATION,
+                max_ticks=Particle.DURATION,
+            )
+        )
 
 
 def record_damage_dealt(target_ent: int, amount: int):
@@ -506,7 +564,7 @@ class RenderSystem(esper.Processor):
         # 2. Render the map
         for x in range(game_map.width):
             for y in range(game_map.height):
-                screen_x, screen_y = view.x + x - cam_x, view.y + y - cam_y
+                screen_x, screen_y = self.layout.map_to_screen(map_x=x, map_y=y, cam_x=cam_x, cam_y=cam_y)
                 if not view.contains(screen_x, screen_y):
                     continue
 
@@ -533,7 +591,7 @@ class RenderSystem(esper.Processor):
             if player_fov is not None and pos.point not in player_fov.visible_tiles:
                 continue
 
-            screen_x, screen_y = view.x + pos.x - cam_x, view.y + pos.y - cam_y
+            screen_x, screen_y = self.layout.map_to_screen(map_x=pos.x, map_y=pos.y, cam_x=cam_x, cam_y=cam_y)
             if not view.contains(screen_x, screen_y):
                 continue
 
@@ -640,6 +698,18 @@ def get_cooldown(entity: int, base_speed: int) -> int:
     return max(0, base_speed)
 
 
+def _spray_hit_particles(target_ent: int):
+    """Spray a few damage particles at an enemy's tile. No-op for the player, who
+    already gets the screen flash, and for anything without a position to spray from."""
+    if esper.has_component(target_ent, PlayerTag) or not esper.has_component(target_ent, Position):
+        return
+    spawn_particle_burst(
+        center=esper.component_for_entity(target_ent, Position).point,
+        color=EFFECT_COLORS[EffectType.DAMAGE],
+        count=Particle.HIT_COUNT,
+    )
+
+
 def apply_effect(target_ent: int, effect: Effect, origin: Point | None = None, caster_ent: int | None = None):
     """Apply a single spell effect to a target entity.
 
@@ -663,6 +733,7 @@ def apply_effect(target_ent: int, effect: Effect, origin: Point | None = None, c
         stats.hp -= dmg
         record_damage_dealt(target_ent, dmg)
         trigger_screen_flash(ent=target_ent, color=UI_RED)
+        _spray_hit_particles(target_ent)
         shielded = ' (shielded)' if dmg < effect.power else ''
         log.add_simple_message(f'{target_name} took {dmg} damage!{shielded}', color=(255, 100, 0))
 
@@ -675,6 +746,7 @@ def apply_effect(target_ent: int, effect: Effect, origin: Point | None = None, c
         stats.hp -= dmg
         record_damage_dealt(target_ent, dmg)
         trigger_screen_flash(ent=target_ent, color=UI_RED)
+        _spray_hit_particles(target_ent)
         shielded = ' (shielded)' if dmg < effect.power else ''
         log.add_simple_message(f'{target_name} took {dmg} damage!{shielded}', color=(200, 0, 80))
         if caster_ent is not None and esper.has_component(caster_ent, Stats):
@@ -819,12 +891,18 @@ def cast_spell(spell_id: str, target_x: int, target_y: int):
     log.add_simple_message(f'You cast {s_conf["name"]}!', color=(0, 255, 255))
 
     radius = s_conf.get('radius', 0)
+    caster_origin = esper.component_for_entity(player, Position).point
 
-    # Flash the impact zone, colored by the spell's primary effect.
+    # Launch a projectile from the caster; it fires the impact burst on arrival,
+    # colored/styled by the spell's primary effect.
     effects = s_conf['effects']
     if effects:
-        burst_color = EFFECT_COLORS.get(effects[0].type, UI_ORANGE)
-        trigger_cast_visual(center=Point(target_x, target_y), radius=radius, color=burst_color)
+        trigger_projectile(
+            start=caster_origin,
+            target=Point(target_x, target_y),
+            effect_type=effects[0].type,
+            burst_radius=radius,
+        )
 
     # Find all entities in impact zone using Euclidean distance
     targets: list[int] = []
@@ -842,7 +920,6 @@ def cast_spell(spell_id: str, target_x: int, target_y: int):
         return
 
     # Knockback shoves targets directly away from the caster.
-    caster_origin = esper.component_for_entity(player, Position).point
     for target in targets:
         for effect in s_conf['effects']:
             apply_effect(target, effect, origin=caster_origin, caster_ent=player)
