@@ -26,6 +26,7 @@ class SpellConfig(TypedDict):
     range: int
     radius: int
     effects: list[Effect]
+    modifiers: NotRequired[list[DamageModifier]]
     recipes: list[RecipeConfig]
     shop: NotRequired[ShopConfig]
     rare: NotRequired[bool]
@@ -95,6 +96,7 @@ class StatusType(enum.StrEnum):
     REGEN = 'regen'
     STUN = 'stun'
     SHIELD = 'shield'
+    WET = 'wet'
 
 
 class EffectType(enum.StrEnum):
@@ -108,6 +110,7 @@ class EffectType(enum.StrEnum):
     SHIELD = 'shield'
     DRAIN = 'drain'
     KNOCKBACK = 'knockback'
+    WET = 'wet'
 
 
 class ShopOfferKind(enum.StrEnum):
@@ -132,6 +135,18 @@ class Effect:
     duration: int = 0
     power: int = 0
     lifesteal: int = 0
+
+
+@dataclass
+class DamageModifier:
+    """A conditional damage multiplier a spell applies when its target already carries
+    a status — an elemental reaction (e.g. lightning hits a WET foe for x2, fire for x0.5).
+    `damage_mult` scales the spell's damage: > 1 vulnerability, < 1 resistance. One-shot:
+    the triggering status is consumed when the modifier lands.
+    """
+
+    vs_status: StatusType
+    damage_mult: float
 
 
 @dataclass

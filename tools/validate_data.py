@@ -3,7 +3,7 @@ from pathlib import Path
 
 import yaml
 
-from src.components import EffectType
+from src.components import EffectType, StatusType
 
 VALID_EFFECT_INFO = {
     EffectType.DAMAGE: ['power'],
@@ -16,7 +16,10 @@ VALID_EFFECT_INFO = {
     EffectType.SHIELD: ['power', 'duration'],
     EffectType.DRAIN: ['power', 'lifesteal'],
     EffectType.KNOCKBACK: ['power'],
+    EffectType.WET: ['duration'],
 }
+
+DAMAGING_EFFECTS = {EffectType.DAMAGE, EffectType.DRAIN}
 
 
 VALID_BEHAVIORS = {'CHASE', 'FLEE', 'PATROL', 'GUARD'}
@@ -28,10 +31,13 @@ ALLOWED_SPELL_FIELDS = {
     'range',
     'radius',
     'effects',
+    'modifiers',
     'recipes',
     'shop',
     'rare',
 }
+
+ALLOWED_MODIFIER_FIELDS = {'vs_status', 'damage_mult'}
 
 ALLOWED_INGREDIENT_FIELDS = {'id', 'name', 'char', 'sprite', 'color', 'price'}
 
@@ -87,6 +93,52 @@ def validate_effects(effects, context_label: str) -> int:
             elif not isinstance(effect[req_field], int) or effect[req_field] <= 0:
                 print(f'ERROR: {context_label} effect #{eff_idx} field "{req_field}" must be a positive integer.')
                 errors += 1
+    return errors
+
+
+def validate_modifiers(modifiers, effects, context_label: str) -> int:
+    """Validate a spell's reaction `modifiers` list. Returns the number of errors found.
+
+    Each modifier scales the spell's damage when its target carries `vs_status`, so the
+    spell must have a damaging effect for the multiplier to act on.
+    """
+    if not isinstance(modifiers, list) or not modifiers:
+        print(f'ERROR: {context_label} "modifiers" must be a non-empty list.')
+        return 1
+
+    valid_status_names = [s.value for s in StatusType]
+    has_damage = any(isinstance(e, dict) and e.get('type') in (et.value for et in DAMAGING_EFFECTS) for e in effects)
+    errors = 0
+    if not has_damage:
+        print(f'ERROR: {context_label} has "modifiers" but no damaging effect for them to scale.')
+        errors += 1
+
+    for idx, mod in enumerate(modifiers):
+        if not isinstance(mod, dict):
+            print(f'ERROR: {context_label} modifier #{idx} must be a mapping.')
+            errors += 1
+            continue
+
+        for key in sorted(set(mod) - ALLOWED_MODIFIER_FIELDS):
+            print(f'ERROR: {context_label} modifier #{idx} has unexpected field "{key}".')
+            errors += 1
+
+        status = mod.get('vs_status')
+        if status is None:
+            print(f'ERROR: {context_label} modifier #{idx} missing "vs_status".')
+            errors += 1
+        elif status not in valid_status_names:
+            print(f'ERROR: {context_label} modifier #{idx} has invalid vs_status: "{status}".')
+            errors += 1
+
+        mult = mod.get('damage_mult')
+        if mult is None:
+            print(f'ERROR: {context_label} modifier #{idx} missing "damage_mult".')
+            errors += 1
+        elif not isinstance(mult, (int, float)) or isinstance(mult, bool) or mult <= 0 or mult == 1:
+            print(f'ERROR: {context_label} modifier #{idx} "damage_mult" must be a positive number other than 1.')
+            errors += 1
+
     return errors
 
 
@@ -249,6 +301,9 @@ def validate_data() -> bool:
                     errors += 1
 
             errors += validate_effects(spell.get('effects', []), f'Spell "{sid}"')
+
+            if 'modifiers' in spell:
+                errors += validate_modifiers(spell['modifiers'], spell.get('effects', []), f'Spell "{sid}"')
 
             recipes = spell.get('recipes', [])
             if not isinstance(recipes, list) or not recipes:

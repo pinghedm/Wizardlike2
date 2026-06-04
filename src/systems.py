@@ -16,6 +16,7 @@ from src.components import (
     Actor,
     CastVisual,
     Configuration,
+    DamageModifier,
     Effect,
     EffectType,
     Enemy,
@@ -99,6 +100,7 @@ EFFECT_COLORS: dict[EffectType, tuple[int, int, int]] = {
     EffectType.SHIELD: UI_CYAN,
     EffectType.DRAIN: UI_RED,
     EffectType.KNOCKBACK: UI_WHITE,
+    EffectType.WET: UI_BLUE,
 }
 
 # Glyph a spell's projectile flies as, keyed by its primary effect (color comes from
@@ -115,6 +117,7 @@ PROJECTILE_GLYPHS: dict[EffectType, str] = {
     EffectType.SHIELD: 'O',
     EffectType.DRAIN: '%',
     EffectType.KNOCKBACK: '>',
+    EffectType.WET: '~',
 }
 
 # Glyphs a particle in a spray can take.
@@ -786,6 +789,31 @@ def apply_effect(target_ent: int, effect: Effect, origin: Point | None = None, c
         status.active[StatusType.REGEN] = replace(effect)
         log.add_simple_message(f'{target_name} begins to regenerate!', color=(0, 255, 0))
 
+    elif effect.type == EffectType.WET:
+        status.active[StatusType.WET] = replace(effect)
+        log.add_simple_message(f'{target_name} is drenched!', color=UI_BLUE)
+
+
+def _apply_reaction_multiplier(target_ent: int, modifiers: list[DamageModifier], log: MessageLog) -> float:
+    """The combined damage multiplier from a spell's modifiers whose status the target
+    currently carries — an elemental reaction. Each matched status is consumed (one-shot),
+    and the multipliers compose. Returns 1.0 when nothing matches.
+    """
+    if not modifiers or not esper.has_component(target_ent, StatusEffects):
+        return 1.0
+
+    active = esper.component_for_entity(target_ent, StatusEffects).active
+    name = 'You' if esper.has_component(target_ent, PlayerTag) else f'The {get_display_name(target_ent)}'
+    mult = 1.0
+    for mod in modifiers:
+        if mod.vs_status not in active:
+            continue
+        mult *= mod.damage_mult
+        del active[mod.vs_status]
+        verb = 'is vulnerable' if mod.damage_mult > 1 else 'resists'
+        log.add_simple_message(f'{name} {verb} while {mod.vs_status.name}!', color=UI_CYAN)
+    return mult
+
 
 def get_spell_config(spell_id: str) -> SpellConfig | None:
     """Look up a spell's config by id via the Configuration index (O(1))."""
@@ -919,7 +947,12 @@ def cast_spell(spell_id: str, target_x: int, target_y: int):
         log.add_simple_message('The spell hits nothing.', color=(150, 150, 150))
         return
 
-    # Knockback shoves targets directly away from the caster.
+    # Knockback shoves targets directly away from the caster. Reaction modifiers scale
+    # the spell's damage per target based on the statuses that target already carries.
     for target in targets:
+        mult = _apply_reaction_multiplier(target, s_conf.get('modifiers', []), log)
         for effect in s_conf['effects']:
-            apply_effect(target, effect, origin=caster_origin, caster_ent=player)
+            resolved = effect
+            if mult != 1.0 and effect.type in (EffectType.DAMAGE, EffectType.DRAIN):
+                resolved = replace(effect, power=max(0, round(effect.power * mult)))
+            apply_effect(target, resolved, origin=caster_origin, caster_ent=player)

@@ -54,3 +54,42 @@ spells:
     recipes:
       - ingredients: [reagent_a, reagent_c]
         charges: 3
+  - id: test_soak
+    name: Test Soak
+    description: A test spell that leaves its target wet.
+    range: 6
+    radius: 0
+    effects:
+      - type: wet
+        duration: 40
+    recipes:
+      - ingredients: [reagent_b, reagent_b]
+        charges: 3
+  - id: test_zap
+    name: Test Zap
+    description: A test spell that hits wet targets twice as hard.
+    range: 6
+    radius: 0
+    effects:
+      - type: damage
+        power: 10
+    modifiers:
+      - vs_status: wet
+        damage_mult: 2.0
+    recipes:
+      - ingredients: [reagent_c, reagent_c, reagent_c]
+        charges: 3
+  - id: test_quench
+    name: Test Quench
+    description: A test spell that wet targets shrug off.
+    range: 6
+    radius: 0
+    effects:
+      - type: damage
+        power: 10
+    modifiers:
+      - vs_status: wet
+        damage_mult: 0.5
+    recipes:
+      - ingredients: [reagent_b, reagent_c]
+        charges: 3

@@ -11,6 +11,7 @@ from PIL import Image
 
 from src.components import (
     CharacterConfig,
+    DamageModifier,
     Effect,
     EffectType,
     EnemyAbility,
@@ -21,6 +22,7 @@ from src.components import (
     LootDrop,
     RecipeConfig,
     SpellConfig,
+    StatusType,
     TileConfig,
 )
 from src.constants import DATA_DIR
@@ -87,11 +89,25 @@ def _parse_effects(raw: list[_RawEffect]) -> list[Effect]:
     ]
 
 
+class _RawModifier(TypedDict):
+    """A spell's reaction modifier as authored in YAML, before parsing."""
+
+    vs_status: str
+    damage_mult: float
+
+
+def _parse_modifiers(raw: list[_RawModifier]) -> list[DamageModifier]:
+    return [
+        DamageModifier(vs_status=StatusType(mod['vs_status']), damage_mult=float(mod['damage_mult'])) for mod in raw
+    ]
+
+
 def load_spells_config(asset_loader: AssetLoader) -> list[SpellConfig]:
     with open(f'{DATA_DIR}/spells.yaml') as f:
         data = yaml.safe_load(f)['spells']
         for spell in data:
             spell['effects'] = _parse_effects(spell.get('effects', []))
+            spell['modifiers'] = _parse_modifiers(spell.get('modifiers', []))
 
             processed_recipes: list[RecipeConfig] = []
             for r_data in spell['recipes']:

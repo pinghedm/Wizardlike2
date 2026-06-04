@@ -7,6 +7,11 @@ spells:
     effects:
       - type: damage
         power: 25
+    modifiers:
+      - vs_status: slow
+        damage_mult: 1.5
+      - vs_status: wet
+        damage_mult: 0.5
     recipes:
       - ingredients: [fire_crystal, fire_crystal]
         charges: 3
@@ -157,3 +162,30 @@ spells:
     recipes:
       - ingredients: [storm_shard, mystic_herb]
         charges: 3
+  - id: douse
+    name: Douse
+    description: A bracing splash that leaves the target soaked.
+    range: 6
+    radius: 1
+    effects:
+      - type: damage
+        power: 5
+      - type: wet
+        duration: 80
+    recipes:
+      - ingredients: [gale_feather, ice_shard]
+        charges: 4
+  - id: lightning_bolt
+    name: Lightning Bolt
+    description: A searing bolt that overloads soaked foes.
+    range: 8
+    radius: 0
+    effects:
+      - type: damage
+        power: 14
+    modifiers:
+      - vs_status: wet
+        damage_mult: 2.0
+    recipes:
+      - ingredients: [storm_shard, storm_shard]
+        charges: 4

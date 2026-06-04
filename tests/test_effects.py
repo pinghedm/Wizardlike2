@@ -2,8 +2,10 @@ import esper
 
 from src.components import (
     CastVisual,
+    DamageModifier,
     Effect,
     EffectType,
+    MessageLog,
     Particle,
     Point,
     Position,
@@ -14,10 +16,12 @@ from src.components import (
     StatusType,
 )
 from src.constants import STATUS_PULSE_INTERVAL, UI_GREEN, UI_ORANGE, UI_RED
+from src.ecs_helpers import get_singleton
 from src.systems import (
     EFFECT_COLORS,
     PROJECTILE_GLYPHS,
     StatusSystem,
+    _apply_reaction_multiplier,
     apply_effect,
     cast_spell,
     deal_damage,
@@ -339,3 +343,71 @@ def test_shield_mitigates_damage_dealt_to_the_player():
     before = stats.hp
     deal_damage(runner.player, 10, 'hit', UI_RED)
     assert before - stats.hp == 5
+
+
+def _make_wet(ent: int, duration: int = 40):
+    esper.component_for_entity(ent, StatusEffects).active[StatusType.WET] = Effect(EffectType.WET, duration=duration)
+
+
+def test_casting_a_vulnerability_spell_on_a_wet_target_scales_up_the_damage_and_consumes_wet():
+    runner = HeadlessRunner(use_random_map=False)
+    runner.give_spell('test_zap', 1)  # 10 damage, x2 vs wet
+    px, py = runner.player_pos
+    enemy = runner.spawn_enemy(px + 2, py)
+    enemy_stats = esper.component_for_entity(enemy, Stats)
+    _make_wet(enemy)
+
+    before = enemy_stats.hp
+    cast_spell(spell_id='test_zap', target_x=px + 2, target_y=py)
+
+    assert before - enemy_stats.hp == 20  # 10 * 2.0
+    assert StatusType.WET not in esper.component_for_entity(enemy, StatusEffects).active
+
+
+def test_casting_a_resistance_spell_on_a_wet_target_scales_down_the_damage():
+    runner = HeadlessRunner(use_random_map=False)
+    runner.give_spell('test_quench', 1)  # 10 damage, x0.5 vs wet
+    px, py = runner.player_pos
+    enemy = runner.spawn_enemy(px + 2, py)
+    enemy_stats = esper.component_for_entity(enemy, Stats)
+    _make_wet(enemy)
+
+    before = enemy_stats.hp
+    cast_spell(spell_id='test_quench', target_x=px + 2, target_y=py)
+
+    assert before - enemy_stats.hp == 5  # 10 * 0.5
+
+
+def test_casting_on_a_dry_target_deals_base_damage_with_no_reaction():
+    runner = HeadlessRunner(use_random_map=False)
+    runner.give_spell('test_zap', 1)
+    px, py = runner.player_pos
+    enemy = runner.spawn_enemy(px + 2, py)
+    enemy_stats = esper.component_for_entity(enemy, Stats)
+
+    before = enemy_stats.hp
+    cast_spell(spell_id='test_zap', target_x=px + 2, target_y=py)
+
+    assert before - enemy_stats.hp == 10  # unscaled
+
+
+def test_reaction_multiplier_matches_a_carried_status_and_consumes_it():
+    runner = HeadlessRunner(use_random_map=False)
+    enemy = runner.spawn_enemy(*runner.player_pos)
+    _make_wet(enemy)
+
+    mult = _apply_reaction_multiplier(enemy, [DamageModifier(StatusType.WET, 2.0)], get_singleton(MessageLog))
+
+    assert mult == 2.0
+    assert StatusType.WET not in esper.component_for_entity(enemy, StatusEffects).active
+
+
+def test_reaction_multiplier_is_one_and_consumes_nothing_when_unmatched():
+    runner = HeadlessRunner(use_random_map=False)
+    enemy = runner.spawn_enemy(*runner.player_pos)
+    esper.component_for_entity(enemy, StatusEffects).active[StatusType.SLOW] = Effect(EffectType.SLOW, duration=40)
+
+    mult = _apply_reaction_multiplier(enemy, [DamageModifier(StatusType.WET, 2.0)], get_singleton(MessageLog))
+
+    assert mult == 1.0
+    assert StatusType.SLOW in esper.component_for_entity(enemy, StatusEffects).active
