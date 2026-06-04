@@ -209,21 +209,39 @@ def test_casting_menu_ignores_zero_charge_spells():
 # --- MenuSystem.render_settings_menu ----------------------------------------
 
 
-def test_settings_menu_shows_bindings():
+def test_settings_menu_shows_keyboard_bindings_without_a_controller(mocker):
+    mocker.patch('src.ui_systems.connected_controller_name', return_value=None)
     runner = HeadlessRunner(use_random_map=False)
     runner.game_state.display_mode = DisplayMode.SETTINGS
 
-    text = _full_text(runner)
-    assert 'MOVE_UP: [UP]' in text
-    assert 'OPEN_CRAFTING: [C]' in text
+    rows = runner.get_console_text()
+    assert any('Controller: none detected' in r for r in rows)
+    move_up_row = next(r for r in rows if 'MOVE_UP' in r)
+    assert 'UP' in move_up_row.split()  # its bound key, as a column of its own
+    open_crafting_row = next(r for r in rows if 'OPEN_CRAFTING' in r)
+    assert 'C' in open_crafting_row.split()
 
 
-def test_settings_menu_shows_remapping_prompt():
+def test_settings_menu_shows_controller_column_when_connected(mocker):
+    mocker.patch('src.ui_systems.connected_controller_name', return_value='Test Pad')
+    runner = HeadlessRunner(use_random_map=False)
+    runner.game_state.display_mode = DisplayMode.SETTINGS
+
+    rows = runner.get_console_text()
+    assert any('Controller: Test Pad' in r for r in rows)
+    # Movement shows the fixed control; a rebindable action shows its bound button.
+    assert 'D-Pad' in next(r for r in rows if 'MOVE_UP' in r)
+    assert 'A' in next(r for r in rows if 'CONFIRM' in r).split()
+
+
+def test_settings_menu_shows_remapping_prompt(mocker):
+    mocker.patch('src.ui_systems.connected_controller_name', return_value=None)
     runner = HeadlessRunner(use_random_map=False)
     _ui_state(runner).remapping_action = InputAction.MOVE_UP
     runner.game_state.display_mode = DisplayMode.SETTINGS
 
-    assert 'MOVE_UP: [Press any key...]' in _full_text(runner)
+    move_up_row = next(r for r in runner.get_console_text() if 'MOVE_UP' in r)
+    assert 'Press any key or button...' in move_up_row
 
 
 # --- HUDSystem --------------------------------------------------------------

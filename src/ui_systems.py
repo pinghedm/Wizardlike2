@@ -5,7 +5,6 @@ from collections.abc import Sequence
 import esper
 import numpy as np
 import tcod
-import tcod.sdl.joystick
 
 from src import persistence
 from src.components import (
@@ -42,7 +41,7 @@ from src.constants import (
     to_rgb,
 )
 from src.ecs_helpers import get_singleton, try_get_singleton
-from src.input_handlers import controller_binding_label
+from src.input_handlers import connected_controller_name, controller_binding_label
 from src.layout import Layout, Rect
 from src.map_objects import Map
 from src.states import (
@@ -318,6 +317,11 @@ class MenuSystem(esper.Processor):
 
         self.console.print(x + 2, y + height - 2, 'L/R: Qty | Enter: Buy | Esc: Leave', fg=UI_GRAY)
 
+    # Settings table column offsets from the frame's inner-left edge.
+    SETTINGS_ACTION_COL = 2
+    SETTINGS_KEY_COL = 20
+    SETTINGS_CONTROLLER_COL = 40
+
     def render_settings_menu(self):
         ui_state = get_singleton(UIState)
         keybindings = try_get_singleton(Keybindings)
@@ -325,31 +329,43 @@ class MenuSystem(esper.Processor):
             return
 
         actions = list(keybindings.bindings.keys())
+        controller_name = connected_controller_name()
+        has_controller = controller_name is not None
 
-        width = 60
-        height = len(actions) + 8
+        width = 70
+        height = len(actions) + (8 if has_controller else 6)
         x, y = draw_centered_frame(self.console, width, height, title='Settings')
 
-        controllers = tcod.sdl.joystick.get_controllers()
-        controller_name = controllers[0].joystick.name if controllers else 'none detected'
-        self.console.print(x + 2, y + 1, f'Controller: {controller_name}', fg=UI_CYAN)
-        self.console.print(x + 2, y + 2, f'Last input: {ui_state.last_controller_input or "-"}', fg=UI_GRAY)
+        self.console.print(x + 2, y + 1, f'Controller: {controller_name or "none detected"}', fg=UI_CYAN)
+        if has_controller:
+            self.console.print(x + 2, y + 2, f'Last input: {ui_state.last_controller_input or "-"}', fg=UI_GRAY)
+
+        header_row = y + (4 if has_controller else 3)
+        self.console.print(x + self.SETTINGS_ACTION_COL, header_row, 'Action', fg=UI_CYAN_DARK)
+        self.console.print(x + self.SETTINGS_KEY_COL, header_row, 'Keyboard', fg=UI_CYAN_DARK)
+        if has_controller:
+            self.console.print(x + self.SETTINGS_CONTROLLER_COL, header_row, 'Controller', fg=UI_CYAN_DARK)
 
         for i, action in enumerate(actions):
             color = UI_YELLOW if i == ui_state.settings_cursor else UI_WHITE
-            row = y + 4 + i
+            row = header_row + 1 + i
 
             marker = '> ' if i == ui_state.settings_cursor else '  '
-            if ui_state.remapping_action == action:
-                self.console.print(x + 2, row, f'{marker}{action.name}: [Press any key...]', fg=color)
-            else:
-                # Keyboard binding (remappable) and the fixed controller binding side by side.
-                self.console.print(
-                    x + 2, row, f'{marker}{action.name}: [{keybindings.bindings[action].name}]', fg=color
-                )
-                self.console.print(x + 30, row, controller_binding_label(action), fg=color)
+            self.console.print(x + self.SETTINGS_ACTION_COL, row, f'{marker}{action.name}', fg=color)
 
-        self.console.print(x + 2, y + height - 3, 'Left stick: move    Triggers: scroll log', fg=UI_GRAY_DARK)
+            if ui_state.remapping_action == action:
+                self.console.print(x + self.SETTINGS_KEY_COL, row, 'Press any key or button...', fg=color)
+            else:
+                self.console.print(x + self.SETTINGS_KEY_COL, row, keybindings.bindings[action].name, fg=color)
+                if has_controller:
+                    self.console.print(
+                        x + self.SETTINGS_CONTROLLER_COL, row, controller_binding_label(action, keybindings), fg=color
+                    )
+
+        if has_controller:
+            self.console.print(
+                x + 2, y + height - 3, 'Left stick: move    Triggers: scroll log    Start: back', fg=UI_GRAY_DARK
+            )
         self.console.print(x + 2, y + height - 2, 'Arrows: Select | Enter: Remap | Esc: Back', fg=UI_GRAY)
 
     def render_game_over(self):

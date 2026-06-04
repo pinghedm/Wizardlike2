@@ -30,7 +30,9 @@ from src.entities import (
     create_ui_state,
 )
 from src.input_handlers import (
-    AnalogInput,
+    DPAD_MOVES,
+    ControllerInput,
+    connected_controllers,
     handle_casting_input,
     handle_combining_input,
     handle_exploring_input,
@@ -43,6 +45,7 @@ from src.input_handlers import (
     note_controller_button,
     resolve_action,
     try_capture_remap,
+    try_capture_remap_axis,
 )
 from src.layout import Layout
 from src.procgen import generate_dungeon
@@ -239,11 +242,11 @@ def main():
         # keeps them open and keeps delivering their button events; the list is
         # refreshed when one is plugged in or removed.
         tcod.sdl.joystick.init()
-        controllers = tcod.sdl.joystick.get_controllers()
+        controllers = connected_controllers()
         debug_log(f'controllers connected: {len(controllers)}')
 
-        # Translates left-stick / trigger axis streams into repeating actions.
-        analog = AnalogInput()
+        # Turns d-pad / stick / trigger input into discrete, repeating actions.
+        controller = ControllerInput()
 
         tick_rate = 1 / TICKS_PER_SECOND
 
@@ -285,7 +288,7 @@ def main():
                     sys.exit()
 
                 if isinstance(event, tcod.event.ControllerDevice):
-                    controllers = tcod.sdl.joystick.get_controllers()
+                    controllers = connected_controllers()
                     debug_log(f'controllers changed: {len(controllers)} connected')
                     continue
 
@@ -293,7 +296,14 @@ def main():
                 debug_log(f'frame {frame}: dispatch {type(event).__name__}')
                 if isinstance(event, tcod.event.ControllerAxis):
                     # Sticks/triggers resolve to a (possibly repeating) action here.
-                    dispatch_action(analog.update(event, frame_start), game_state)
+                    if not (game_state.display_mode == DisplayMode.SETTINGS and try_capture_remap_axis(event)):
+                        keybindings = esper.get_component(Keybindings)[0][1]
+                        dispatch_action(controller.on_axis(event, frame_start, keybindings), game_state)
+                elif isinstance(event, tcod.event.ControllerButton) and event.button in DPAD_MOVES:
+                    # The d-pad drives movement directly so it can hold-to-repeat.
+                    if event.pressed:
+                        note_controller_button(event.button)
+                    dispatch_action(controller.on_button(event.button, event.pressed, frame_start), game_state)
                 else:
                     dispatch_input(event, game_state)
 
@@ -307,8 +317,8 @@ def main():
                 if game_state.display_mode != old_mode:
                     break
 
-            # A held stick / trigger repeats like a held key, once it is due.
-            repeat_action = analog.tick(frame_start)
+            # A held d-pad / stick / trigger repeats like a held key, once it is due.
+            repeat_action = controller.tick(frame_start)
             if repeat_action is not None:
                 dispatch_action(repeat_action, game_state)
                 apply_pending_transition(game_state, asset_loader)

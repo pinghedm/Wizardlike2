@@ -16,8 +16,9 @@ from src.components import (
 )
 from src.constants import SCREEN_HEIGHT, SCREEN_WIDTH
 from src.data_loaders import AssetLoader, get_game_configs
+from src.input_handlers import DPAD_MOVES, ControllerInput
 from src.layout import Layout
-from src.main import add_logic_systems, dispatch_input, init_game_world, update_pause_state
+from src.main import add_logic_systems, dispatch_action, dispatch_input, init_game_world, update_pause_state
 from src.map_objects import Map, Tile
 from src.procgen import spawn_enemy
 from src.states import DisplayMode, GameState
@@ -62,6 +63,7 @@ class HeadlessRunner:
         # normal tick()/esper.process() path is unaffected.
         self.console = tcod.console.Console(SCREEN_WIDTH, SCREEN_HEIGHT)
         self.layout = Layout(self.console)
+        self._controller = ControllerInput()
         self._ui_systems = [
             MenuSystem(self.layout),
             HUDSystem(self.layout),
@@ -136,10 +138,14 @@ class HeadlessRunner:
         update_pause_state(game_state)
 
     def simulate_controller_button(self, button: ControllerButton, pressed: bool = True):
-        """Simulate a controller button event and dispatch it like the game loop."""
-        event = tcod.event.ControllerButton(which=0, button=button, pressed=pressed)
+        """Simulate a controller button event, routed as the game loop routes it:
+        the d-pad drives movement through the controller, other buttons dispatch."""
         game_state = esper.get_component(GameState)[0][1]
-        dispatch_input(event, game_state)
+        if button in DPAD_MOVES:
+            dispatch_action(self._controller.on_button(button, pressed, now=0.0), game_state)
+        else:
+            event = tcod.event.ControllerButton(which=0, button=button, pressed=pressed)
+            dispatch_input(event, game_state)
         update_pause_state(game_state)
 
     @property

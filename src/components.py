@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, ClassVar, NamedTuple, NotRequired, TypedDict
 
 import tcod
+from tcod.sdl.joystick import ControllerAxis, ControllerButton
 
 from src.constants import DATA_DIR
 from src.data_utils import load_str_enum_from_yaml
@@ -241,11 +242,34 @@ class InputAction(enum.Enum):
     SCROLL_DOWN = enum.auto()
 
 
+# A controller binding is the SDL button or trigger axis driving an action.
+type ControllerBinding = ControllerButton | ControllerAxis
+
+
+def default_controller_bindings() -> dict[InputAction, ControllerBinding]:
+    """Default gamepad bindings for the rebindable actions. Movement is omitted:
+    it is fixed to the d-pad and left stick."""
+    return {
+        InputAction.CONFIRM: ControllerButton.A,
+        InputAction.CANCEL: ControllerButton.B,
+        InputAction.OPEN_CASTING: ControllerButton.X,
+        InputAction.OPEN_CRAFTING: ControllerButton.Y,
+        InputAction.CYCLE_TAB: ControllerButton.RIGHTSHOULDER,
+        InputAction.SCROLL_UP: ControllerAxis.TRIGGERLEFT,
+        InputAction.SCROLL_DOWN: ControllerAxis.TRIGGERRIGHT,
+    }
+
+
 @dataclass
 class Keybindings:
     """Singleton component to hold gameplay keybindings."""
 
     bindings: dict[InputAction, tcod.event.KeySym]
+    controller: dict[InputAction, ControllerBinding] = field(default_factory=default_controller_bindings)
+
+    def __setstate__(self, state: dict) -> None:
+        self.__dict__.update(state)
+        self.__dict__.setdefault('controller', default_controller_bindings())
 
 
 @dataclass
