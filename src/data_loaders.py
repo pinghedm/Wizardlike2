@@ -24,7 +24,7 @@ from src.components import (
     StatusType,
     TileConfig,
 )
-from src.constants import DATA_DIR
+from src.constants import DATA_DIR, FONT_TILE_PX
 
 
 class AssetType(Enum):
@@ -222,9 +222,10 @@ class AssetLoader:
             self.register_char(sprite_id, config.get('char', default_char))
 
     def build_tileset(self) -> tcod.tileset.Tileset:
-        # 1. Load base font (Dejavu)
-        base_path = 'data/dejavu10x10_gs_tc.png'
-        self.tileset = tcod.tileset.load_tilesheet(base_path, 32, 8, tcod.tileset.CHARMAP_TCOD)
+        # 1. Rasterize the base font (DejaVu Sans Mono) at the native cell size, so
+        # glyphs are crisp at the display resolution instead of an upscaled bitmap.
+        base_path = 'data/DejaVuSansMono.ttf'
+        self.tileset = tcod.tileset.load_truetype_font(base_path, FONT_TILE_PX, FONT_TILE_PX)
 
         # Get base tile dimensions
         # tile_shape is (height, width)

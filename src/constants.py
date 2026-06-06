@@ -30,11 +30,17 @@ ROOM_MAX_SIZE = 16
 # depth (see transition_to_next_floor).
 MAX_ITEMS_PER_ROOM = 4
 
-# Each logical console cell is drawn at this multiple of the tileset's native tile
-# size, so the 10x10 font reads as chunky cells instead of tiny ones. The console
-# is sized to window_pixels / (native_tile_px * DISPLAY_SCALE), so enlarging the
-# window shows more cells (more map and HUD room) rather than just zooming in.
-DISPLAY_SCALE = 2
+# Native pixel size of a console cell. The TrueType font is rasterized to a tile
+# this size (see AssetLoader.build_tileset), so glyphs are drawn crisp at the
+# display resolution rather than upscaled from a tiny bitmap.
+FONT_TILE_PX = 20
+
+# Each logical console cell is presented at this multiple of the tileset's native
+# tile size. At 1 the font renders 1:1 (sharp); a higher value would upscale cells
+# to be chunkier. The console is sized to window_pixels / (FONT_TILE_PX *
+# DISPLAY_SCALE), so enlarging the window shows more cells (more map and HUD room)
+# rather than just zooming in.
+DISPLAY_SCALE = 1
 
 # Number of floors in a full run. Reaching the exit on this floor wins the game;
 # earlier floors descend deeper. Tune for run length / difficulty.
