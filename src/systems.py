@@ -13,6 +13,7 @@ from tcod import libtcodpy
 
 from src.components import (
     AI,
+    STATUS_APPLY,
     Actor,
     CastVisual,
     Configuration,
@@ -50,8 +51,14 @@ from src.constants import (
     STATUS_PULSE_INTERVAL,
     UI_BLACK,
     UI_BLUE,
+    UI_CRIMSON,
     UI_CYAN,
+    UI_GRAY_LIGHT,
+    UI_GRAY_MID,
     UI_GREEN,
+    UI_GREEN_BRIGHT,
+    UI_GREEN_MID,
+    UI_MAGENTA,
     UI_ORANGE,
     UI_RED,
     UI_WHITE,
@@ -59,7 +66,13 @@ from src.constants import (
     to_rgb,
 )
 from src.debug import debug_log
-from src.ecs_helpers import get_singleton, spawn_item_entity, try_get_singleton
+from src.ecs_helpers import (
+    actor_name,
+    get_display_name,
+    get_singleton,
+    spawn_item_entity,
+    try_get_singleton,
+)
 from src.map_objects import Map
 from src.states import DisplayMode, GameState
 from src.ui_helpers import blend
@@ -75,13 +88,6 @@ def is_game_active() -> bool:
     Used to decide between the title menu and the in-game pause menu.
     """
     return bool(esper.get_component(PlayerTag))
-
-
-def get_display_name(entity: int) -> str:
-    """Human-facing name for an entity, taken from its Renderable sprite id."""
-    if esper.has_component(entity, Renderable):
-        return esper.component_for_entity(entity, Renderable).sprite_id
-    return 'enemy'
 
 
 # Memoized Dijkstra maps, keyed by goal tile, so each target's map is built once per AI tick.
@@ -142,7 +148,13 @@ def trigger_cast_visual(center: Point, radius: int, color: tuple[int, int, int])
     for ent, _visual in esper.get_component(CastVisual):
         esper.delete_entity(ent, immediate=True)
     esper.create_entity(
-        CastVisual(center=center, radius=radius, color=color, ticks=CastVisual.DURATION, max_ticks=CastVisual.DURATION)
+        CastVisual(
+            center=center,
+            radius=radius,
+            color=color,
+            ticks=CastVisual.DURATION,
+            max_ticks=CastVisual.DURATION,
+        )
     )
 
 
@@ -184,7 +196,8 @@ def spawn_particle_burst(center: Point, color: tuple[int, int, int], count: int)
 
 def record_damage_dealt(target_ent: int, amount: int):
     """Tally damage the player caused for the run summary. Enemies only ever damage
-    the player, so counting damage to any non-player entity equals player-dealt damage."""
+    the player, so counting damage to any non-player entity equals player-dealt damage.
+    """
     if esper.has_component(target_ent, PlayerTag):
         return
     run_stats = try_get_singleton(RunStats)
@@ -212,13 +225,21 @@ def _is_stunned(ent: int) -> bool:
     )
 
 
-def deal_damage(target_ent: int, amount: int, message: str, color: tuple[int, int, int]):
-    """Apply damage to a target's Stats and log a message."""
+def _apply_hp_damage(target_ent: int, amount: int) -> int:
+    """Resolve one discrete damage hit: mitigate by shield, subtract HP, tally for the
+    run summary, and flash the screen. Returns the mitigated amount actually dealt, so
+    callers can tell whether a shield absorbed part of it (`returned < amount`)."""
     mitigated = mitigate_damage(target_ent, amount)
     stats = esper.component_for_entity(target_ent, Stats)
     stats.hp -= mitigated
     record_damage_dealt(target_ent, mitigated)
     trigger_screen_flash(ent=target_ent, color=UI_RED)
+    return mitigated
+
+
+def deal_damage(target_ent: int, amount: int, message: str, color: tuple[int, int, int]):
+    """Apply damage to a target's Stats and log a message."""
+    mitigated = _apply_hp_damage(target_ent, amount)
     log = try_get_singleton(MessageLog)
     if log:
         if mitigated < amount:
@@ -252,7 +273,7 @@ class DeathSystem(esper.Processor):
                 else:
                     debug_log(f'DeathSystem: deleting {ent} ({get_display_name(ent)})')
                     if log:
-                        log.add_simple_message(f'The {get_display_name(ent)} dies!', color=(255, 255, 0))
+                        log.add_simple_message(f'The {get_display_name(ent)} dies!', color=UI_YELLOW)
                     run_stats = try_get_singleton(RunStats)
                     if run_stats:
                         run_stats.enemies_defeated += 1
@@ -287,18 +308,18 @@ class ActionSystem(esper.Processor):
 def _apply_status_pulse(ent: int, status_type: StatusType, power: int, log: MessageLog | None):
     """Apply one pulse of a recurring status effect (poison damage / regen heal)."""
     stats = esper.component_for_entity(ent, Stats)
-    name = 'You' if esper.has_component(ent, PlayerTag) else f'The {get_display_name(ent)}'
+    name = actor_name(ent)
 
     if status_type == StatusType.POISON:
         stats.hp -= power
         record_damage_dealt(ent, power)
         trigger_screen_flash(ent=ent, color=UI_GREEN)
         if log:
-            log.add_simple_message(f'{name} took {power} poison damage!', color=(50, 200, 50))
+            log.add_simple_message(f'{name} took {power} poison damage!', color=UI_GREEN_MID)
     elif status_type == StatusType.REGEN:
         stats.hp = min(stats.max_hp, stats.hp + power)
         if log:
-            log.add_simple_message(f'{name} regained {power} HP.', color=(0, 255, 0))
+            log.add_simple_message(f'{name} regained {power} HP.', color=UI_GREEN_BRIGHT)
 
 
 class StatusSystem(esper.Processor):
@@ -415,7 +436,7 @@ def _can_use_ability(ent: int, pos: Position, player_pos: Position, ability: Ene
 
 
 def _use_ability(ent: int, player_ent: int, ability: EnemyAbility, log: MessageLog):
-    log.add_simple_message(f'The {get_display_name(ent)} attacks from afar!', color=(255, 0, 255))
+    log.add_simple_message(f'The {get_display_name(ent)} attacks from afar!', color=UI_MAGENTA)
     origin = esper.component_for_entity(ent, Position).point
     for effect in ability.effects:
         debug_log(f'  ability effect {effect.type} power={effect.power} dur={effect.duration} -> player {player_ent}')
@@ -472,7 +493,7 @@ class AISystem(esper.Processor):
                     player_ent,
                     enemy.attack_damage,
                     f'The {get_display_name(ent)} hits you!',
-                    color=(255, 0, 0),
+                    color=UI_RED,
                 )
             elif enemy and enemy.ability and _can_use_ability(ent, pos, player_pos, enemy.ability):
                 debug_log(f'AI {ent} ({get_display_name(ent)}) ability from {(pos.x, pos.y)}')
@@ -603,7 +624,11 @@ class RenderSystem(esper.Processor):
             # A stunned entity keeps its own glyph color over a yellow highlight.
             if _is_stunned(_ent):
                 self.console.print(
-                    x=screen_x, y=screen_y, text=chr(codepoint), fg=rend.color, bg=blend(UI_BLACK, UI_YELLOW, 0.5)
+                    x=screen_x,
+                    y=screen_y,
+                    text=chr(codepoint),
+                    fg=rend.color,
+                    bg=blend(UI_BLACK, UI_YELLOW, 0.5),
                 )
             else:
                 self.console.print(x=screen_x, y=screen_y, text=chr(codepoint), fg=rend.color)
@@ -713,7 +738,12 @@ def _spray_hit_particles(target_ent: int):
     )
 
 
-def apply_effect(target_ent: int, effect: Effect, origin: Point | None = None, caster_ent: int | None = None):
+def apply_effect(
+    target_ent: int,
+    effect: Effect,
+    origin: Point | None = None,
+    caster_ent: int | None = None,
+):
     """Apply a single spell effect to a target entity.
 
     Instant effects (damage/heal/drain) resolve immediately; lingering ones store a
@@ -724,74 +754,44 @@ def apply_effect(target_ent: int, effect: Effect, origin: Point | None = None, c
     log = get_singleton(MessageLog)
     stats = esper.component_for_entity(target_ent, Stats)
     status = esper.component_for_entity(target_ent, StatusEffects)
-    is_player = esper.has_component(target_ent, PlayerTag)
-
-    if is_player:
-        target_name = 'You'
-    else:
-        target_name = f'The {get_display_name(target_ent)}'
+    target_name = actor_name(target_ent)
 
     if effect.type == EffectType.DAMAGE:
-        dmg = mitigate_damage(target_ent, effect.power)
-        stats.hp -= dmg
-        record_damage_dealt(target_ent, dmg)
-        trigger_screen_flash(ent=target_ent, color=UI_RED)
+        dmg = _apply_hp_damage(target_ent, effect.power)
         _spray_hit_particles(target_ent)
         shielded = ' (shielded)' if dmg < effect.power else ''
-        log.add_simple_message(f'{target_name} took {dmg} damage!{shielded}', color=(255, 100, 0))
+        log.add_simple_message(f'{target_name} took {dmg} damage!{shielded}', color=UI_ORANGE)
 
     elif effect.type == EffectType.HEAL:
         stats.hp = min(stats.max_hp, stats.hp + effect.power)
-        log.add_simple_message(f'{target_name} healed for {effect.power} HP!', color=(0, 255, 0))
+        log.add_simple_message(f'{target_name} healed for {effect.power} HP!', color=UI_GREEN_BRIGHT)
 
     elif effect.type == EffectType.DRAIN:
-        dmg = mitigate_damage(target_ent, effect.power)
-        stats.hp -= dmg
-        record_damage_dealt(target_ent, dmg)
-        trigger_screen_flash(ent=target_ent, color=UI_RED)
+        dmg = _apply_hp_damage(target_ent, effect.power)
         _spray_hit_particles(target_ent)
         shielded = ' (shielded)' if dmg < effect.power else ''
-        log.add_simple_message(f'{target_name} took {dmg} damage!{shielded}', color=(200, 0, 80))
+        log.add_simple_message(f'{target_name} took {dmg} damage!{shielded}', color=UI_CRIMSON)
         if caster_ent is not None and esper.has_component(caster_ent, Stats):
             caster_stats = esper.component_for_entity(caster_ent, Stats)
             before = caster_stats.hp
             caster_stats.hp = min(caster_stats.max_hp, caster_stats.hp + effect.lifesteal)
             healed = caster_stats.hp - before
-            log.add_simple_message(f'{get_display_name(caster_ent)} drained {healed} HP!', color=(0, 255, 0))
+            log.add_simple_message(
+                f'{get_display_name(caster_ent)} drained {healed} HP!',
+                color=UI_GREEN_BRIGHT,
+            )
 
     elif effect.type == EffectType.KNOCKBACK:
         if origin is not None:
             _apply_knockback(target_ent, origin, effect.power)
-        log.add_simple_message(f'{target_name} is knocked back!', color=(220, 220, 220))
+        log.add_simple_message(f'{target_name} is knocked back!', color=UI_GRAY_LIGHT)
 
-    elif effect.type == EffectType.SLOW:
-        status.active[StatusType.SLOW] = replace(effect)
-        log.add_simple_message(f'{target_name} is slowed!', color=(100, 100, 255))
-
-    elif effect.type == EffectType.HASTE:
-        status.active[StatusType.HASTE] = replace(effect)
-        log.add_simple_message(f'{target_name} speeds up!', color=(255, 255, 0))
-
-    elif effect.type == EffectType.STUN:
-        status.active[StatusType.STUN] = replace(effect)
-        log.add_simple_message(f'{target_name} is stunned!', color=(255, 255, 0))
-
-    elif effect.type == EffectType.SHIELD:
-        status.active[StatusType.SHIELD] = replace(effect)
-        log.add_simple_message(f'{target_name} is shielded!', color=(0, 255, 255))
-
-    elif effect.type == EffectType.POISON:
-        status.active[StatusType.POISON] = replace(effect)
-        trigger_screen_flash(ent=target_ent, color=UI_GREEN)
-        log.add_simple_message(f'{target_name} is poisoned!', color=(50, 200, 50))
-
-    elif effect.type == EffectType.REGEN:
-        status.active[StatusType.REGEN] = replace(effect)
-        log.add_simple_message(f'{target_name} begins to regenerate!', color=(0, 255, 0))
-
-    elif effect.type == EffectType.WET:
-        status.active[StatusType.WET] = replace(effect)
-        log.add_simple_message(f'{target_name} is drenched!', color=UI_BLUE)
+    elif effect.type in STATUS_APPLY:
+        application = STATUS_APPLY[effect.type]
+        status.active[application.status] = replace(effect)
+        if application.damage_over_time:
+            trigger_screen_flash(ent=target_ent, color=EFFECT_COLORS[effect.type])
+        log.add_simple_message(application.message.format(name=target_name), color=application.color)
 
 
 def _apply_reaction_multiplier(target_ent: int, modifiers: list[DamageModifier], log: MessageLog) -> float:
@@ -803,7 +803,7 @@ def _apply_reaction_multiplier(target_ent: int, modifiers: list[DamageModifier],
         return 1.0
 
     active = esper.component_for_entity(target_ent, StatusEffects).active
-    name = 'You' if esper.has_component(target_ent, PlayerTag) else f'The {get_display_name(target_ent)}'
+    name = actor_name(target_ent)
     mult = 1.0
     for mod in modifiers:
         if mod.vs_status not in active:
@@ -916,7 +916,7 @@ def cast_spell(spell_id: str, target_x: int, target_y: int):
     if not s_conf:
         return
 
-    log.add_simple_message(f'You cast {s_conf["name"]}!', color=(0, 255, 255))
+    log.add_simple_message(f'You cast {s_conf["name"]}!', color=UI_CYAN)
 
     radius = s_conf.get('radius', 0)
     caster_origin = esper.component_for_entity(player, Position).point
@@ -944,7 +944,7 @@ def cast_spell(spell_id: str, target_x: int, target_y: int):
             targets.append(ent)
 
     if not targets:
-        log.add_simple_message('The spell hits nothing.', color=(150, 150, 150))
+        log.add_simple_message('The spell hits nothing.', color=UI_GRAY_MID)
         return
 
     # Knockback shoves targets directly away from the caster. Reaction modifiers scale

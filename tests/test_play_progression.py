@@ -3,10 +3,9 @@ import tcod.event
 
 from src.components import Modal, Position, RunStats, Stats
 from src.constants import MAX_FLOORS
-from src.ecs_helpers import get_singleton
+from src.ecs_helpers import get_display_name, get_singleton
 from src.map_objects import Map, Tile
 from src.states import DisplayMode
-from src.systems import get_display_name
 from tests.headless_runner import HeadlessRunner
 
 

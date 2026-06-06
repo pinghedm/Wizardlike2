@@ -29,7 +29,7 @@ from src.components import (
     UIState,
 )
 from src.constants import MAX_FLOORS
-from src.ecs_helpers import try_get_singleton
+from src.ecs_helpers import get_display_name, try_get_singleton
 from src.map_objects import Map
 from src.procgen import transition_to_next_floor
 from src.shop import purchase_offer
@@ -45,7 +45,6 @@ from src.systems import (
     cast_spell,
     craft_known_spell,
     deal_damage,
-    get_display_name,
     get_spell_config,
     is_game_active,
     is_reagent,
@@ -71,6 +70,14 @@ MOVE_DELTAS: dict[InputAction, tuple[int, int]] = {
     InputAction.MOVE_LEFT: (-1, 0),
     InputAction.MOVE_RIGHT: (1, 0),
 }
+
+
+def move_delta(action: InputAction | None) -> tuple[int, int]:
+    """The (dx, dy) step for a movement action, or (0, 0) for anything that isn't one."""
+    if action is None:
+        return (0, 0)
+    return MOVE_DELTAS.get(action, (0, 0))
+
 
 # Actions that auto-repeat while their control is held, like a held arrow key.
 REPEATING_ACTIONS = set(MOVE_DELTAS) | {InputAction.SCROLL_UP, InputAction.SCROLL_DOWN}
@@ -358,7 +365,7 @@ def handle_exploring_input(action: InputAction | None):
     elif action == InputAction.SCROLL_DOWN:
         esper.get_component(MessageLog)[0][1].scroll_index -= 1
 
-    dx, dy = MOVE_DELTAS.get(action, (0, 0))
+    dx, dy = move_delta(action)
     if dx != 0 or dy != 0:
         # Default movement is uncapped (as fast as the player presses). Only a SLOW
         # status throttles it: each move sets a (doubled) cooldown via move_entity,
@@ -702,7 +709,7 @@ def handle_targeting_input(action: InputAction | None):
         ui_state.active_targeting_spell_id = None
         return DisplayMode.CASTING
 
-    dx, dy = MOVE_DELTAS.get(action, (0, 0))
+    dx, dy = move_delta(action)
     if dx != 0 or dy != 0:
         new_x = reticle.x + dx
         new_y = reticle.y + dy

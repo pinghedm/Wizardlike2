@@ -1,6 +1,6 @@
 import math
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 
 import esper
 import numpy as np
@@ -71,6 +71,14 @@ from src.ui_helpers import (
     format_spell_effects,
     wrap_message,
 )
+
+
+def _iter_viewport_cells(view: Rect, cam_x: int, cam_y: int) -> Iterator[tuple[int, int, int, int]]:
+    """Yield (screen_x, screen_y, map_x, map_y) for every cell of the map viewport,
+    pairing each on-screen cell with the map cell the camera maps it to."""
+    for screen_y in range(view.y, view.y + view.height):
+        for screen_x in range(view.x, view.x + view.width):
+            yield screen_x, screen_y, screen_x - view.x + cam_x, screen_y - view.y + cam_y
 
 
 class MenuSystem(esper.Processor):
@@ -458,17 +466,14 @@ class TargetingOverlaySystem(esper.Processor):
         view = self.layout.map_viewport
         cam_x, cam_y = self.layout.camera_offset(player_pos.x, player_pos.y, game_map.width, game_map.height)
 
-        for screen_y in range(view.y, view.y + view.height):
-            for screen_x in range(view.x, view.x + view.width):
-                map_x = screen_x - view.x + cam_x
-                map_y = screen_y - view.y + cam_y
-                dist_to_reticle = math.sqrt((map_x - reticle.x) ** 2 + (map_y - reticle.y) ** 2)
-                dist_to_player = math.sqrt((map_x - player_pos.x) ** 2 + (map_y - player_pos.y) ** 2)
+        for screen_x, screen_y, map_x, map_y in _iter_viewport_cells(view, cam_x, cam_y):
+            dist_to_reticle_sq = (map_x - reticle.x) ** 2 + (map_y - reticle.y) ** 2
+            dist_to_player_sq = (map_x - player_pos.x) ** 2 + (map_y - player_pos.y) ** 2
 
-                if dist_to_reticle <= reticle.radius:
-                    self.console.rgb[screen_y, screen_x]['bg'] = (100, 0, 0)
-                elif dist_to_player <= reticle.range:
-                    self.console.rgb[screen_y, screen_x]['bg'] = (0, 0, 50)
+            if dist_to_reticle_sq <= reticle.radius**2:
+                self.console.rgb[screen_y, screen_x]['bg'] = (100, 0, 0)
+            elif dist_to_player_sq <= reticle.range**2:
+                self.console.rgb[screen_y, screen_x]['bg'] = (0, 0, 50)
 
         # Draw yellow reticle X at its on-screen position.
         screen_rx, screen_ry = self.layout.map_to_screen(map_x=reticle.x, map_y=reticle.y, cam_x=cam_x, cam_y=cam_y)
@@ -572,23 +577,18 @@ class EffectOverlaySystem(esper.Processor):
             esper.delete_entity(ent, immediate=True)
 
     def _draw_cast_burst(self, visual: CastVisual):
-        player = esper.get_components(Position, PlayerTag)
-        game_map = try_get_singleton(Map)
-        if not player or not game_map:
+        cam = self._camera()
+        if cam is None:
             return
-        _p, (player_pos, _tag) = player[0]
+        cam_x, cam_y = cam
 
         view = self.layout.map_viewport
-        cam_x, cam_y = self.layout.camera_offset(player_pos.x, player_pos.y, game_map.width, game_map.height)
         alpha = CastVisual.MAX_ALPHA * visual.ticks / visual.max_ticks
 
-        for screen_y in range(view.y, view.y + view.height):
-            for screen_x in range(view.x, view.x + view.width):
-                map_x = screen_x - view.x + cam_x
-                map_y = screen_y - view.y + cam_y
-                if math.sqrt((map_x - visual.center.x) ** 2 + (map_y - visual.center.y) ** 2) <= visual.radius:
-                    base = to_rgb(self.console.rgb[screen_y, screen_x]['bg'])
-                    self.console.rgb[screen_y, screen_x]['bg'] = blend(base, visual.color, alpha)
+        for screen_x, screen_y, map_x, map_y in _iter_viewport_cells(view, cam_x, cam_y):
+            if (map_x - visual.center.x) ** 2 + (map_y - visual.center.y) ** 2 <= visual.radius**2:
+                base = to_rgb(self.console.rgb[screen_y, screen_x]['bg'])
+                self.console.rgb[screen_y, screen_x]['bg'] = blend(base, visual.color, alpha)
 
     def _render_screen_flash(self):
         flashes = esper.get_component(ScreenFlash)

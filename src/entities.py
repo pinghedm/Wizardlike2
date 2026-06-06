@@ -41,7 +41,6 @@ def create_configuration(configs: GameConfigs):
         Configuration(
             ingredients=configs['ingredients'],
             spells=configs['spells'],
-            characters=configs['characters'],
             tiles=configs['tiles'],
             enemies=configs['enemies'],
         )

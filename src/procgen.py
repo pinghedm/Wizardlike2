@@ -48,6 +48,18 @@ def is_shop_floor(floor: int) -> bool:
     return floor % 3 == 0
 
 
+def _delete_all(*component_types: type[object]):
+    """Immediately delete every entity carrying any of the given component types.
+
+    immediate=True so the world is left clean synchronously; esper's default deferred
+    delete would leave stale entities visible to get_component until the next process()
+    tick — and a floor rebuild queries the world before then.
+    """
+    for component_type in component_types:
+        for ent, _ in esper.get_component(component_type):
+            esper.delete_entity(ent, immediate=True)
+
+
 def transition_to_next_floor():
     # 1. Increment Floor
     game_state = esper.get_component(GameState)[0][1]
@@ -58,15 +70,7 @@ def transition_to_next_floor():
     max_items = MAX_ITEMS_PER_ROOM + (game_state.floor // 5)
 
     # 3. Clear existing non-persistent entities (Items/Enemies/Shopkeeper).
-    # immediate=True so the floor is rebuilt to a clean state synchronously; esper's
-    # default deferred delete would leave stale entities visible to get_component until
-    # the next process() tick.
-    for ent, _ in esper.get_component(Item):
-        esper.delete_entity(ent, immediate=True)
-    for ent, _ in esper.get_component(Enemy):
-        esper.delete_entity(ent, immediate=True)
-    for ent, _ in esper.get_component(Shopkeeper):
-        esper.delete_entity(ent, immediate=True)
+    _delete_all(Item, Enemy, Shopkeeper)
 
     # 4. Generate the new floor (a shop floor on every third level).
     if is_shop_floor(game_state.floor):
@@ -79,10 +83,8 @@ def transition_to_next_floor():
             max_items_per_room=max_items,
         )
 
-    # 5. Replace the Map entity. immediate=True so the stale map is gone before
-    # anything queries the singleton Map again (see note above).
-    for ent, _old_map in esper.get_component(Map):
-        esper.delete_entity(ent, immediate=True)
+    # 5. Replace the Map entity.
+    _delete_all(Map)
     esper.create_entity(new_map)
 
     # 6. Update Player Position

@@ -7,7 +7,16 @@ from typing import TYPE_CHECKING, ClassVar, NamedTuple, NotRequired, TypedDict
 import tcod
 from tcod.sdl.joystick import ControllerAxis, ControllerButton
 
-from src.constants import DATA_DIR
+from src.constants import (
+    DATA_DIR,
+    RGB,
+    UI_BLUE,
+    UI_CYAN,
+    UI_GREEN_BRIGHT,
+    UI_GREEN_MID,
+    UI_PERIWINKLE,
+    UI_YELLOW,
+)
 from src.data_utils import load_str_enum_from_yaml
 from src.states import CraftingView
 
@@ -69,17 +78,12 @@ class EnemyConfig(TypedDict):
     drops: NotRequired[list[LootDrop]]
 
 
-class CharacterConfig(TypedDict):
-    id: str
-
-
 class GameConfigs(TypedDict):
     """The bundle of parsed config returned by `get_game_configs`, used to build the
     `Configuration` singleton."""
 
     ingredients: dict[ItemType, IngredientConfig]
     spells: list[SpellConfig]
-    characters: dict[str, CharacterConfig]
     tiles: list[TileConfig]
     enemies: dict[str, EnemyConfig]
 
@@ -158,6 +162,37 @@ class EnemyAbility:
     effects: list[Effect]
 
 
+@dataclass(frozen=True)
+class StatusApplication:
+    """How a lingering effect presents when applied: the status it grants, its
+    `{name}`-templated log message, and that message's color. `damage_over_time` marks
+    harmful pulsing statuses (poison, and future burns) — they flash the screen on apply
+    in their EFFECT_COLORS hue so any new DoT slots in without a special case."""
+
+    status: StatusType
+    message: str
+    color: RGB
+    damage_over_time: bool = False
+
+
+# Lingering effects all apply the same way — stash a copy on the target and log a line —
+# so they're data, not branches. Instant effects (damage/heal/drain/knockback) differ and
+# stay as explicit cases in apply_effect.
+STATUS_APPLY: dict[EffectType, StatusApplication] = {
+    EffectType.SLOW: StatusApplication(status=StatusType.SLOW, message='{name} is slowed!', color=UI_PERIWINKLE),
+    EffectType.HASTE: StatusApplication(status=StatusType.HASTE, message='{name} speeds up!', color=UI_YELLOW),
+    EffectType.STUN: StatusApplication(status=StatusType.STUN, message='{name} is stunned!', color=UI_YELLOW),
+    EffectType.SHIELD: StatusApplication(status=StatusType.SHIELD, message='{name} is shielded!', color=UI_CYAN),
+    EffectType.POISON: StatusApplication(
+        status=StatusType.POISON, message='{name} is poisoned!', color=UI_GREEN_MID, damage_over_time=True
+    ),
+    EffectType.REGEN: StatusApplication(
+        status=StatusType.REGEN, message='{name} begins to regenerate!', color=UI_GREEN_BRIGHT
+    ),
+    EffectType.WET: StatusApplication(status=StatusType.WET, message='{name} is drenched!', color=UI_BLUE),
+}
+
+
 if TYPE_CHECKING:
     # The real enums are built from YAML at runtime (below); these stubs exist only so
     # the type checker knows the members the code references by name.
@@ -230,7 +265,6 @@ class Configuration:
 
     ingredients: dict[ItemType, IngredientConfig]
     spells: list[SpellConfig]
-    characters: dict[str, CharacterConfig]
     tiles: list[TileConfig]
     enemies: dict[str, EnemyConfig]
 
@@ -282,7 +316,7 @@ class Keybindings:
     bindings: dict[InputAction, tcod.event.KeySym]
     controller: dict[InputAction, ControllerBinding] = field(default_factory=default_controller_bindings)
 
-    def __setstate__(self, state: dict) -> None:
+    def __setstate__(self, state: dict[str, object]) -> None:
         self.__dict__.update(state)
         self.__dict__.setdefault('controller', default_controller_bindings())
 

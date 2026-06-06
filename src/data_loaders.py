@@ -10,7 +10,6 @@ import yaml
 from PIL import Image
 
 from src.components import (
-    CharacterConfig,
     DamageModifier,
     Effect,
     EffectType,
@@ -43,6 +42,14 @@ class _RawSprite(TypedDict):
     scale: NotRequired[float]
 
 
+class _RenderableConfig(TypedDict):
+    """The renderable slice every content config shares: an external 'sprite' or, failing
+    that, a font 'char'. The shape `register_from_config` reads to register either."""
+
+    sprite: NotRequired[_RawSprite]
+    char: NotRequired[str]
+
+
 @dataclass
 class SpriteDefinition:
     # If path is None, this is a font character, and codepoint is the direct Unicode value.
@@ -59,12 +66,7 @@ def load_ingredients_config(asset_loader: AssetLoader) -> dict[ItemType, Ingredi
         data = yaml.safe_load(f)['ingredients']
         items = {ItemType(item['id']): item for item in data}
         for itype, config in items.items():
-            if 'sprite' in config:
-                asset_loader.register_sprite(itype.value, config['sprite'])
-            else:
-                # Use the character defined in YAML, or a block fallback
-                char = config.get('char', '\u2588')
-                asset_loader.register_char(itype.value, char)
+            asset_loader.register_from_config(itype.value, config, '\u2588')
         return items
 
 
@@ -119,28 +121,19 @@ def load_spells_config(asset_loader: AssetLoader) -> list[SpellConfig]:
                 )
             spell['recipes'] = processed_recipes
 
-            if 'sprite' in spell:
-                asset_loader.register_sprite(spell['id'], spell['sprite'])
-            else:
-                # Spells default to a question mark if no graphic is provided
-                asset_loader.register_char(spell['id'], '?')
+            asset_loader.register_from_config(spell['id'], spell, '?')
         return data
 
 
-def load_characters_config(asset_loader: AssetLoader) -> dict[str, CharacterConfig]:
+def register_character_sprites(asset_loader: AssetLoader):
+    """Register a sprite for each character id in characters.yaml. Characters carry no
+    runtime config beyond their sprite, so nothing is returned."""
     try:
         with open(f'{DATA_DIR}/characters.yaml') as f:
-            data = yaml.safe_load(f)['characters']
-            chars = {char['id']: char for char in data}
-            for cid, config in chars.items():
-                if 'sprite' in config:
-                    asset_loader.register_sprite(cid, config['sprite'])
-                else:
-                    char = config.get('char', '@')
-                    asset_loader.register_char(cid, char)
-            return chars
+            for char in yaml.safe_load(f)['characters']:
+                asset_loader.register_from_config(char['id'], char, '@')
     except FileNotFoundError:
-        return {}
+        return
 
 
 def load_enemies_config(asset_loader: AssetLoader) -> dict[str, EnemyConfig]:
@@ -164,11 +157,7 @@ def load_enemies_config(asset_loader: AssetLoader) -> dict[str, EnemyConfig]:
                         )
                         for d in config['drops']
                     ]
-                if 'sprite' in config:
-                    asset_loader.register_sprite(eid, config['sprite'])
-                else:
-                    char = config.get('char', '?')
-                    asset_loader.register_char(eid, char)
+                asset_loader.register_from_config(eid, config, '?')
             return enemies
     except FileNotFoundError:
         return {}
@@ -179,11 +168,7 @@ def load_tiles_config(asset_loader: AssetLoader) -> list[TileConfig]:
         with open(f'{DATA_DIR}/tiles.yaml') as f:
             data = yaml.safe_load(f)['tiles']
             for tile in data:
-                if 'sprite' in tile:
-                    asset_loader.register_sprite(tile['id'], tile['sprite'])
-                else:
-                    char = tile.get('char', ' ')
-                    asset_loader.register_char(tile['id'], char)
+                asset_loader.register_from_config(tile['id'], tile, ' ')
             return data
     except FileNotFoundError:
         return []
@@ -195,10 +180,10 @@ def get_game_configs(asset_loader: AssetLoader) -> GameConfigs:
     Load and process all game configurations.
     Memoized to ensure sprite registration and disk I/O only happen once.
     """
+    register_character_sprites(asset_loader)
     return {
         'ingredients': load_ingredients_config(asset_loader),
         'spells': load_spells_config(asset_loader),
-        'characters': load_characters_config(asset_loader),
         'tiles': load_tiles_config(asset_loader),
         'enemies': load_enemies_config(asset_loader),
     }
@@ -227,6 +212,14 @@ class AssetLoader:
             region=region,
             scale=config.get('scale', 1.0),
         )
+
+    def register_from_config(self, sprite_id: str, config: _RenderableConfig, default_char: str):
+        """Register `sprite_id` from a content config's optional 'sprite' block, falling
+        back to a font character ('char' if authored, else `default_char`)."""
+        if 'sprite' in config:
+            self.register_sprite(sprite_id, config['sprite'])
+        else:
+            self.register_char(sprite_id, config.get('char', default_char))
 
     def build_tileset(self) -> tcod.tileset.Tileset:
         # 1. Load base font (Dejavu)

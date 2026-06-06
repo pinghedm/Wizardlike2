@@ -7,7 +7,7 @@ imports from systems). Depends only on `esper` + `components`.
 
 import esper
 
-from src.components import Configuration, Item, ItemType, Position, Renderable
+from src.components import Configuration, Item, ItemType, PlayerTag, Position, Renderable
 from src.constants import UI_WHITE, to_rgb
 
 
@@ -27,6 +27,20 @@ def try_get_singleton[T](component_type: type[T]) -> T | None:
     """Return the single instance of a singleton component, or None if absent."""
     components = esper.get_component(component_type)
     return components[0][1] if components else None
+
+
+def get_display_name(entity: int) -> str:
+    """Human-facing name for an entity, taken from its Renderable sprite id."""
+    if esper.has_component(entity, Renderable):
+        return esper.component_for_entity(entity, Renderable).sprite_id
+    return 'enemy'
+
+
+def actor_name(entity: int) -> str:
+    """Subject form for log messages: 'You' for the player, 'The <name>' otherwise."""
+    if esper.has_component(entity, PlayerTag):
+        return 'You'
+    return f'The {get_display_name(entity)}'
 
 
 def spawn_item_entity(itype: ItemType, x: int, y: int, count: int = 1) -> int:

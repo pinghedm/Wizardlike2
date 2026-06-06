@@ -27,6 +27,8 @@ omit = ["src/**/__init__.py"]
 [tool.pyright]
 include = ["src"]
 exclude = ["**/__pycache__", "venv"]
+venvPath = "."
+venv = "venv"
 pythonVersion = "3.14"
 typeCheckingMode = "strict"
 reportMissingImports = true
