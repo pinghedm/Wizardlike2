@@ -171,14 +171,14 @@ class AISystem(esper.Processor):
 
         # 2. Dispatch behavior by tag.
         for ent, (pos, _ai) in esper.get_components(Position, AI):
-            actor = esper.component_for_entity(ent, Actor) if esper.has_component(ent, Actor) else None
+            actor = esper.try_component(ent, Actor)
             if actor and actor.cooldown > 0:
                 continue
 
             if get_status(ent, StatusType.STUN):
                 continue
 
-            enemy = esper.component_for_entity(ent, Enemy) if esper.has_component(ent, Enemy) else None
+            enemy = esper.try_component(ent, Enemy)
             adjacent = abs(player_pos.x - pos.x) <= 1 and abs(player_pos.y - pos.y) <= 1
 
             # Melee if adjacent, else fire a ranged ability if one is in range, else move.

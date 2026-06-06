@@ -3,14 +3,13 @@ import esper
 from src.components import (
     Actor,
     Enemy,
-    FieldOfView,
     Point,
     Position,
     StatusType,
 )
 from src.constants import PLAYER_MOVE_COST
 from src.debug import debug_log
-from src.ecs_helpers import get_status, is_player, try_get_singleton
+from src.ecs_helpers import get_status, is_player, mark_fov_dirty, try_get_singleton
 from src.map_objects import Map
 from src.systems.utils import step_toward
 
@@ -61,8 +60,7 @@ def move_entity(entity: int, dx: int, dy: int):
     pos.y = new_y
     debug_log(f'move_entity {entity} -> {(new_x, new_y)} (player={is_player(entity)})')
 
-    if esper.has_component(entity, FieldOfView):
-        esper.component_for_entity(entity, FieldOfView).dirty = True
+    mark_fov_dirty(entity)
 
     # Player move consumes a turn at the base player move cost.
     if is_player(entity):
@@ -92,8 +90,7 @@ def apply_knockback(target_ent: int, origin: Point, distance: int):
             break
         pos.x, pos.y = nx, ny
 
-    if esper.has_component(target_ent, FieldOfView):
-        esper.component_for_entity(target_ent, FieldOfView).dirty = True
+    mark_fov_dirty(target_ent)
 
 
 def get_action_cooldown(entity: int, base_speed: int) -> int:

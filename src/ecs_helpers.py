@@ -10,6 +10,7 @@ import esper
 from src.components import (
     Configuration,
     Effect,
+    FieldOfView,
     Item,
     ItemType,
     PlayerTag,
@@ -63,6 +64,13 @@ def get_status(entity: int, status_type: StatusType) -> Effect | None:
     if not esper.has_component(entity, StatusEffects):
         return None
     return esper.component_for_entity(entity, StatusEffects).active.get(status_type)
+
+
+def mark_fov_dirty(entity: int):
+    """Flag an entity's field of view for recompute on the next FOVSystem tick."""
+    fov = esper.try_component(entity, FieldOfView)
+    if fov:
+        fov.dirty = True
 
 
 def get_display_name(entity: int) -> str:

@@ -36,7 +36,7 @@ from src.constants import (
     UI_WHITE,
     to_rgb,
 )
-from src.ecs_helpers import get_player, get_singleton, spawn_item_entity
+from src.ecs_helpers import get_player, get_singleton, mark_fov_dirty, spawn_item_entity
 from src.map_objects import Map, Tile
 from src.shop import build_shop_offers
 from src.states import GameState
@@ -92,8 +92,7 @@ def transition_to_next_floor():
         pos = esper.component_for_entity(player, Position)
         pos.x = player_start.x
         pos.y = player_start.y
-        if esper.has_component(player, FieldOfView):
-            esper.component_for_entity(player, FieldOfView).dirty = True
+        mark_fov_dirty(player)
 
 
 class RectangularRoom:
