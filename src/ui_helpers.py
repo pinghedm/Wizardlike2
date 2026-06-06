@@ -57,6 +57,42 @@ def center_origin(console: tcod.console.Console, width: int, height: int) -> tup
     return (console.width - width) // 2, (console.height - height) // 2
 
 
+# Block-element glyphs whose filled half/quadrants tile into one continuous border.
+# Each fills its cell, so adjacent border cells join seamlessly; box-drawing glyphs
+# (─│┌┐) instead leave gaps in fonts that render them at their narrow native width.
+_FRAME_TOP, _FRAME_BOTTOM, _FRAME_LEFT, _FRAME_RIGHT = '▀', '▄', '▌', '▐'
+_FRAME_TL, _FRAME_TR, _FRAME_BL, _FRAME_BR = '▛', '▜', '▙', '▟'
+
+
+def _draw_block_frame(
+    console: tcod.console.Console,
+    x: int,
+    y: int,
+    width: int,
+    height: int,
+    fg: tuple[int, int, int],
+    bg: tuple[int, int, int] | None,
+) -> None:
+    """Draw a solid rectangular border from block elements, clearing the interior.
+
+    Block half/quadrant glyphs fill their whole cell, so the border reads as an
+    unbroken line in any font — unlike box-drawing glyphs, which the font may render
+    too narrow to span the cell (leaving a dashed look).
+    """
+    console.draw_rect(x, y, width, height, ch=ord(' '), fg=fg, bg=bg)
+    right, bottom = x + width - 1, y + height - 1
+    for cx in range(x + 1, right):
+        console.print(cx, y, _FRAME_TOP, fg=fg, bg=bg)
+        console.print(cx, bottom, _FRAME_BOTTOM, fg=fg, bg=bg)
+    for cy in range(y + 1, bottom):
+        console.print(x, cy, _FRAME_LEFT, fg=fg, bg=bg)
+        console.print(right, cy, _FRAME_RIGHT, fg=fg, bg=bg)
+    console.print(x, y, _FRAME_TL, fg=fg, bg=bg)
+    console.print(right, y, _FRAME_TR, fg=fg, bg=bg)
+    console.print(x, bottom, _FRAME_BL, fg=fg, bg=bg)
+    console.print(right, bottom, _FRAME_BR, fg=fg, bg=bg)
+
+
 def draw_titled_frame(
     console: tcod.console.Console,
     x: int,
@@ -69,11 +105,11 @@ def draw_titled_frame(
 ) -> None:
     """Draw a framed box with a title centered on its top border.
 
-    tcod deprecated draw_frame's built-in `title` (its style is hard-coded), so we
-    draw a plain frame and print the title over the top border ourselves, as the
-    tcod docs recommend.
+    The frame is built from block elements (see `_draw_block_frame`) so its border
+    stays solid regardless of the font's box-drawing coverage. The title is printed
+    over the top border afterwards, interrupting it where the text sits.
     """
-    console.draw_frame(x, y, width, height, fg=fg, bg=bg)
+    _draw_block_frame(console, x, y, width, height, fg=fg, bg=bg)
     console.print(x=x, y=y, width=width, height=1, text=f' {title} ', fg=fg, alignment=tcod.constants.CENTER)
 
 

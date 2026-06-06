@@ -24,7 +24,7 @@ from src.components import (
     StatusType,
     TileConfig,
 )
-from src.constants import DATA_DIR, FONT_TILE_PX
+from src.constants import DATA_DIR, FONT_FILE, FONT_TILE_PX
 
 
 class AssetType(Enum):
@@ -61,7 +61,9 @@ class SpriteDefinition:
     codepoint: int | None = None
 
 
-def load_ingredients_config(asset_loader: AssetLoader) -> dict[ItemType, IngredientConfig]:
+def load_ingredients_config(
+    asset_loader: AssetLoader,
+) -> dict[ItemType, IngredientConfig]:
     with open(f'{DATA_DIR}/ingredients.yaml') as f:
         data = yaml.safe_load(f)['ingredients']
         items = {ItemType(item['id']): item for item in data}
@@ -100,7 +102,11 @@ class _RawModifier(TypedDict):
 
 def _parse_modifiers(raw: list[_RawModifier]) -> list[DamageModifier]:
     return [
-        DamageModifier(vs_status=StatusType(mod['vs_status']), damage_mult=float(mod['damage_mult'])) for mod in raw
+        DamageModifier(
+            vs_status=StatusType(mod['vs_status']),
+            damage_mult=float(mod['damage_mult']),
+        )
+        for mod in raw
     ]
 
 
@@ -222,10 +228,9 @@ class AssetLoader:
             self.register_char(sprite_id, config.get('char', default_char))
 
     def build_tileset(self) -> tcod.tileset.Tileset:
-        # 1. Rasterize the base font (DejaVu Sans Mono) at the native cell size, so
-        # glyphs are crisp at the display resolution instead of an upscaled bitmap.
-        base_path = 'data/DejaVuSansMono.ttf'
-        self.tileset = tcod.tileset.load_truetype_font(base_path, FONT_TILE_PX, FONT_TILE_PX)
+        # 1. Rasterize the base font at the native cell size, so glyphs are
+        # crisp at the display resolution instead of an upscaled bitmap.
+        self.tileset = tcod.tileset.load_truetype_font(FONT_FILE, FONT_TILE_PX, FONT_TILE_PX)
 
         # Get base tile dimensions
         # tile_shape is (height, width)

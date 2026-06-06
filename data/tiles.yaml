@@ -27,7 +27,7 @@ tiles:
     type: exit
     depth: [1, 10]
     sprite:
-      path: data/Misc.png
+      path: data/spritesheets/Misc.png
       type: REGION
       region: [0, 70, 10, 10]
       scale: 1.0

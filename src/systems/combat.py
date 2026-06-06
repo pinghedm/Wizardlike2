@@ -19,7 +19,6 @@ from src.constants import (
     RGB,
     UI_BLUE,
     UI_CRIMSON,
-    UI_CYAN,
     UI_GRAY_LIGHT,
     UI_GREEN,
     UI_GREEN_BRIGHT,
@@ -27,6 +26,7 @@ from src.constants import (
     UI_ORANGE,
     UI_PERIWINKLE,
     UI_RED,
+    UI_SKY,
     UI_YELLOW,
 )
 from src.ecs_helpers import actor_name, get_display_name, get_singleton, get_status, is_player, try_get_singleton
@@ -54,7 +54,7 @@ STATUS_APPLY: dict[EffectType, StatusApplication] = {
     EffectType.SLOW: StatusApplication(status=StatusType.SLOW, message='{name} is slowed!', color=UI_PERIWINKLE),
     EffectType.HASTE: StatusApplication(status=StatusType.HASTE, message='{name} speeds up!', color=UI_YELLOW),
     EffectType.STUN: StatusApplication(status=StatusType.STUN, message='{name} is stunned!', color=UI_YELLOW),
-    EffectType.SHIELD: StatusApplication(status=StatusType.SHIELD, message='{name} is shielded!', color=UI_CYAN),
+    EffectType.SHIELD: StatusApplication(status=StatusType.SHIELD, message='{name} is shielded!', color=UI_SKY),
     EffectType.POISON: StatusApplication(
         status=StatusType.POISON, message='{name} is poisoned!', color=UI_GREEN_MID, damage_over_time=True
     ),

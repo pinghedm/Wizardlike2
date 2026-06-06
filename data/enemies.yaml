@@ -1,7 +1,7 @@
 enemies:
   - id: goblin
     sprite:
-      path: data/People.png
+      path: data/spritesheets/People.png
       type: REGION
       region: [30, 0, 10, 10]
       scale: 1.0
@@ -16,7 +16,7 @@ enemies:
       - {type: fire_crystal, min: 0, max: 1, chance: 1}
   - id: slime
     sprite:
-      path: data/People.png
+      path: data/spritesheets/People.png
       type: REGION
       region: [60, 0, 10, 10]
       scale: 1.0
@@ -30,7 +30,7 @@ enemies:
       - {type: gold, min: 1, max: 5, chance: 1}
   - id: ghost
     sprite:
-      path: data/People.png
+      path: data/spritesheets/People.png
       type: REGION
       region: [90, 0, 10, 10]
       scale: 1.0
@@ -42,7 +42,7 @@ enemies:
     floors: [3, 10]
   - id: wisp
     sprite:
-      path: data/People.png
+      path: data/spritesheets/People.png
       type: REGION
       region: [120, 0, 10, 10]
       scale: 1.0
@@ -62,7 +62,7 @@ enemies:
           duration: 90
   - id: gate_sentinel
     sprite:
-      path: data/People.png
+      path: data/spritesheets/People.png
       type: REGION
       region: [150, 0, 10, 10]
       scale: 1.0
@@ -76,7 +76,7 @@ enemies:
     floors: [1, 10]
   - id: frost_shade
     sprite:
-      path: data/People.png
+      path: data/spritesheets/People.png
       type: REGION
       region: [180, 0, 10, 10]
       scale: 1.0

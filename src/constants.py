@@ -30,10 +30,15 @@ ROOM_MAX_SIZE = 16
 # depth (see transition_to_next_floor).
 MAX_ITEMS_PER_ROOM = 4
 
-# Native pixel size of a console cell. The TrueType font is rasterized to a tile
-# this size (see AssetLoader.build_tileset), so glyphs are drawn crisp at the
-# display resolution rather than upscaled from a tiny bitmap.
+# Native pixel size of a console cell. FONT_FILE is rasterized to a square tile this
+# size in AssetLoader.build_tileset, so glyphs are drawn crisp at the display
+# resolution rather than upscaled from a tiny bitmap. Square cells keep the dungeon
+# and sprites unsquashed.
 FONT_TILE_PX = 20
+
+# The font rasterized into the tileset. Any .ttf/.otf works (swap the filename);
+# bitmap formats (.bdf/.png tilesheet) would need a different loader.
+FONT_FILE = 'data/fonts/incite.ttf'
 
 # Each logical console cell is presented at this multiple of the tileset's native
 # tile size. At 1 the font renders 1:1 (sharp); a higher value would upscale cells
@@ -91,6 +96,7 @@ UI_GREEN_MID: RGB = (50, 200, 50)
 UI_GREEN_BRIGHT: RGB = (0, 255, 0)
 UI_ORANGE: RGB = (255, 120, 0)
 UI_BLUE: RGB = (80, 120, 255)
+UI_SKY: RGB = (80, 170, 255)
 UI_PERIWINKLE: RGB = (100, 100, 255)
 UI_CRIMSON: RGB = (200, 0, 80)
 UI_MAGENTA: RGB = (255, 0, 255)

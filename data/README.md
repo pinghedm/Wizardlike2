@@ -2,6 +2,14 @@
 
 This directory contains the YAML data files that define game content.
 
+## Layout
+
+- Config YAMLs (`ingredients.yaml`, `spells.yaml`, `tiles.yaml`, `enemies.yaml`,
+  `characters.yaml`) live at the top level.
+- `fonts/` — the `.ttf`/`.otf` rendered into the tileset (selected via `FONT_FILE` in
+  `src/constants.py`).
+- `spritesheets/` — the `.png` sheets that sprite `path:` fields reference.
+
 ## Ingredients (`ingredients.yaml`)
 
 Defines all pickable items/ingredients. These are dynamically loaded into the game as `ItemType` enums.

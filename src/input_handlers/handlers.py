@@ -22,10 +22,10 @@ from src.components import (
 )
 from src.constants import (
     MAX_FLOORS,
-    UI_CYAN,
     UI_GRAY,
     UI_RED,
     UI_SALMON,
+    UI_SKY,
     UI_WHITE,
     UI_YELLOW,
 )
@@ -321,7 +321,7 @@ def _handle_experiment_input(action: InputAction | None, ui_state: UIState):
         log.add_message(
             [
                 ('SUCCESS: Crafted ', UI_WHITE),
-                (stype.name, UI_CYAN),
+                (stype.name, UI_SKY),
                 (f'! (+{charges} charges)', UI_WHITE),
             ]
         )
@@ -354,7 +354,7 @@ def _handle_spellbook_input(action: InputAction | None, ui_state: UIState):
             log.add_message(
                 [
                     ('Crafted ', UI_WHITE),
-                    (spell_name, UI_CYAN),
+                    (spell_name, UI_SKY),
                     (f'! (+{charges} charges)', UI_WHITE),
                 ]
             )
@@ -489,7 +489,7 @@ def handle_shop_input(action: InputAction | None):
         log = get_singleton(MessageLog)
         quantity = ui_state.shop_quantity
         if purchase_offer(offer, quantity):
-            log.add_simple_message(f'Bought {quantity}x {offer.label}.', color=UI_CYAN)
+            log.add_simple_message(f'Bought {quantity}x {offer.label}.', color=UI_SKY)
         else:
             log.add_simple_message('Not enough gold.', color=UI_SALMON)
         ui_state.shop_quantity = 1

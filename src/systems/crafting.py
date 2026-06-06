@@ -20,7 +20,7 @@ from src.components import (
     Stats,
     StatusEffects,
 )
-from src.constants import UI_CYAN, UI_GRAY_MID
+from src.constants import UI_GRAY_MID, UI_SKY
 from src.ecs_helpers import actor_name, get_player, get_singleton, try_get_singleton
 from src.systems.combat import apply_effect
 from src.systems.visuals import trigger_projectile
@@ -121,7 +121,7 @@ def _apply_reaction_multiplier(target_ent: int, modifiers: list[DamageModifier],
         mult *= mod.damage_mult
         del active[mod.vs_status]
         verb = 'is vulnerable' if mod.damage_mult > 1 else 'resists'
-        log.add_simple_message(f'{name} {verb} while {mod.vs_status.name}!', color=UI_CYAN)
+        log.add_simple_message(f'{name} {verb} while {mod.vs_status.name}!', color=UI_SKY)
     return mult
 
 
@@ -147,7 +147,7 @@ def cast_spell(spell_id: str, target_x: int, target_y: int):
     if not s_conf:
         return
 
-    log.add_simple_message(f'You cast {s_conf["name"]}!', color=UI_CYAN)
+    log.add_simple_message(f'You cast {s_conf["name"]}!', color=UI_SKY)
 
     radius = s_conf.get('radius', 0)
     caster_origin = esper.component_for_entity(player, Position).point

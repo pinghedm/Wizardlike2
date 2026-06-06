@@ -11,10 +11,10 @@ from src.components import (
 )
 from src.constants import (
     UI_BLACK,
-    UI_CYAN,
     UI_GRAY,
     UI_RED,
     UI_RED_DARK,
+    UI_SKY,
     UI_WHITE,
     UI_YELLOW,
 )
@@ -89,7 +89,7 @@ class HUDSystem(LayoutProcessor):
         player = get_player()
         shield = get_status(player, StatusType.SHIELD) if player is not None else None
         if shield:
-            self.console.print(zone.x + 2, zone.y + 2, f'Shield: {shield.power}', fg=UI_CYAN)
+            self.console.print(zone.x + 2, zone.y + 2, f'Shield: {shield.power}', fg=UI_SKY)
 
     def render_floor_info(self, zone: Rect, floor: int):
         self.console.print(zone.x + 2, zone.y + 3, f'Floor: {floor}', fg=UI_WHITE)

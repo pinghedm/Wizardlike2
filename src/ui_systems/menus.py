@@ -17,11 +17,11 @@ from src.components import (
     UIState,
 )
 from src.constants import (
-    UI_CYAN,
     UI_CYAN_DARK,
     UI_GRAY,
     UI_GRAY_DARK,
     UI_RED,
+    UI_SKY,
     UI_WHITE,
     UI_YELLOW,
 )
@@ -123,7 +123,7 @@ class MenuSystem(LayoutProcessor):
         self.console.print(tx + 13, ty, 'Spellbook', fg=UI_YELLOW if view == CraftingView.SPELLBOOK else UI_GRAY_DARK)
 
     def _render_experiment(self, x: int, y: int, ui_state: UIState, player_inv: Inventory):
-        self.console.print(x + 2, y + 3, 'Combine ingredients to discover spells:', fg=UI_CYAN)
+        self.console.print(x + 2, y + 3, 'Combine ingredients to discover spells:', fg=UI_SKY)
 
         inv_list = sorted(i for i in player_inv.items if is_reagent(i))
         if not inv_list:
@@ -189,7 +189,7 @@ class MenuSystem(LayoutProcessor):
             return
 
         row = dy
-        self.console.print(dx, row, s_conf.get('name', stype.name), fg=UI_CYAN)
+        self.console.print(dx, row, s_conf.get('name', stype.name), fg=UI_SKY)
         row += 1
 
         description = s_conf.get('description')
@@ -315,7 +315,7 @@ class MenuSystem(LayoutProcessor):
         height = len(actions) + (8 if has_controller else 6)
         x, y = draw_centered_frame(self.console, width, height, title='Settings')
 
-        self.console.print(x + 2, y + 1, f'Controller: {controller_name or "none detected"}', fg=UI_CYAN)
+        self.console.print(x + 2, y + 1, f'Controller: {controller_name or "none detected"}', fg=UI_SKY)
         if has_controller:
             self.console.print(x + 2, y + 2, f'Last input: {ui_state.last_controller_input or "-"}', fg=UI_GRAY)
 
@@ -384,7 +384,7 @@ class MenuSystem(LayoutProcessor):
     ) -> int:
         """Print a `label` header then one indented `Name xN` line per entry (or
         '(none)' when empty). Returns the next free row."""
-        self.console.print(x + 2, row, label, fg=UI_CYAN)
+        self.console.print(x + 2, row, label, fg=UI_SKY)
         row += 1
         if not entries:
             self.console.print(x + 4, row, '(none)', fg=UI_GRAY_DARK)
