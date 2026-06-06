@@ -1,7 +1,7 @@
 """Low-level ECS helpers shared across systems without coupling them.
 
-`get_singleton` and the floor-pickup factory live here, below `systems.py`, so both
-`systems.py` and `procgen.py` can use them without an import cycle (procgen already
+`get_singleton` and the floor-pickup factory live here, below the `systems` package, so
+both `systems` and `procgen.py` can use them without an import cycle (procgen already
 imports from systems). Depends only on `esper` + `components`.
 """
 

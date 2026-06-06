@@ -22,7 +22,9 @@ from src.debug import debug_log
 from src.ecs_helpers import get_display_name, get_singleton, try_get_singleton
 from src.map_objects import Map
 from src.states import DisplayMode, GameState
-from src.systems.core import apply_effect, deal_damage, get_cooldown, is_stunned, move_entity
+from src.systems.combat import apply_effect, deal_damage, is_stunned
+from src.systems.movement import get_action_cooldown, move_entity
+from src.systems.utils import step_toward
 
 # Memoized Dijkstra maps, keyed by goal tile, so each target's map is built once per AI tick.
 type PathContext = dict[Point, tcod.path.Dijkstra]
@@ -106,8 +108,8 @@ def _process_flee(ent: int, pos: Position, pathfinding_context: PathContext):
     if path and len(path) > 1:
         move_x, move_y = path[0]
         # Step directly away from the next tile toward the player.
-        target_x = pos.x + (1 if pos.x - move_x >= 0 else -1)
-        target_y = pos.y + (1 if pos.y - move_y >= 0 else -1)
+        target_x = pos.x + step_toward(move_x, pos.x)
+        target_y = pos.y + step_toward(move_y, pos.y)
         if get_singleton(Map).is_walkable(target_x, target_y):
             move_entity(ent, target_x - pos.x, target_y - pos.y)
 
@@ -194,4 +196,4 @@ class AISystem(esper.Processor):
                 _process_chase(ent, pos, pathfinding_context)
 
             if actor:
-                actor.cooldown = get_cooldown(ent, actor.speed)
+                actor.cooldown = get_action_cooldown(ent, actor.speed)

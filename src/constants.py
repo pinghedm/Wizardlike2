@@ -51,7 +51,7 @@ SHOP_RARE_SPELL_CHANCE = 0.1
 
 # Cooldown (in ticks) the player incurs per move/cast, before status modifiers.
 # At TICKS_PER_SECOND this caps the player's action rate; SLOW doubles it and
-# HASTE halves it (see get_cooldown). Lower = more responsive movement.
+# HASTE halves it (see get_action_cooldown). Lower = more responsive movement.
 PLAYER_MOVE_COST = 5
 
 # Recurring status effects (poison, regen) fire one pulse every this many ticks

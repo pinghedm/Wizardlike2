@@ -3,7 +3,7 @@ import pytest
 
 from src.components import Effect, EffectType, Stats, StatusEffects, StatusType
 from src.constants import STATUS_PULSE_INTERVAL
-from src.systems import apply_effect, get_cooldown
+from src.systems import apply_effect, get_action_cooldown
 from tests.headless_runner import HeadlessRunner
 
 # --- apply_effect: lingering effects are stored as their own copy --------------
@@ -68,7 +68,7 @@ def test_marker_status_ages_without_dealing_damage(status_type):
     assert status_type not in esper.component_for_entity(enemy, StatusEffects).active
 
 
-# --- get_cooldown: markers gate action speed -----------------------------------
+# --- get_action_cooldown: markers gate action speed ----------------------------
 
 
 def test_slow_doubles_and_haste_halves_cooldown():
@@ -76,11 +76,11 @@ def test_slow_doubles_and_haste_halves_cooldown():
     enemy = runner.spawn_enemy(*runner.player_pos)
     active = esper.component_for_entity(enemy, StatusEffects).active
 
-    assert get_cooldown(enemy, 10) == 10  # baseline, no status
+    assert get_action_cooldown(enemy, 10) == 10  # baseline, no status
 
     active[StatusType.SLOW] = Effect(type=EffectType.SLOW, duration=99)
-    assert get_cooldown(enemy, 10) == 20
+    assert get_action_cooldown(enemy, 10) == 20
 
     del active[StatusType.SLOW]
     active[StatusType.HASTE] = Effect(type=EffectType.HASTE, duration=99)
-    assert get_cooldown(enemy, 10) == 5
+    assert get_action_cooldown(enemy, 10) == 5

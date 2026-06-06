@@ -23,7 +23,8 @@ from src.components import (
 )
 from src.constants import UI_CYAN, UI_GRAY_MID
 from src.ecs_helpers import actor_name, try_get_singleton
-from src.systems.core import apply_effect, trigger_projectile
+from src.systems.combat import apply_effect
+from src.systems.visuals import trigger_projectile
 
 
 def get_spell_config(spell_id: str) -> SpellConfig | None:

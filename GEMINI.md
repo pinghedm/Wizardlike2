@@ -59,6 +59,7 @@ Tests run against a real `esper.World` via `tests/headless_runner.py` (simulate 
     - **ECS Idiomatic**: Prefer ECS components for transient states (like Modals) over global flags in `GameState`.
     - **Decoupling**: Keep systems decoupled by having them query the ECS for data rather than passing references.
     - **Simplicity**: Favor direct function calls and module-level constants over complex global configuration objects.
+    - **Package re-exports**: `components`, `systems`, and `input_handlers` are packages whose `__init__.py` re-exports the genuine public surface (keep `__all__` public-only — never re-export underscore-prefixed internals just to satisfy a test; redirect such tests to import from the submodule directly). Keep submodule dependencies one-way (no cycles). A data table belongs with its sole consumer (e.g. `STATUS_APPLY` lives in `systems/combat.py`), not in the data package; small standalone helpers and orphan type aliases go in a package-local `utils.py`.
 
 ## Development Workflow
 
@@ -69,12 +70,13 @@ Tests run against a real `esper.World` via `tests/headless_runner.py` (simulate 
 
 ## Key Files
 - `src/main.py`: Entry point, main game loop, system orchestration, `dispatch_input` (single input router, handles modals) and `update_pause_state`.
-- `src/components.py`: ECS component definitions; loads `ItemType`/`SpellType` enums from data.
-- `src/systems.py`: Logic processors plus helpers like `move_entity`, `cast_spell`, and `match_recipe`.
+- `src/components/`: ECS component package (re-exports its public surface via `__init__.py`, so import as `from src.components import X`). Submodules: `enums.py` (`StatusType`/`EffectType`/`ShopOfferKind`/`InputAction` plus the YAML-loaded `ItemType`/`SpellType` and controller bindings — note the `__module__` pin to `src.components` keeps save-game pickles resolving), `configs.py` (parsed YAML-config TypedDicts), `components.py` (the ECS dataclasses and spell-effect model), `utils.py` (shared type aliases like `Message`).
+- `src/systems/`: Game-logic package (re-exported via `__init__.py`; import as `from src.systems import X`). Submodules: `visuals.py` (effect color/glyph tables + `trigger_*`/particle helpers), `movement.py` (`move_entity`, `apply_knockback`, `get_action_cooldown`, `step_toward`), `combat.py` (damage math, `apply_effect`, `STATUS_APPLY`, loot), `processors.py` (Death/Action/Status/FOV/Render processors), `ai.py` (enemy behaviors + `AISystem`), `crafting.py` (`cast_spell`, `match_recipe`, spell config lookup), `utils.py` (`is_game_active`). One-way deps: `visuals`/`movement` → `combat` → `processors`; `ai`/`crafting` build on those.
 - `src/procgen.py`: Dungeon generation logic and level transition orchestration.
-- `src/input_handlers.py`: Translation of user input into game actions.
+- `src/input_handlers/`: Input package (re-exported via `__init__.py`; import as `from src.input_handlers import X`). Submodules: `controller.py` (device/event layer, SDL controller binding + remap) and `handlers.py` (per-state `handle_*` action routing, plus the `step_cursor` nav helper).
 - `src/ui_systems.py`: UI rendering processors, including the ModalSystem.
 - `src/states.py`: Game state definitions and navigation enums.
 - `src/constants.py`: Project-wide constants, including `DATA_DIR` (override via `WIZARDLIKE_DATA_DIR`).
+- `src/ecs_helpers.py`: Leaf ECS-query helpers (`get_singleton`, `actor_name`, `spawn_item_entity`) shared without coupling systems.
 - `tests/headless_runner.py`: Headless harness for driving the game in tests.
 - `data/`: YAML configuration for ingredients, spells, tiles, and characters.

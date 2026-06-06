@@ -1,126 +1,28 @@
-import enum
 from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, ClassVar, NamedTuple, NotRequired, TypedDict
+from typing import ClassVar, NamedTuple
 
 import tcod
-from tcod.sdl.joystick import ControllerAxis, ControllerButton
 
-from src.constants import (
-    DATA_DIR,
-    RGB,
-    UI_BLUE,
-    UI_CYAN,
-    UI_GREEN_BRIGHT,
-    UI_GREEN_MID,
-    UI_PERIWINKLE,
-    UI_YELLOW,
+from src.components.configs import EnemyConfig, IngredientConfig, SpellConfig, TileConfig
+from src.components.enums import (
+    ControllerBinding,
+    EffectType,
+    InputAction,
+    ItemType,
+    ShopOfferKind,
+    SpellType,
+    StatusType,
+    default_controller_bindings,
 )
-from src.data_utils import load_str_enum_from_yaml
+from src.components.utils import Message
 from src.states import CraftingView
-
-
-class RecipeConfig(TypedDict):
-    # Stored as a sorted tuple (see load_spells_config) so it's hashable and can key
-    # the discovered-recipe sets in KnownRecipes.
-    ingredients: tuple[ItemType, ...]
-    charges: int
-
-
-class SpellConfig(TypedDict):
-    id: str
-    name: str
-    description: NotRequired[str]
-    range: int
-    radius: int
-    effects: list[Effect]
-    modifiers: NotRequired[list[DamageModifier]]
-    recipes: list[RecipeConfig]
-    shop: NotRequired[ShopConfig]
-    rare: NotRequired[bool]
-
-
-class IngredientConfig(TypedDict):
-    id: str
-    name: str
-    char: str
-    color: list[int]
-    price: NotRequired[int]
-
-
-class ShopConfig(TypedDict):
-    """A spell's shop listing: gold cost and charges granted per purchase."""
-
-    price: int
-    charges: int
-
-
-class TileConfig(TypedDict):
-    id: str
-    type: str
-    char: str | None
-    fg: list[int] | None
-    bg: list[int] | None
-    depth: list[int]
-
-
-class EnemyConfig(TypedDict):
-    id: str
-    color: list[int]
-    hp: int
-    damage: int
-    speed: int
-    behavior: str
-    floors: list[int]
-    blocks_movement: NotRequired[bool]
-    guardian: NotRequired[bool]
-    drops: NotRequired[list[LootDrop]]
-
-
-class GameConfigs(TypedDict):
-    """The bundle of parsed config returned by `get_game_configs`, used to build the
-    `Configuration` singleton."""
-
-    ingredients: dict[ItemType, IngredientConfig]
-    spells: list[SpellConfig]
-    tiles: list[TileConfig]
-    enemies: dict[str, EnemyConfig]
 
 
 class Point(NamedTuple):
     x: int
     y: int
-
-
-class StatusType(enum.StrEnum):
-    SLOW = 'slow'
-    HASTE = 'haste'
-    POISON = 'poison'
-    REGEN = 'regen'
-    STUN = 'stun'
-    SHIELD = 'shield'
-    WET = 'wet'
-
-
-class EffectType(enum.StrEnum):
-    DAMAGE = 'damage'
-    HEAL = 'heal'
-    SLOW = 'slow'
-    HASTE = 'haste'
-    POISON = 'poison'
-    REGEN = 'regen'
-    STUN = 'stun'
-    SHIELD = 'shield'
-    DRAIN = 'drain'
-    KNOCKBACK = 'knockback'
-    WET = 'wet'
-
-
-class ShopOfferKind(enum.StrEnum):
-    INGREDIENT = 'ingredient'
-    SPELL = 'spell'
-    HEAL = 'heal'
 
 
 @dataclass
@@ -160,57 +62,6 @@ class EnemyAbility:
 
     range: int
     effects: list[Effect]
-
-
-@dataclass(frozen=True)
-class StatusApplication:
-    """How a lingering effect presents when applied: the status it grants, its
-    `{name}`-templated log message, and that message's color. `damage_over_time` marks
-    harmful pulsing statuses (poison, and future burns) — they flash the screen on apply
-    in their EFFECT_COLORS hue so any new DoT slots in without a special case."""
-
-    status: StatusType
-    message: str
-    color: RGB
-    damage_over_time: bool = False
-
-
-# Lingering effects all apply the same way — stash a copy on the target and log a line —
-# so they're data, not branches. Instant effects (damage/heal/drain/knockback) differ and
-# stay as explicit cases in apply_effect.
-STATUS_APPLY: dict[EffectType, StatusApplication] = {
-    EffectType.SLOW: StatusApplication(status=StatusType.SLOW, message='{name} is slowed!', color=UI_PERIWINKLE),
-    EffectType.HASTE: StatusApplication(status=StatusType.HASTE, message='{name} speeds up!', color=UI_YELLOW),
-    EffectType.STUN: StatusApplication(status=StatusType.STUN, message='{name} is stunned!', color=UI_YELLOW),
-    EffectType.SHIELD: StatusApplication(status=StatusType.SHIELD, message='{name} is shielded!', color=UI_CYAN),
-    EffectType.POISON: StatusApplication(
-        status=StatusType.POISON, message='{name} is poisoned!', color=UI_GREEN_MID, damage_over_time=True
-    ),
-    EffectType.REGEN: StatusApplication(
-        status=StatusType.REGEN, message='{name} begins to regenerate!', color=UI_GREEN_BRIGHT
-    ),
-    EffectType.WET: StatusApplication(status=StatusType.WET, message='{name} is drenched!', color=UI_BLUE),
-}
-
-
-if TYPE_CHECKING:
-    # The real enums are built from YAML at runtime (below); these stubs exist only so
-    # the type checker knows the members the code references by name.
-    class ItemType(enum.StrEnum):
-        GOLD = 'gold'
-
-    class SpellType(enum.StrEnum):
-        pass
-
-else:
-    ItemType = load_str_enum_from_yaml('ItemType', f'{DATA_DIR}/ingredients.yaml', 'ingredients')
-    SpellType = load_str_enum_from_yaml('SpellType', f'{DATA_DIR}/spells.yaml', 'spells')
-
-    # These enums are built dynamically inside data_utils, so their __module__ points
-    # there by default. Bind them to this module so pickle can resolve members by
-    # reference (e.g. src.components.ItemType) when loading a saved game.
-    ItemType.__module__ = __name__
-    SpellType.__module__ = __name__
 
 
 @dataclass
@@ -275,40 +126,6 @@ class Configuration:
         self.spells_by_id = {s['id']: s for s in self.spells}
 
 
-class InputAction(enum.Enum):
-    """Logical input actions that keyboard keys and controller buttons map to."""
-
-    MOVE_UP = enum.auto()
-    MOVE_DOWN = enum.auto()
-    MOVE_LEFT = enum.auto()
-    MOVE_RIGHT = enum.auto()
-    OPEN_CRAFTING = enum.auto()
-    OPEN_CASTING = enum.auto()
-    CONFIRM = enum.auto()
-    CANCEL = enum.auto()
-    CYCLE_TAB = enum.auto()
-    SCROLL_UP = enum.auto()
-    SCROLL_DOWN = enum.auto()
-
-
-# A controller binding is the SDL button or trigger axis driving an action.
-type ControllerBinding = ControllerButton | ControllerAxis
-
-
-def default_controller_bindings() -> dict[InputAction, ControllerBinding]:
-    """Default gamepad bindings for the rebindable actions. Movement is omitted:
-    it is fixed to the d-pad and left stick."""
-    return {
-        InputAction.CONFIRM: ControllerButton.A,
-        InputAction.CANCEL: ControllerButton.B,
-        InputAction.OPEN_CASTING: ControllerButton.X,
-        InputAction.OPEN_CRAFTING: ControllerButton.Y,
-        InputAction.CYCLE_TAB: ControllerButton.RIGHTSHOULDER,
-        InputAction.SCROLL_UP: ControllerAxis.TRIGGERLEFT,
-        InputAction.SCROLL_DOWN: ControllerAxis.TRIGGERRIGHT,
-    }
-
-
 @dataclass
 class Keybindings:
     """Singleton component to hold gameplay keybindings."""
@@ -363,10 +180,6 @@ class KnownRecipes:
 class SpellInventory:
     # Tracks remaining uses of each spell
     spells: dict[SpellType, int] = field(default_factory=dict[SpellType, int])
-
-
-MessageSegment = tuple[str, tuple[int, int, int]]
-Message = list[MessageSegment]
 
 
 @dataclass
