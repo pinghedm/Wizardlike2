@@ -4,15 +4,13 @@ from src.components import (
     Actor,
     Enemy,
     FieldOfView,
-    PlayerTag,
     Point,
     Position,
-    StatusEffects,
     StatusType,
 )
 from src.constants import PLAYER_MOVE_COST
 from src.debug import debug_log
-from src.ecs_helpers import try_get_singleton
+from src.ecs_helpers import get_status, is_player, try_get_singleton
 from src.map_objects import Map
 from src.systems.utils import step_toward
 
@@ -27,7 +25,7 @@ def _destination_blocked(mover: int, x: int, y: int) -> bool:
         if other_ent == mover or other_pos.x != x or other_pos.y != y:
             continue
         if (
-            esper.has_component(mover, PlayerTag)
+            is_player(mover)
             and esper.has_component(other_ent, Enemy)
             and not esper.component_for_entity(other_ent, Enemy).blocks_movement
         ):
@@ -53,7 +51,7 @@ def move_entity(entity: int, dx: int, dy: int):
         return
 
     # Enemies may not step onto exit tiles.
-    if not esper.has_component(entity, PlayerTag) and game_map.tiles[new_x][new_y].is_exit:
+    if not is_player(entity) and game_map.tiles[new_x][new_y].is_exit:
         return
 
     if _destination_blocked(entity, new_x, new_y):
@@ -61,13 +59,13 @@ def move_entity(entity: int, dx: int, dy: int):
 
     pos.x = new_x
     pos.y = new_y
-    debug_log(f'move_entity {entity} -> {(new_x, new_y)} (player={esper.has_component(entity, PlayerTag)})')
+    debug_log(f'move_entity {entity} -> {(new_x, new_y)} (player={is_player(entity)})')
 
     if esper.has_component(entity, FieldOfView):
         esper.component_for_entity(entity, FieldOfView).dirty = True
 
     # Player move consumes a turn at the base player move cost.
-    if esper.has_component(entity, PlayerTag):
+    if is_player(entity):
         actor = esper.component_for_entity(entity, Actor)
         actor.cooldown = get_action_cooldown(entity, PLAYER_MOVE_COST)
 
@@ -100,10 +98,8 @@ def apply_knockback(target_ent: int, origin: Point, distance: int):
 
 def get_action_cooldown(entity: int, base_speed: int) -> int:
     """Calculate cooldown based on status effects."""
-    if esper.has_component(entity, StatusEffects):
-        active = esper.component_for_entity(entity, StatusEffects).active
-        if StatusType.SLOW in active:
-            return base_speed * 2
-        if StatusType.HASTE in active:
-            return max(0, base_speed // 2)
+    if get_status(entity, StatusType.SLOW):
+        return base_speed * 2
+    if get_status(entity, StatusType.HASTE):
+        return max(0, base_speed // 2)
     return max(0, base_speed)

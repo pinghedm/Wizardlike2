@@ -15,13 +15,21 @@ from src.components import (
     PatrolTag,
     Point,
     Position,
+    StatusType,
 )
 from src.constants import UI_MAGENTA, UI_RED
 from src.debug import debug_log
-from src.ecs_helpers import get_display_name, get_player, get_player_component, get_singleton, try_get_singleton
+from src.ecs_helpers import (
+    get_display_name,
+    get_player,
+    get_player_component,
+    get_singleton,
+    get_status,
+    try_get_singleton,
+)
 from src.map_objects import Map
 from src.states import DisplayMode, GameState
-from src.systems.combat import apply_effect, deal_damage, is_stunned
+from src.systems.combat import apply_effect, deal_damage
 from src.systems.movement import get_action_cooldown, move_entity
 from src.systems.utils import step_toward
 
@@ -167,7 +175,7 @@ class AISystem(esper.Processor):
             if actor and actor.cooldown > 0:
                 continue
 
-            if is_stunned(ent):
+            if get_status(ent, StatusType.STUN):
                 continue
 
             enemy = esper.component_for_entity(ent, Enemy) if esper.has_component(ent, Enemy) else None

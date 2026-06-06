@@ -10,13 +10,13 @@ from src.components import (
     FieldOfView,
     Loot,
     MessageLog,
-    PlayerTag,
     Point,
     Position,
     Renderable,
     RunStats,
     Stats,
     StatusEffects,
+    StatusType,
 )
 from src.constants import (
     STATUS_PULSE_INTERVAL,
@@ -25,11 +25,19 @@ from src.constants import (
     to_rgb,
 )
 from src.debug import debug_log
-from src.ecs_helpers import get_display_name, get_singleton, spawn_item_entity, try_get_singleton
+from src.ecs_helpers import (
+    get_display_name,
+    get_player_component,
+    get_singleton,
+    get_status,
+    is_player,
+    spawn_item_entity,
+    try_get_singleton,
+)
 from src.layout import LayoutProcessor
 from src.map_objects import Map
-from src.states import DisplayMode, GameState
-from src.systems.combat import apply_status_pulse, is_stunned, roll_loot
+from src.states import WORLD_VIEW_MODES, DisplayMode, GameState
+from src.systems.combat import apply_status_pulse, roll_loot
 from src.ui_helpers import blend
 
 if TYPE_CHECKING:
@@ -45,7 +53,7 @@ class DeathSystem(esper.Processor):
 
         for ent, stats in esper.get_component(Stats):
             if stats.hp <= 0:
-                if esper.has_component(ent, PlayerTag):
+                if is_player(ent):
                     debug_log(f'DeathSystem: player {ent} died (hp={stats.hp})')
                     get_singleton(GameState).display_mode = DisplayMode.GAME_OVER
                 else:
@@ -110,7 +118,7 @@ class FOVSystem(esper.Processor):
             return
         game_map = maps[0][1]
 
-        for _ent, (pos, fov) in esper.get_components(Position, FieldOfView):
+        for ent, (pos, fov) in esper.get_components(Position, FieldOfView):
             if fov.dirty:
                 fov.visible_tiles = set()
                 # compute_fov expects [height, width] or [width, height] depending on order
@@ -129,7 +137,7 @@ class FOVSystem(esper.Processor):
                         if fov_map[x, y]:
                             fov.visible_tiles.add(Point(x, y))
                             # Only update explored for player FOV
-                            if esper.has_component(_ent, PlayerTag):
+                            if is_player(ent):
                                 game_map.explored[x, y] = True
 
                 fov.dirty = False
@@ -142,13 +150,7 @@ class RenderSystem(LayoutProcessor):
 
     def process(self):
         game_state = get_singleton(GameState)
-        if game_state.display_mode not in [
-            DisplayMode.EXPLORING,
-            DisplayMode.CASTING,
-            DisplayMode.COMBINING,
-            DisplayMode.TARGETING,
-            DisplayMode.SHOPPING,
-        ]:
+        if game_state.display_mode not in WORLD_VIEW_MODES:
             return
 
         # 1. Get the Map and Player FOV
@@ -156,14 +158,8 @@ class RenderSystem(LayoutProcessor):
         if not game_map:
             return
 
-        player_fov = None
-        player_pos = None
-        for _ent, (fov, _tag) in esper.get_components(FieldOfView, PlayerTag):
-            player_fov = fov
-            break
-        for _ent, (pos, _tag) in esper.get_components(Position, PlayerTag):
-            player_pos = pos
-            break
+        player_fov = get_player_component(FieldOfView)
+        player_pos = get_player_component(Position)
 
         # The camera follows the player; map cells draw into the map viewport,
         # converted from map space to screen space (the console cell to draw at):
@@ -199,7 +195,7 @@ class RenderSystem(LayoutProcessor):
                 self.console.print(x=screen_x, y=screen_y, text=chr(codepoint), fg=fg, bg=bg)
 
         # 3. Render all entities with Position and Renderable components that are visible
-        for _ent, (pos, rend) in esper.get_components(Position, Renderable):
+        for ent, (pos, rend) in esper.get_components(Position, Renderable):
             if player_fov is not None and pos.point not in player_fov.visible_tiles:
                 continue
 
@@ -208,9 +204,9 @@ class RenderSystem(LayoutProcessor):
                 continue
 
             codepoint = self.asset_loader.get_codepoint(rend.sprite_id)
-            debug_log(f'render entity {_ent} sprite={rend.sprite_id} cp={codepoint} at {(pos.x, pos.y)}')
+            debug_log(f'render entity {ent} sprite={rend.sprite_id} cp={codepoint} at {(pos.x, pos.y)}')
             # A stunned entity keeps its own glyph color over a yellow highlight.
-            if is_stunned(_ent):
+            if get_status(ent, StatusType.STUN):
                 self.console.print(
                     x=screen_x,
                     y=screen_y,

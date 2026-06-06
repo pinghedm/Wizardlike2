@@ -16,7 +16,6 @@ from src.components import (
     RunStats,
     Shopkeeper,
     SpellInventory,
-    StatusEffects,
     StatusType,
     TargetingReticle,
     UIState,
@@ -30,7 +29,14 @@ from src.constants import (
     UI_WHITE,
     UI_YELLOW,
 )
-from src.ecs_helpers import get_display_name, get_player, get_player_component, get_singleton, try_get_singleton
+from src.ecs_helpers import (
+    get_display_name,
+    get_player,
+    get_player_component,
+    get_singleton,
+    get_status,
+    try_get_singleton,
+)
 from src.input_handlers.controller import move_delta
 from src.map_objects import Map
 from src.procgen import transition_to_next_floor
@@ -88,13 +94,6 @@ def handle_game_over_input(action: InputAction | None):
     return DisplayMode.GAME_OVER
 
 
-def _player_is_slowed(player: int) -> bool:
-    """True if the player currently has an active SLOW status."""
-    if not esper.has_component(player, StatusEffects):
-        return False
-    return StatusType.SLOW in esper.component_for_entity(player, StatusEffects).active
-
-
 def _adjacent_shopkeeper(player_pos: Position) -> bool:
     """True if a shopkeeper is within one tile of the player (including their tile)."""
     for _ent, (pos, _sk) in esper.get_components(Position, Shopkeeper):
@@ -130,7 +129,7 @@ def handle_exploring_input(action: InputAction | None):
         # status throttles it: each move sets a (doubled) cooldown via move_entity,
         # and we ignore further input until it elapses. Without slow, the cooldown
         # is left to decay but never gates input, keeping movement responsive.
-        if _player_is_slowed(player) and esper.component_for_entity(player, Actor).cooldown > 0:
+        if get_status(player, StatusType.SLOW) and esper.component_for_entity(player, Actor).cooldown > 0:
             return DisplayMode.EXPLORING
 
         # Bumping an enemy deals bump damage to the player (combat is decoupled from

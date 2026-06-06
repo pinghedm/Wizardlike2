@@ -18,6 +18,18 @@ class DisplayMode(enum.Enum):
     EXITING = enum.auto()
 
 
+# Display modes that draw the dungeon view (map, entities, HUD). The crafting/casting/
+# targeting/shop overlays all render on top of the live map, so the map and HUD draw
+# behind them too; the menu, settings, and game-over screens replace the view entirely.
+WORLD_VIEW_MODES = (
+    DisplayMode.EXPLORING,
+    DisplayMode.CASTING,
+    DisplayMode.COMBINING,
+    DisplayMode.TARGETING,
+    DisplayMode.SHOPPING,
+)
+
+
 class CraftingView(enum.StrEnum):
     """Sub-views of the crafting screen, toggled with Tab."""
 

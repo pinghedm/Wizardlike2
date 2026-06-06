@@ -7,7 +7,6 @@ from src.components import (
     MessageLog,
     Modal,
     Stats,
-    StatusEffects,
     StatusType,
 )
 from src.constants import (
@@ -19,9 +18,9 @@ from src.constants import (
     UI_WHITE,
     UI_YELLOW,
 )
-from src.ecs_helpers import get_player_component, get_singleton, try_get_singleton
+from src.ecs_helpers import get_player, get_player_component, get_singleton, get_status, try_get_singleton
 from src.layout import LayoutProcessor, Rect
-from src.states import DisplayMode, GameState
+from src.states import WORLD_VIEW_MODES, GameState
 from src.ui_helpers import compute_visible_slice, draw_centered_frame, draw_titled_frame, wrap_message
 
 
@@ -56,13 +55,7 @@ class HUDSystem(LayoutProcessor):
 
     def process(self):
         game_state = get_singleton(GameState)
-        if game_state.display_mode not in [
-            DisplayMode.EXPLORING,
-            DisplayMode.CASTING,
-            DisplayMode.COMBINING,
-            DisplayMode.TARGETING,
-            DisplayMode.SHOPPING,
-        ]:
+        if game_state.display_mode not in WORLD_VIEW_MODES:
             return
 
         # The HUD bar splits into a stats column and a message log.
@@ -93,10 +86,8 @@ class HUDSystem(LayoutProcessor):
 
     def render_shield(self, zone: Rect):
         """Show the player's active shield (its remaining damage reduction per hit)."""
-        status = get_player_component(StatusEffects)
-        if status is None:
-            return
-        shield = status.active.get(StatusType.SHIELD)
+        player = get_player()
+        shield = get_status(player, StatusType.SHIELD) if player is not None else None
         if shield:
             self.console.print(zone.x + 2, zone.y + 2, f'Shield: {shield.power}', fg=UI_CYAN)
 

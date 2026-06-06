@@ -7,7 +7,17 @@ imports from systems). Depends only on `esper` + `components`.
 
 import esper
 
-from src.components import Configuration, Item, ItemType, PlayerTag, Position, Renderable
+from src.components import (
+    Configuration,
+    Effect,
+    Item,
+    ItemType,
+    PlayerTag,
+    Position,
+    Renderable,
+    StatusEffects,
+    StatusType,
+)
 from src.constants import UI_WHITE, to_rgb
 
 
@@ -43,6 +53,18 @@ def get_player_component[T](component_type: type[T]) -> T | None:
     return esper.component_for_entity(player, component_type)
 
 
+def is_player(entity: int) -> bool:
+    """Whether `entity` is the player (carries the PlayerTag)."""
+    return esper.has_component(entity, PlayerTag)
+
+
+def get_status(entity: int, status_type: StatusType) -> Effect | None:
+    """The entity's active effect of `status_type`, or None if it has none."""
+    if not esper.has_component(entity, StatusEffects):
+        return None
+    return esper.component_for_entity(entity, StatusEffects).active.get(status_type)
+
+
 def get_display_name(entity: int) -> str:
     """Human-facing name for an entity, taken from its Renderable sprite id."""
     if esper.has_component(entity, Renderable):
@@ -52,7 +74,7 @@ def get_display_name(entity: int) -> str:
 
 def actor_name(entity: int) -> str:
     """Subject form for log messages: 'You' for the player, 'The <name>' otherwise."""
-    if esper.has_component(entity, PlayerTag):
+    if is_player(entity):
         return 'You'
     return f'The {get_display_name(entity)}'
 

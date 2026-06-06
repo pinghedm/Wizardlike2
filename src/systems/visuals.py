@@ -7,7 +7,6 @@ from src.components import (
     CastVisual,
     EffectType,
     Particle,
-    PlayerTag,
     Point,
     Position,
     Projectile,
@@ -22,6 +21,7 @@ from src.constants import (
     UI_WHITE,
     UI_YELLOW,
 )
+from src.ecs_helpers import is_player
 
 # Color a cast spell's impact burst by its first effect type.
 EFFECT_COLORS: dict[EffectType, tuple[int, int, int]] = {
@@ -65,7 +65,7 @@ def trigger_screen_flash(ent: int, color: tuple[int, int, int], ticks: int = Scr
     The flash is player-only damage feedback, so this no-ops for any other entity
     — damage code can call it unconditionally. A fresh hit replaces any in-flight flash.
     """
-    if not esper.has_component(ent, PlayerTag):
+    if not is_player(ent):
         return
     for flash_ent, _flash in esper.get_component(ScreenFlash):
         esper.delete_entity(flash_ent, immediate=True)
@@ -126,7 +126,7 @@ def spawn_particle_burst(center: Point, color: tuple[int, int, int], count: int)
 def spray_hit_particles(target_ent: int):
     """Spray a few damage particles at an enemy's tile. No-op for the player, who
     already gets the screen flash, and for anything without a position to spray from."""
-    if esper.has_component(target_ent, PlayerTag) or not esper.has_component(target_ent, Position):
+    if is_player(target_ent) or not esper.has_component(target_ent, Position):
         return
     spawn_particle_burst(
         center=esper.component_for_entity(target_ent, Position).point,

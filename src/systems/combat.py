@@ -9,7 +9,6 @@ from src.components import (
     ItemType,
     Loot,
     MessageLog,
-    PlayerTag,
     Point,
     RunStats,
     Stats,
@@ -30,7 +29,7 @@ from src.constants import (
     UI_RED,
     UI_YELLOW,
 )
-from src.ecs_helpers import actor_name, get_display_name, get_singleton, try_get_singleton
+from src.ecs_helpers import actor_name, get_display_name, get_singleton, get_status, is_player, try_get_singleton
 from src.systems.movement import apply_knockback
 from src.systems.visuals import EFFECT_COLORS, spray_hit_particles, trigger_screen_flash
 
@@ -70,7 +69,7 @@ def record_damage_dealt(target_ent: int, amount: int):
     """Tally damage the player caused for the run summary. Enemies only ever damage
     the player, so counting damage to any non-player entity equals player-dealt damage.
     """
-    if esper.has_component(target_ent, PlayerTag):
+    if is_player(target_ent):
         return
     run_stats = try_get_singleton(RunStats)
     if run_stats:
@@ -82,19 +81,10 @@ def mitigate_damage(target_ent: int, amount: int) -> int:
 
     Shields blunt discrete hits — melee, damage spells, drains — not damage-over-time,
     so poison pulses deliberately bypass this."""
-    if esper.has_component(target_ent, StatusEffects):
-        shield = esper.component_for_entity(target_ent, StatusEffects).active.get(StatusType.SHIELD)
-        if shield:
-            return max(0, amount - shield.power)
+    shield = get_status(target_ent, StatusType.SHIELD)
+    if shield:
+        return max(0, amount - shield.power)
     return amount
-
-
-def is_stunned(ent: int) -> bool:
-    """Whether `ent` currently has an active STUN status and so forfeits its turn."""
-    return (
-        esper.has_component(ent, StatusEffects)
-        and StatusType.STUN in esper.component_for_entity(ent, StatusEffects).active
-    )
 
 
 def _apply_hp_damage(target_ent: int, amount: int) -> int:
