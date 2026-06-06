@@ -1,37 +1,25 @@
 import math
 import random
-from collections import Counter
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
 import esper
-import numpy as np
 import tcod
 import tcod.map
-import tcod.path
 from tcod import libtcodpy
 
 from src.components import (
-    AI,
     STATUS_APPLY,
     Actor,
     CastVisual,
-    Configuration,
-    DamageModifier,
     Effect,
     EffectType,
     Enemy,
-    EnemyAbility,
     FieldOfView,
-    FleeTag,
-    GuardTag,
-    Inventory,
     ItemType,
-    KnownRecipes,
     Loot,
     MessageLog,
     Particle,
-    PatrolTag,
     PlayerTag,
     Point,
     Position,
@@ -39,9 +27,6 @@ from src.components import (
     Renderable,
     RunStats,
     ScreenFlash,
-    SpellConfig,
-    SpellInventory,
-    SpellType,
     Stats,
     StatusEffects,
     StatusType,
@@ -54,11 +39,9 @@ from src.constants import (
     UI_CRIMSON,
     UI_CYAN,
     UI_GRAY_LIGHT,
-    UI_GRAY_MID,
     UI_GREEN,
     UI_GREEN_BRIGHT,
     UI_GREEN_MID,
-    UI_MAGENTA,
     UI_ORANGE,
     UI_RED,
     UI_WHITE,
@@ -88,10 +71,6 @@ def is_game_active() -> bool:
     Used to decide between the title menu and the in-game pause menu.
     """
     return bool(esper.get_component(PlayerTag))
-
-
-# Memoized Dijkstra maps, keyed by goal tile, so each target's map is built once per AI tick.
-type PathContext = dict[Point, tcod.path.Dijkstra]
 
 
 # Color a cast spell's impact burst by its first effect type.
@@ -217,7 +196,7 @@ def mitigate_damage(target_ent: int, amount: int) -> int:
     return amount
 
 
-def _is_stunned(ent: int) -> bool:
+def is_stunned(ent: int) -> bool:
     """Whether `ent` currently has an active STUN status and so forfeits its turn."""
     return (
         esper.has_component(ent, StatusEffects)
@@ -342,175 +321,6 @@ class StatusSystem(esper.Processor):
                     del status.active[status_type]
 
 
-def _ai_target(ent: int) -> Point | None:
-    """The tile an AI entity is currently pathing toward, by behavior tag."""
-    if esper.has_component(ent, PatrolTag):
-        patrol = esper.component_for_entity(ent, PatrolTag)
-        return patrol.path[patrol.index]
-    return esper.component_for_entity(ent, AI).last_known_player_position
-
-
-def _compute_path(ent: int, target: Point | None, pathfinding_context: PathContext) -> list[tuple[int, int]] | None:
-    """Dijkstra path from the entity to target, reusing a precomputed map if available."""
-    if not target:
-        return None
-    pos = esper.component_for_entity(ent, Position)
-
-    pf = pathfinding_context.get(target)
-    if not pf:
-        game_map = get_singleton(Map)
-        cost = game_map.walkable.astype(np.int32)
-        pf = tcod.path.Dijkstra(cost, diagonal=1.41)
-        pf.set_goal(target.x, target.y)
-
-    path = pf.get_path(pos.x, pos.y)
-
-    # tcod's Dijkstra path excludes the goal; add it back if reachable.
-    if path and (path[0][0] != target.x or path[0][1] != target.y):
-        path.insert(0, (target.x, target.y))
-
-    return path
-
-
-def _remember_player_if_seen(ent: int):
-    """Update an entity's last-known player position when the player is in its FOV."""
-    fov = esper.component_for_entity(ent, FieldOfView)
-    player_pos = esper.get_components(Position, PlayerTag)[0][1][0]
-    if player_pos.point in fov.visible_tiles:
-        esper.component_for_entity(ent, AI).last_known_player_position = player_pos.point
-
-
-def _process_chase(ent: int, pos: Position, pathfinding_context: PathContext):
-    _remember_player_if_seen(ent)
-    target = esper.component_for_entity(ent, AI).last_known_player_position
-    path = _compute_path(ent, target, pathfinding_context)
-    if path and len(path) > 1:
-        move_x, move_y = path[-2]
-        move_entity(ent, move_x - pos.x, move_y - pos.y)
-
-
-def _process_patrol(ent: int, pos: Position, pathfinding_context: PathContext):
-    patrol = esper.component_for_entity(ent, PatrolTag)
-    if pos.point == patrol.path[patrol.index]:
-        patrol.index = (patrol.index + 1) % len(patrol.path)
-    target = patrol.path[patrol.index]
-
-    before = (pos.x, pos.y)
-    path = _compute_path(ent, target, pathfinding_context)
-    if path and len(path) > 1:
-        move_x, move_y = path[-2]
-        move_entity(ent, move_x - pos.x, move_y - pos.y)
-
-    # Couldn't progress toward this waypoint (unreachable, or blocked by the exit
-    # tile / a guardian) — give up on it and head for the next one.
-    if (pos.x, pos.y) == before:
-        patrol.index = (patrol.index + 1) % len(patrol.path)
-
-
-def _process_guard(ent: int, pos: Position, pathfinding_context: PathContext):
-    """Hold position. Guards never move; the AISystem still handles their melee
-    and ranged attacks before reaching this movement branch."""
-    pass
-
-
-def _process_flee(ent: int, pos: Position, pathfinding_context: PathContext):
-    _remember_player_if_seen(ent)
-    target = esper.component_for_entity(ent, AI).last_known_player_position
-    path = _compute_path(ent, target, pathfinding_context)
-    if path and len(path) > 1:
-        move_x, move_y = path[0]
-        # Step directly away from the next tile toward the player.
-        target_x = pos.x + (1 if pos.x - move_x >= 0 else -1)
-        target_y = pos.y + (1 if pos.y - move_y >= 0 else -1)
-        if get_singleton(Map).is_walkable(target_x, target_y):
-            move_entity(ent, target_x - pos.x, target_y - pos.y)
-
-
-def _can_use_ability(ent: int, pos: Position, player_pos: Position, ability: EnemyAbility) -> bool:
-    """An ability fires when the player is within range and in the enemy's line of sight."""
-    if max(abs(player_pos.x - pos.x), abs(player_pos.y - pos.y)) > ability.range:
-        return False
-    if esper.has_component(ent, FieldOfView):
-        return player_pos.point in esper.component_for_entity(ent, FieldOfView).visible_tiles
-    return True
-
-
-def _use_ability(ent: int, player_ent: int, ability: EnemyAbility, log: MessageLog):
-    log.add_simple_message(f'The {get_display_name(ent)} attacks from afar!', color=UI_MAGENTA)
-    origin = esper.component_for_entity(ent, Position).point
-    for effect in ability.effects:
-        debug_log(f'  ability effect {effect.type} power={effect.power} dur={effect.duration} -> player {player_ent}')
-        apply_effect(player_ent, effect, origin=origin, caster_ent=ent)
-
-
-class AISystem(esper.Processor):
-    """Drives tagged AI entities with FOV and Dijkstra pathfinding."""
-
-    def process(self):
-        game_state = get_singleton(GameState)
-        if game_state.time_paused or game_state.display_mode != DisplayMode.EXPLORING:
-            return
-
-        game_map = try_get_singleton(Map)
-        if not game_map:
-            return
-
-        player_ents = esper.get_components(Position, PlayerTag)
-        if not player_ents:
-            return
-        player_ent, (player_pos, _tag) = player_ents[0]
-
-        # 1. Collect unique targets so each goal's Dijkstra map is built once.
-        targets_to_compute: set[Point] = set()
-        for ent, _ai in esper.get_component(AI):
-            target = _ai_target(ent)
-            if target:
-                targets_to_compute.add(target)
-
-        cost = game_map.walkable.astype(np.int32)
-        pathfinding_context: PathContext = {}
-        for target in targets_to_compute:
-            pf = tcod.path.Dijkstra(cost, diagonal=1.41)
-            pf.set_goal(target.x, target.y)
-            pathfinding_context[target] = pf
-
-        # 2. Dispatch behavior by tag.
-        for ent, (pos, _ai) in esper.get_components(Position, AI):
-            actor = esper.component_for_entity(ent, Actor) if esper.has_component(ent, Actor) else None
-            if actor and actor.cooldown > 0:
-                continue
-
-            if _is_stunned(ent):
-                continue
-
-            enemy = esper.component_for_entity(ent, Enemy) if esper.has_component(ent, Enemy) else None
-            adjacent = abs(player_pos.x - pos.x) <= 1 and abs(player_pos.y - pos.y) <= 1
-
-            # Melee if adjacent, else fire a ranged ability if one is in range, else move.
-            if enemy and adjacent:
-                debug_log(f'AI {ent} ({get_display_name(ent)}) melee at {(pos.x, pos.y)}')
-                deal_damage(
-                    player_ent,
-                    enemy.attack_damage,
-                    f'The {get_display_name(ent)} hits you!',
-                    color=UI_RED,
-                )
-            elif enemy and enemy.ability and _can_use_ability(ent, pos, player_pos, enemy.ability):
-                debug_log(f'AI {ent} ({get_display_name(ent)}) ability from {(pos.x, pos.y)}')
-                _use_ability(ent, player_ent, enemy.ability, get_singleton(MessageLog))
-            elif esper.has_component(ent, PatrolTag):
-                _process_patrol(ent, pos, pathfinding_context)
-            elif esper.has_component(ent, FleeTag):
-                _process_flee(ent, pos, pathfinding_context)
-            elif esper.has_component(ent, GuardTag):
-                _process_guard(ent, pos, pathfinding_context)
-            else:
-                _process_chase(ent, pos, pathfinding_context)
-
-            if actor:
-                actor.cooldown = get_cooldown(ent, actor.speed)
-
-
 class FOVSystem(esper.Processor):
     def process(self):
         maps = esper.get_component(Map)
@@ -622,7 +432,7 @@ class RenderSystem(esper.Processor):
             codepoint = self.asset_loader.get_codepoint(rend.sprite_id)
             debug_log(f'render entity {_ent} sprite={rend.sprite_id} cp={codepoint} at {(pos.x, pos.y)}')
             # A stunned entity keeps its own glyph color over a yellow highlight.
-            if _is_stunned(_ent):
+            if is_stunned(_ent):
                 self.console.print(
                     x=screen_x,
                     y=screen_y,
@@ -792,167 +602,3 @@ def apply_effect(
         if application.damage_over_time:
             trigger_screen_flash(ent=target_ent, color=EFFECT_COLORS[effect.type])
         log.add_simple_message(application.message.format(name=target_name), color=application.color)
-
-
-def _apply_reaction_multiplier(target_ent: int, modifiers: list[DamageModifier], log: MessageLog) -> float:
-    """The combined damage multiplier from a spell's modifiers whose status the target
-    currently carries — an elemental reaction. Each matched status is consumed (one-shot),
-    and the multipliers compose. Returns 1.0 when nothing matches.
-    """
-    if not modifiers or not esper.has_component(target_ent, StatusEffects):
-        return 1.0
-
-    active = esper.component_for_entity(target_ent, StatusEffects).active
-    name = actor_name(target_ent)
-    mult = 1.0
-    for mod in modifiers:
-        if mod.vs_status not in active:
-            continue
-        mult *= mod.damage_mult
-        del active[mod.vs_status]
-        verb = 'is vulnerable' if mod.damage_mult > 1 else 'resists'
-        log.add_simple_message(f'{name} {verb} while {mod.vs_status.name}!', color=UI_CYAN)
-    return mult
-
-
-def get_spell_config(spell_id: str) -> SpellConfig | None:
-    """Look up a spell's config by id via the Configuration index (O(1))."""
-    configs = try_get_singleton(Configuration)
-    if configs is None:
-        return None
-    return configs.spells_by_id.get(spell_id)
-
-
-# Item types that are pickups but not crafting reagents (currency, etc.).
-NON_REAGENT_ITEMS = {ItemType.GOLD}
-
-
-def is_reagent(itype: ItemType) -> bool:
-    """Whether an item type can be used as a crafting reagent."""
-    return itype not in NON_REAGENT_ITEMS
-
-
-def match_recipe(selection: tuple[ItemType, ...], hide_rare: bool = True) -> tuple[SpellType, int] | None:
-    """Match a sorted ingredient selection to a spell recipe.
-
-    Returns (spell_type, charges) for the first matching recipe, or None. Rare
-    spells are shop-only and can't be discovered by combining, so they're skipped
-    unless `hide_rare` is False (e.g. re-crafting one already learned at a shop).
-    """
-    configs = esper.get_component(Configuration)[0][1]
-    for s_conf in configs.spells:
-        if hide_rare and s_conf.get('rare'):
-            continue
-        for r_data in s_conf['recipes']:
-            if r_data['ingredients'] == selection:
-                return SpellType(s_conf['id']), r_data['charges']
-    return None
-
-
-def _affordable_recipe(inventory: Inventory, combos: set[tuple[ItemType, ...]]) -> tuple[ItemType, ...] | None:
-    """The cheapest combo (fewest ingredients) the inventory can fully pay for, or None."""
-    for combo in sorted(combos, key=len):
-        if all(inventory.items.get(itype, 0) >= count for itype, count in Counter(combo).items()):
-            return combo
-    return None
-
-
-def can_craft_known_spell(stype: SpellType) -> bool:
-    """Whether the player can afford any known recipe for `stype` from current stock."""
-    recipes = try_get_singleton(KnownRecipes)
-    inventory = try_get_singleton(Inventory)
-    if recipes is None or inventory is None:
-        return False
-    return _affordable_recipe(inventory, recipes.recipes.get(stype, set())) is not None
-
-
-def craft_known_spell(stype: SpellType) -> int | None:
-    """Re-craft a known spell from the player's ingredients on hand.
-
-    Picks the cheapest known recipe (fewest ingredients) the player can afford,
-    consumes those ingredients, and grants its charges. Returns the charges
-    granted, or None if no known recipe for the spell is affordable.
-    """
-    recipes = try_get_singleton(KnownRecipes)
-    inventory = try_get_singleton(Inventory)
-    spell_inv = try_get_singleton(SpellInventory)
-    if recipes is None or inventory is None or spell_inv is None:
-        return None
-
-    combo = _affordable_recipe(inventory, recipes.recipes.get(stype, set()))
-    if combo is None:
-        return None
-    match = match_recipe(combo, hide_rare=False)
-    if match is None:
-        return None
-    charges = match[1]
-
-    for itype, count in Counter(combo).items():
-        inventory.items[itype] -= count
-    spell_inv.spells[stype] = spell_inv.spells.get(stype, 0) + charges
-    return charges
-
-
-def cast_spell(spell_id: str, target_x: int, target_y: int):
-    log = esper.get_component(MessageLog)[0][1]
-
-    # Query for player
-    player_ents = esper.get_components(SpellInventory, PlayerTag)
-    if not player_ents:
-        return
-    player, (player_spell_inv, _tag) = player_ents[0]
-
-    stype = SpellType(spell_id)
-
-    # Consume charge
-    player_spell_inv.spells[stype] -= 1
-
-    run_stats = try_get_singleton(RunStats)
-    if run_stats:
-        run_stats.spells_cast[stype] += 1
-
-    # Look up config
-    s_conf = get_spell_config(spell_id)
-    if not s_conf:
-        return
-
-    log.add_simple_message(f'You cast {s_conf["name"]}!', color=UI_CYAN)
-
-    radius = s_conf.get('radius', 0)
-    caster_origin = esper.component_for_entity(player, Position).point
-
-    # Launch a projectile from the caster; it fires the impact burst on arrival,
-    # colored/styled by the spell's primary effect.
-    effects = s_conf['effects']
-    if effects:
-        trigger_projectile(
-            start=caster_origin,
-            target=Point(target_x, target_y),
-            effect_type=effects[0].type,
-            burst_radius=radius,
-        )
-
-    # Find all entities in impact zone using Euclidean distance
-    targets: list[int] = []
-    for ent, (pos, _stats) in esper.get_components(Position, Stats):
-        if not esper.has_component(ent, StatusEffects):
-            continue
-
-        dx = pos.x - target_x
-        dy = pos.y - target_y
-        if dx**2 + dy**2 <= radius**2:
-            targets.append(ent)
-
-    if not targets:
-        log.add_simple_message('The spell hits nothing.', color=UI_GRAY_MID)
-        return
-
-    # Knockback shoves targets directly away from the caster. Reaction modifiers scale
-    # the spell's damage per target based on the statuses that target already carries.
-    for target in targets:
-        mult = _apply_reaction_multiplier(target, s_conf.get('modifiers', []), log)
-        for effect in s_conf['effects']:
-            resolved = effect
-            if mult != 1.0 and effect.type in (EffectType.DAMAGE, EffectType.DRAIN):
-                resolved = replace(effect, power=max(0, round(effect.power * mult)))
-            apply_effect(target, resolved, origin=caster_origin, caster_ent=player)

@@ -32,10 +32,13 @@ from src.components import (
     UIState,
 )
 from src.constants import (
+    UI_BLACK,
     UI_CYAN,
     UI_CYAN_DARK,
     UI_GRAY,
     UI_GRAY_DARK,
+    UI_MAROON,
+    UI_NAVY,
     UI_RED,
     UI_RED_DARK,
     UI_WHITE,
@@ -471,9 +474,9 @@ class TargetingOverlaySystem(esper.Processor):
             dist_to_player_sq = (map_x - player_pos.x) ** 2 + (map_y - player_pos.y) ** 2
 
             if dist_to_reticle_sq <= reticle.radius**2:
-                self.console.rgb[screen_y, screen_x]['bg'] = (100, 0, 0)
+                self.console.rgb[screen_y, screen_x]['bg'] = UI_MAROON
             elif dist_to_player_sq <= reticle.range**2:
-                self.console.rgb[screen_y, screen_x]['bg'] = (0, 0, 50)
+                self.console.rgb[screen_y, screen_x]['bg'] = UI_NAVY
 
         # Draw yellow reticle X at its on-screen position.
         screen_rx, screen_ry = self.layout.map_to_screen(map_x=reticle.x, map_y=reticle.y, cam_x=cam_x, cam_y=cam_y)
@@ -720,7 +723,7 @@ class HUDSystem(esper.Processor):
             zone.height,
             title='Messages',
             fg=UI_WHITE,
-            bg=(0, 0, 0),
+            bg=UI_BLACK,
         )
 
         usable_width = zone.width - 4

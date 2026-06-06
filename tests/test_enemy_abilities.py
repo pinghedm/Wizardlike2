@@ -13,7 +13,7 @@ from src.components import (
     StatusEffects,
     StatusType,
 )
-from src.systems import _can_use_ability
+from src.systems.ai import _can_use_ability
 from tests.headless_runner import HeadlessRunner
 
 

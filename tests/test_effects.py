@@ -21,7 +21,6 @@ from src.systems import (
     EFFECT_COLORS,
     PROJECTILE_GLYPHS,
     StatusSystem,
-    _apply_reaction_multiplier,
     apply_effect,
     cast_spell,
     deal_damage,
@@ -29,6 +28,7 @@ from src.systems import (
     spawn_particle_burst,
     trigger_screen_flash,
 )
+from src.systems.crafting import _apply_reaction_multiplier
 from src.ui_systems import EffectOverlaySystem
 from tests.headless_runner import HeadlessRunner
 

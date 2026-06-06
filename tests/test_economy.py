@@ -12,8 +12,8 @@ REAGENT = ItemType('reagent_a')
 
 def _force_roll(monkeypatch, *, pick: int = 0, count: int = 1):
     """Make roll_loot deterministic: pick drop index `pick`, roll quantity `count`."""
-    monkeypatch.setattr('src.systems.random.choices', lambda population, weights=None, k=1: [population[pick]])
-    monkeypatch.setattr('src.systems.random.randint', lambda lo, hi: count)
+    monkeypatch.setattr('src.systems.core.random.choices', lambda population, weights=None, k=1: [population[pick]])
+    monkeypatch.setattr('src.systems.core.random.randint', lambda lo, hi: count)
 
 
 # --- roll_loot ----------------------------------------------------------------

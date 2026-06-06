@@ -10,6 +10,7 @@ from src import main, persistence
 from src.components import UIState
 from src.constants import SAVE_DIR, SCREEN_HEIGHT, SCREEN_WIDTH
 from src.data_loaders import AssetLoader
+from src.ecs_helpers import get_singleton
 from src.layout import Layout
 from src.states import DisplayMode, GameState
 from src.systems import (
@@ -19,7 +20,6 @@ from src.systems import (
     FOVSystem,
     RenderSystem,
     StatusSystem,
-    get_singleton,
 )
 from src.ui_systems import HUDSystem, MenuSystem, ModalSystem, TargetingOverlaySystem
 from tests.headless_runner import HeadlessRunner

@@ -3,7 +3,7 @@ import esper
 from src.components import AI, Actor, FieldOfView, PatrolTag, Point, Position
 from src.map_objects import Map
 from src.procgen import RectangularRoom
-from src.systems import _process_chase, _process_flee, _process_guard, _process_patrol
+from src.systems.ai import _process_chase, _process_flee, _process_guard, _process_patrol
 from tests.headless_runner import HeadlessRunner
 
 
