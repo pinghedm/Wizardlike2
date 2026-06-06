@@ -17,7 +17,6 @@ from src.components import (
     Loot,
     MessageLog,
     PatrolTag,
-    PlayerTag,
     Point,
     Position,
     Renderable,
@@ -37,7 +36,7 @@ from src.constants import (
     UI_WHITE,
     to_rgb,
 )
-from src.ecs_helpers import get_singleton, spawn_item_entity
+from src.ecs_helpers import get_player, get_singleton, spawn_item_entity
 from src.map_objects import Map, Tile
 from src.shop import build_shop_offers
 from src.states import GameState
@@ -62,7 +61,7 @@ def _delete_all(*component_types: type[object]):
 
 def transition_to_next_floor():
     # 1. Increment Floor
-    game_state = esper.get_component(GameState)[0][1]
+    game_state = get_singleton(GameState)
     game_state.floor += 1
 
     # 2. Calculate floor-dependent parameters
@@ -88,12 +87,13 @@ def transition_to_next_floor():
     esper.create_entity(new_map)
 
     # 6. Update Player Position
-    for ent, _ in esper.get_component(PlayerTag):
-        pos = esper.component_for_entity(ent, Position)
+    player = get_player()
+    if player is not None:
+        pos = esper.component_for_entity(player, Position)
         pos.x = player_start.x
         pos.y = player_start.y
-        if esper.has_component(ent, FieldOfView):
-            esper.component_for_entity(ent, FieldOfView).dirty = True
+        if esper.has_component(player, FieldOfView):
+            esper.component_for_entity(player, FieldOfView).dirty = True
 
 
 class RectangularRoom:
@@ -125,7 +125,7 @@ class RectangularRoom:
 
         # Enemies
         if spawn_enemies:
-            game_state = esper.get_component(GameState)[0][1]
+            game_state = get_singleton(GameState)
             floor = game_state.floor
 
             # Filter enemies valid for current floor. Guardians are reserved for the

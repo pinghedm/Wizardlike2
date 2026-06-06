@@ -1,15 +1,12 @@
 import random
 from typing import TypedDict
 
-import esper
-
 from src import persistence
 from src.components import (
     Configuration,
     Inventory,
     ItemType,
     KnownRecipes,
-    PlayerTag,
     ShopOffer,
     ShopOfferKind,
     SpellConfig,
@@ -18,7 +15,7 @@ from src.components import (
     Stats,
 )
 from src.constants import SHOP_HEAL_BASE_AMOUNT, SHOP_HEAL_BASE_PRICE, SHOP_RARE_SPELL_CHANCE
-from src.ecs_helpers import get_singleton, try_get_singleton
+from src.ecs_helpers import get_player_component, get_singleton, try_get_singleton
 from src.states import GameState
 
 
@@ -132,5 +129,6 @@ def _grant_shop_spell(stype: SpellType, charges: int):
 
 def _heal_player(amount: int):
     """Restore `amount` HP to the player, capped at max."""
-    for _ent, (stats, _tag) in esper.get_components(Stats, PlayerTag):
+    stats = get_player_component(Stats)
+    if stats is not None:
         stats.hp = min(stats.max_hp, stats.hp + amount)

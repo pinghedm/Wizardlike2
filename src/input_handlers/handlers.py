@@ -12,7 +12,6 @@ from src.components import (
     KnownRecipes,
     MessageLog,
     Modal,
-    PlayerTag,
     Position,
     RunStats,
     Shopkeeper,
@@ -31,7 +30,7 @@ from src.constants import (
     UI_WHITE,
     UI_YELLOW,
 )
-from src.ecs_helpers import get_display_name, try_get_singleton
+from src.ecs_helpers import get_display_name, get_player, get_player_component, get_singleton, try_get_singleton
 from src.input_handlers.controller import move_delta
 from src.map_objects import Map
 from src.procgen import transition_to_next_floor
@@ -105,12 +104,12 @@ def _adjacent_shopkeeper(player_pos: Position) -> bool:
 
 
 def handle_exploring_input(action: InputAction | None):
-    game_state = esper.get_component(GameState)[0][1]
+    game_state = get_singleton(GameState)
 
-    player_entities = esper.get_components(Position, PlayerTag)
-    if not player_entities:
+    player = get_player()
+    if player is None:
         return DisplayMode.EXPLORING
-    player, (player_pos, _tag) = player_entities[0]
+    player_pos = esper.component_for_entity(player, Position)
 
     if action == InputAction.CANCEL:
         return DisplayMode.MENU
@@ -121,9 +120,9 @@ def handle_exploring_input(action: InputAction | None):
     elif action == InputAction.CONFIRM and _adjacent_shopkeeper(player_pos):
         return DisplayMode.SHOPPING
     elif action == InputAction.SCROLL_UP:
-        esper.get_component(MessageLog)[0][1].scroll_index += 1
+        get_singleton(MessageLog).scroll_index += 1
     elif action == InputAction.SCROLL_DOWN:
-        esper.get_component(MessageLog)[0][1].scroll_index -= 1
+        get_singleton(MessageLog).scroll_index -= 1
 
     dx, dy = move_delta(action)
     if dx != 0 or dy != 0:
@@ -151,7 +150,7 @@ def handle_exploring_input(action: InputAction | None):
         move_entity(player, dx, dy)
         player_pos = esper.component_for_entity(player, Position)
         player_inv = esper.component_for_entity(player, Inventory)
-        log = esper.get_component(MessageLog)[0][1]
+        log = get_singleton(MessageLog)
 
         # Pickup Logic
         run_stats = try_get_singleton(RunStats)
@@ -189,7 +188,7 @@ def handle_exploring_input(action: InputAction | None):
 
 
 def handle_settings_input(action: InputAction | None):
-    ui_state = esper.get_component(UIState)[0][1]
+    ui_state = get_singleton(UIState)
     keybindings = esper.get_component(Keybindings)[0][1]
     actions = list(keybindings.bindings.keys())
 
@@ -205,7 +204,7 @@ def handle_settings_input(action: InputAction | None):
 
 
 def handle_menu_input(action: InputAction | None):
-    ui_state = esper.get_component(UIState)[0][1]
+    ui_state = get_singleton(UIState)
 
     # Title menu before a run starts, pause menu once a player exists.
     game_active = is_game_active()
@@ -240,7 +239,7 @@ def handle_menu_input(action: InputAction | None):
 
 
 def handle_combining_input(action: InputAction | None):
-    ui_state = esper.get_component(UIState)[0][1]
+    ui_state = get_singleton(UIState)
 
     # Cycle between the manual experiment view and the spellbook.
     if action == InputAction.CYCLE_TAB:
@@ -260,10 +259,10 @@ def handle_combining_input(action: InputAction | None):
 
 def _handle_experiment_input(action: InputAction | None, ui_state: UIState):
     """Manual ingredient combining: select reagents and combine to discover recipes."""
-    player_entities = esper.get_components(Inventory, PlayerTag)
-    if not player_entities:
+    player = get_player()
+    if player is None:
         return DisplayMode.EXPLORING
-    player, (player_inv, _tag) = player_entities[0]
+    player_inv = esper.component_for_entity(player, Inventory)
 
     inv_list = sorted(i for i in player_inv.items if is_reagent(i))
     ui_state.crafting_cursor = step_cursor(ui_state.crafting_cursor, len(inv_list), action)
@@ -290,7 +289,7 @@ def _handle_experiment_input(action: InputAction | None, ui_state: UIState):
         if not sorted_selection:
             return DisplayMode.COMBINING
 
-        log = esper.get_component(MessageLog)[0][1]
+        log = get_singleton(MessageLog)
         result = match_recipe(sorted_selection)
 
         if result is None:
@@ -336,17 +335,16 @@ def _handle_experiment_input(action: InputAction | None, ui_state: UIState):
 
 def _handle_spellbook_input(action: InputAction | None, ui_state: UIState):
     """Browse known recipes and instantly re-craft the selected one from stock."""
-    player_entities = esper.get_components(KnownRecipes, PlayerTag)
-    if not player_entities:
+    player_recipes = get_player_component(KnownRecipes)
+    if player_recipes is None:
         return DisplayMode.EXPLORING
-    _player, (player_recipes, _tag) = player_entities[0]
 
     known = sorted(player_recipes.recipes.keys(), key=lambda s: s.name)
     ui_state.spellbook_cursor = step_cursor(ui_state.spellbook_cursor, len(known), action)
 
     if action == InputAction.CONFIRM and known:
         stype = known[ui_state.spellbook_cursor]
-        log = esper.get_component(MessageLog)[0][1]
+        log = get_singleton(MessageLog)
         charges = craft_known_spell(stype)
         s_conf = get_spell_config(stype.value)
         spell_name = s_conf.get('name', stype.name) if s_conf else stype.name
@@ -366,12 +364,11 @@ def _handle_spellbook_input(action: InputAction | None, ui_state: UIState):
 
 
 def handle_casting_input(action: InputAction | None):
-    ui_state = esper.get_component(UIState)[0][1]
+    ui_state = get_singleton(UIState)
 
-    player_entities = esper.get_components(SpellInventory, PlayerTag)
-    if not player_entities:
+    player_spell_inv = get_player_component(SpellInventory)
+    if player_spell_inv is None:
         return DisplayMode.EXPLORING
-    _player, (player_spell_inv, _tag) = player_entities[0]
 
     # Filter spells to only those with charges
     available_spells = sorted(
@@ -389,10 +386,8 @@ def handle_casting_input(action: InputAction | None):
 
             # Find spell config for range/radius
             s_conf = get_spell_config(stype.value)
-            if s_conf:
-                player_entities = esper.get_components(Position, PlayerTag)
-                _player, (player_pos, _tag) = player_entities[0]
-
+            player_pos = get_player_component(Position)
+            if s_conf and player_pos is not None:
                 ui_state.active_targeting_spell_id = stype.value
 
                 # Create targeting reticle
@@ -410,17 +405,16 @@ def handle_casting_input(action: InputAction | None):
 
 
 def handle_targeting_input(action: InputAction | None):
-    ui_state = esper.get_component(UIState)[0][1]
+    ui_state = get_singleton(UIState)
     reticles = esper.get_component(TargetingReticle)
     if not reticles:
         return DisplayMode.EXPLORING
 
     ret_ent, reticle = reticles[0]
 
-    player_entities = esper.get_components(Position, PlayerTag)
-    if not player_entities:
+    player_pos = get_player_component(Position)
+    if player_pos is None:
         return DisplayMode.EXPLORING
-    _player, (player_pos, _tag) = player_entities[0]
 
     # Cancel or the casting action both back out to the spell picker (the input
     # that opened targeting also closes it).
@@ -467,14 +461,13 @@ def handle_targeting_input(action: InputAction | None):
 
 
 def handle_shop_input(action: InputAction | None):
-    ui_state = esper.get_component(UIState)[0][1]
+    ui_state = get_singleton(UIState)
 
     shopkeepers = esper.get_component(Shopkeeper)
-    player_entities = esper.get_components(Inventory, PlayerTag)
-    if not shopkeepers or not player_entities:
+    player_inv = get_player_component(Inventory)
+    if not shopkeepers or player_inv is None:
         return DisplayMode.EXPLORING
     offers = shopkeepers[0][1].offers
-    _player, (player_inv, _tag) = player_entities[0]
 
     if action == InputAction.CANCEL:
         return DisplayMode.EXPLORING
@@ -494,7 +487,7 @@ def handle_shop_input(action: InputAction | None):
     elif action == InputAction.MOVE_RIGHT:
         ui_state.shop_quantity = min(max_qty, ui_state.shop_quantity + 1)
     elif action == InputAction.CONFIRM:
-        log = esper.get_component(MessageLog)[0][1]
+        log = get_singleton(MessageLog)
         quantity = ui_state.shop_quantity
         if purchase_offer(offer, quantity):
             log.add_simple_message(f'Bought {quantity}x {offer.label}.', color=UI_CYAN)

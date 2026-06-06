@@ -9,6 +9,7 @@ clear_database() done on new game / load. `Rect` is a plain value type.
 
 from dataclasses import dataclass
 
+import esper
 import tcod.console
 
 
@@ -96,3 +97,17 @@ class Layout:
         need to clip should test it with `map_viewport.contains`."""
         view = self.map_viewport
         return view.x + map_x - cam_x, view.y + map_y - cam_y
+
+
+class LayoutProcessor(esper.Processor):
+    """Base for render processors that draw into the injected `Layout`'s console.
+
+    Holds the shared layout reference and exposes its live console, so subclasses
+    only implement `process()`."""
+
+    def __init__(self, layout: Layout):
+        self.layout = layout
+
+    @property
+    def console(self) -> tcod.console.Console:
+        return self.layout.console

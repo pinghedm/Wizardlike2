@@ -1,54 +1,33 @@
-import math
 from collections import Counter
-from collections.abc import Iterator, Sequence
+from collections.abc import Sequence
 
 import esper
-import numpy as np
-import tcod
 
 from src import persistence
 from src.components import (
-    CastVisual,
     Inventory,
     ItemType,
     Keybindings,
     KnownRecipes,
     Message,
-    MessageLog,
-    Modal,
-    Particle,
-    PlayerTag,
-    Position,
-    Projectile,
     RunStats,
-    ScreenFlash,
     Shopkeeper,
     SpellInventory,
     SpellType,
-    Stats,
-    StatusEffects,
-    StatusType,
-    TargetingReticle,
     UIState,
 )
 from src.constants import (
-    UI_BLACK,
     UI_CYAN,
     UI_CYAN_DARK,
     UI_GRAY,
     UI_GRAY_DARK,
-    UI_MAROON,
-    UI_NAVY,
     UI_RED,
-    UI_RED_DARK,
     UI_WHITE,
     UI_YELLOW,
-    to_rgb,
 )
 from src.ecs_helpers import get_singleton, try_get_singleton
 from src.input_handlers import connected_controller_name, controller_binding_label
-from src.layout import Layout, Rect
-from src.map_objects import Map
+from src.layout import LayoutProcessor
 from src.states import (
     PAUSE_MENU_OPTIONS,
     TITLE_MENU_OPTIONS,
@@ -62,36 +41,16 @@ from src.systems import (
     get_spell_config,
     is_game_active,
     is_reagent,
-    spawn_particle_burst,
-    trigger_cast_visual,
 )
 from src.ui_helpers import (
-    blend,
-    compute_visible_slice,
     draw_centered_frame,
-    draw_titled_frame,
     format_recipe,
     format_spell_effects,
     wrap_message,
 )
 
 
-def _iter_viewport_cells(view: Rect, cam_x: int, cam_y: int) -> Iterator[tuple[int, int, int, int]]:
-    """Yield (screen_x, screen_y, map_x, map_y) for every cell of the map viewport,
-    pairing each on-screen cell with the map cell the camera maps it to."""
-    for screen_y in range(view.y, view.y + view.height):
-        for screen_x in range(view.x, view.x + view.width):
-            yield screen_x, screen_y, screen_x - view.x + cam_x, screen_y - view.y + cam_y
-
-
-class MenuSystem(esper.Processor):
-    def __init__(self, layout: Layout):
-        self.layout = layout
-
-    @property
-    def console(self) -> tcod.console.Console:
-        return self.layout.console
-
+class MenuSystem(LayoutProcessor):
     def process(self):
         game_state = get_singleton(GameState)
         if game_state.display_mode == DisplayMode.MENU:
@@ -434,312 +393,3 @@ class MenuSystem(esper.Processor):
             self.console.print(x + 4, row, f'{key.name} x{count}', fg=UI_WHITE)
             row += 1
         return row
-
-
-class TargetingOverlaySystem(esper.Processor):
-    def __init__(self, layout: Layout):
-        self.layout = layout
-
-    @property
-    def console(self) -> tcod.console.Console:
-        return self.layout.console
-
-    def process(self):
-        game_state = get_singleton(GameState)
-        if game_state.display_mode != DisplayMode.TARGETING:
-            return
-
-        reticles = esper.get_component(TargetingReticle)
-        if not reticles:
-            return
-
-        _ent, reticle = reticles[0]
-        player_entities = esper.get_components(Position, PlayerTag)
-        if not player_entities:
-            return
-        _player, (player_pos, _tag) = player_entities[0]
-
-        game_map = try_get_singleton(Map)
-        if not game_map:
-            return
-
-        # The overlay highlights tiles, so it shares the map's camera transform:
-        # iterate the viewport's screen cells, map each back to its map cell for
-        # the distance tests, and paint the screen cell.
-        view = self.layout.map_viewport
-        cam_x, cam_y = self.layout.camera_offset(player_pos.x, player_pos.y, game_map.width, game_map.height)
-
-        for screen_x, screen_y, map_x, map_y in _iter_viewport_cells(view, cam_x, cam_y):
-            dist_to_reticle_sq = (map_x - reticle.x) ** 2 + (map_y - reticle.y) ** 2
-            dist_to_player_sq = (map_x - player_pos.x) ** 2 + (map_y - player_pos.y) ** 2
-
-            if dist_to_reticle_sq <= reticle.radius**2:
-                self.console.rgb[screen_y, screen_x]['bg'] = UI_MAROON
-            elif dist_to_player_sq <= reticle.range**2:
-                self.console.rgb[screen_y, screen_x]['bg'] = UI_NAVY
-
-        # Draw yellow reticle X at its on-screen position.
-        screen_rx, screen_ry = self.layout.map_to_screen(map_x=reticle.x, map_y=reticle.y, cam_x=cam_x, cam_y=cam_y)
-        if view.contains(screen_rx, screen_ry):
-            self.console.print(screen_rx, screen_ry, 'X', fg=UI_YELLOW)
-
-
-class EffectOverlaySystem(esper.Processor):
-    """Renders and ages out transient combat visuals: the damage screen flash and
-    the spell-cast impact burst.
-
-    Registered after the map/targeting draw but before the HUD, so it tints only the
-    map area, never the HUD or modals. Effects age on every frame (independent of
-    time_paused) so they fade out even while the casting picker or a modal is open.
-    """
-
-    # Display modes that draw the map, and so can show map-anchored combat visuals.
-    VISUAL_MODES = (DisplayMode.EXPLORING, DisplayMode.CASTING, DisplayMode.COMBINING, DisplayMode.TARGETING)
-
-    def __init__(self, layout: Layout):
-        self.layout = layout
-
-    @property
-    def console(self) -> tcod.console.Console:
-        return self.layout.console
-
-    def process(self):
-        game_state = get_singleton(GameState)
-        if game_state.display_mode not in self.VISUAL_MODES:
-            return
-        self._render_cast_visual()
-        self._render_screen_flash()
-        self._render_projectiles()
-        self._render_particles()
-
-    def _time_paused(self) -> bool:
-        return get_singleton(GameState).time_paused
-
-    def _camera(self) -> tuple[int, int] | None:
-        """The current camera offset, or None if there's no player or map to anchor to."""
-        player = esper.get_components(Position, PlayerTag)
-        game_map = try_get_singleton(Map)
-        if not player or not game_map:
-            return None
-        _p, (player_pos, _tag) = player[0]
-        return self.layout.camera_offset(player_pos.x, player_pos.y, game_map.width, game_map.height)
-
-    def _render_projectiles(self):
-        # Projectiles are part of game time: frozen in flight while a menu/modal pauses
-        # the game, advancing only when exploring.
-        paused = self._time_paused()
-        cam = self._camera()
-        view = self.layout.map_viewport
-        for ent, proj in esper.get_component(Projectile):
-            if not paused:
-                dist = max(1.0, math.hypot(proj.target.x - proj.start.x, proj.target.y - proj.start.y))
-                proj.progress += Projectile.SPEED / dist
-                if proj.progress >= 1.0:
-                    # Arrival: hand off to the impact burst and a particle spray.
-                    trigger_cast_visual(center=proj.target, radius=proj.burst_radius, color=proj.color)
-                    spawn_particle_burst(center=proj.target, color=proj.color, count=Particle.BURST_COUNT)
-                    esper.delete_entity(ent, immediate=True)
-                    continue
-            if cam is None:
-                continue
-            cell_x = round(proj.start.x + (proj.target.x - proj.start.x) * proj.progress)
-            cell_y = round(proj.start.y + (proj.target.y - proj.start.y) * proj.progress)
-            screen_x, screen_y = self.layout.map_to_screen(map_x=cell_x, map_y=cell_y, cam_x=cam[0], cam_y=cam[1])
-            if view.contains(screen_x, screen_y):
-                self.console.print(screen_x, screen_y, proj.glyph, fg=proj.color)
-
-    def _render_particles(self):
-        paused = self._time_paused()
-        cam = self._camera()
-        view = self.layout.map_viewport
-        for ent, particle in esper.get_component(Particle):
-            if not paused:
-                particle.x += particle.vx
-                particle.y += particle.vy
-            if cam is not None:
-                screen_x, screen_y = self.layout.map_to_screen(
-                    map_x=round(particle.x), map_y=round(particle.y), cam_x=cam[0], cam_y=cam[1]
-                )
-                if view.contains(screen_x, screen_y):
-                    ratio = particle.ticks / particle.max_ticks
-                    fg = to_rgb([int(c * ratio) for c in particle.color])
-                    self.console.print(screen_x, screen_y, particle.glyph, fg=fg)
-            if not paused:
-                particle.ticks -= 1
-                if particle.ticks <= 0:
-                    esper.delete_entity(ent, immediate=True)
-
-    def _render_cast_visual(self):
-        visuals = esper.get_component(CastVisual)
-        if not visuals:
-            return
-        ent, visual = visuals[0]
-        self._draw_cast_burst(visual)
-        visual.ticks -= 1
-        if visual.ticks <= 0:
-            esper.delete_entity(ent, immediate=True)
-
-    def _draw_cast_burst(self, visual: CastVisual):
-        cam = self._camera()
-        if cam is None:
-            return
-        cam_x, cam_y = cam
-
-        view = self.layout.map_viewport
-        alpha = CastVisual.MAX_ALPHA * visual.ticks / visual.max_ticks
-
-        for screen_x, screen_y, map_x, map_y in _iter_viewport_cells(view, cam_x, cam_y):
-            if (map_x - visual.center.x) ** 2 + (map_y - visual.center.y) ** 2 <= visual.radius**2:
-                base = to_rgb(self.console.rgb[screen_y, screen_x]['bg'])
-                self.console.rgb[screen_y, screen_x]['bg'] = blend(base, visual.color, alpha)
-
-    def _render_screen_flash(self):
-        flashes = esper.get_component(ScreenFlash)
-        if not flashes:
-            return
-        ent, flash = flashes[0]
-
-        view = self.layout.map_viewport
-        alpha = ScreenFlash.MAX_ALPHA * flash.ticks / flash.max_ticks
-        region = self.console.rgb['bg'][view.y : view.y + view.height, view.x : view.x + view.width]
-        region[:] = region * (1 - alpha) + np.array(flash.color, dtype=float) * alpha
-
-        flash.ticks -= 1
-        if flash.ticks <= 0:
-            esper.delete_entity(ent, immediate=True)
-
-
-class ModalSystem(esper.Processor):
-    def __init__(self, layout: Layout):
-        self.layout = layout
-
-    @property
-    def console(self) -> tcod.console.Console:
-        return self.layout.console
-
-    def process(self):
-        for _ent, modal in esper.get_component(Modal):
-            # Center the modal based on its own dimensions
-            x, y = draw_centered_frame(self.console, modal.width, modal.height, title='Message')
-
-            # Message
-            self.console.print(
-                x=x + 2,
-                y=y + 2,
-                width=modal.width - 4,
-                height=modal.height - 4,
-                text=modal.message,
-                fg=UI_WHITE,
-            )
-
-            self.console.print(
-                x + modal.width // 2 - 10,
-                y + modal.height - 2,
-                'Press any key to close',
-                fg=UI_GRAY,
-            )
-
-
-class HUDSystem(esper.Processor):
-    HP_BAR_WIDTH = 20
-    # Width of the stats column on the left of the HUD bar; the log fills the rest.
-    HUD_STATS_WIDTH = 34
-
-    def __init__(self, layout: Layout):
-        self.layout = layout
-
-    @property
-    def console(self) -> tcod.console.Console:
-        return self.layout.console
-
-    def process(self):
-        game_state = get_singleton(GameState)
-        if game_state.display_mode not in [
-            DisplayMode.EXPLORING,
-            DisplayMode.CASTING,
-            DisplayMode.COMBINING,
-            DisplayMode.TARGETING,
-            DisplayMode.SHOPPING,
-        ]:
-            return
-
-        # The HUD bar splits into a stats column and a message log.
-        stats_zone, log_zone = self.layout.hud.split_left(self.HUD_STATS_WIDTH)
-        self.render_hp_bar(stats_zone)
-        self.render_shield(stats_zone)
-        self.render_floor_info(stats_zone, game_state.floor)
-        self.render_gold(stats_zone)
-        self.render_message_log(log_zone)
-
-    def render_hp_bar(self, zone: Rect):
-        player_stats = esper.get_components(Stats, PlayerTag)
-        if not player_stats:
-            return
-        _player, (stats, _) = player_stats[0]
-
-        hp_label_start_x, hp_label_y = zone.x + 2, zone.y + 1
-
-        hp_text = f'HP: {stats.hp}/{stats.max_hp}'
-        self.console.print(hp_label_start_x, hp_label_y, hp_text, fg=UI_WHITE)
-
-        hp_bar_start_x = hp_label_start_x + len(hp_text) + 1
-        ratio = stats.hp / stats.max_hp
-        filled_width = int(ratio * self.HP_BAR_WIDTH)
-
-        self.console.draw_rect(hp_bar_start_x, hp_label_y, self.HP_BAR_WIDTH, 1, ch=ord('█'), fg=UI_RED_DARK)
-        if filled_width > 0:
-            self.console.draw_rect(hp_bar_start_x, hp_label_y, filled_width, 1, ch=ord('█'), fg=UI_RED)
-
-    def render_shield(self, zone: Rect):
-        """Show the player's active shield (its remaining damage reduction per hit)."""
-        players = esper.get_components(StatusEffects, PlayerTag)
-        if not players:
-            return
-        _player, (status, _) = players[0]
-        shield = status.active.get(StatusType.SHIELD)
-        if shield:
-            self.console.print(zone.x + 2, zone.y + 2, f'Shield: {shield.power}', fg=UI_CYAN)
-
-    def render_floor_info(self, zone: Rect, floor: int):
-        self.console.print(zone.x + 2, zone.y + 3, f'Floor: {floor}', fg=UI_WHITE)
-
-    def render_gold(self, zone: Rect):
-        inv = try_get_singleton(Inventory)
-        if not inv:
-            return
-        gold = inv.items.get(ItemType.GOLD, 0)
-        self.console.print(zone.x + 14, zone.y + 3, f'Gold: {gold}', fg=UI_YELLOW)
-
-    def render_message_log(self, zone: Rect):
-        log = try_get_singleton(MessageLog)
-        if not log:
-            return
-
-        draw_titled_frame(
-            self.console,
-            zone.x,
-            zone.y,
-            zone.width,
-            zone.height,
-            title='Messages',
-            fg=UI_WHITE,
-            bg=UI_BLACK,
-        )
-
-        usable_width = zone.width - 4
-        all_lines: list[Message] = []
-        for msg in log.messages:
-            all_lines.extend(wrap_message(msg, usable_width))
-
-        visible_height = zone.height - 2
-
-        # Resolve the visible slice and write back the clamped scroll position
-        log.scroll_index, start_idx, end_idx = compute_visible_slice(len(all_lines), log.scroll_index, visible_height)
-        visible_lines = all_lines[start_idx:end_idx]
-
-        for i, line in enumerate(visible_lines):
-            msg_x = zone.x + 2
-            msg_y = zone.y + 1 + i
-            for text, color in line:
-                self.console.print(x=msg_x, y=msg_y, text=text, fg=color)
-                msg_x += len(text)

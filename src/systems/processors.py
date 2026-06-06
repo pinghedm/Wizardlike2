@@ -26,6 +26,7 @@ from src.constants import (
 )
 from src.debug import debug_log
 from src.ecs_helpers import get_display_name, get_singleton, spawn_item_entity, try_get_singleton
+from src.layout import LayoutProcessor
 from src.map_objects import Map
 from src.states import DisplayMode, GameState
 from src.systems.combat import apply_status_pulse, is_stunned, roll_loot
@@ -86,7 +87,7 @@ class StatusSystem(esper.Processor):
     """Ages active status effects and applies recurring ones each pulse."""
 
     def process(self):
-        game_state = esper.get_component(GameState)[0][1]
+        game_state = get_singleton(GameState)
         if game_state.time_paused:
             return
 
@@ -134,14 +135,10 @@ class FOVSystem(esper.Processor):
                 fov.dirty = False
 
 
-class RenderSystem(esper.Processor):
+class RenderSystem(LayoutProcessor):
     def __init__(self, layout: Layout, asset_loader: AssetLoader):
-        self.layout = layout
+        super().__init__(layout)
         self.asset_loader = asset_loader
-
-    @property
-    def console(self) -> tcod.console.Console:
-        return self.layout.console
 
     def process(self):
         game_state = get_singleton(GameState)

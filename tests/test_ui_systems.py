@@ -210,7 +210,7 @@ def test_casting_menu_ignores_zero_charge_spells():
 
 
 def test_settings_menu_shows_keyboard_bindings_without_a_controller(mocker):
-    mocker.patch('src.ui_systems.connected_controller_name', return_value=None)
+    mocker.patch('src.ui_systems.menus.connected_controller_name', return_value=None)
     runner = HeadlessRunner(use_random_map=False)
     runner.game_state.display_mode = DisplayMode.SETTINGS
 
@@ -223,7 +223,7 @@ def test_settings_menu_shows_keyboard_bindings_without_a_controller(mocker):
 
 
 def test_settings_menu_shows_controller_column_when_connected(mocker):
-    mocker.patch('src.ui_systems.connected_controller_name', return_value='Test Pad')
+    mocker.patch('src.ui_systems.menus.connected_controller_name', return_value='Test Pad')
     runner = HeadlessRunner(use_random_map=False)
     runner.game_state.display_mode = DisplayMode.SETTINGS
 
@@ -235,7 +235,7 @@ def test_settings_menu_shows_controller_column_when_connected(mocker):
 
 
 def test_settings_menu_shows_remapping_prompt(mocker):
-    mocker.patch('src.ui_systems.connected_controller_name', return_value=None)
+    mocker.patch('src.ui_systems.menus.connected_controller_name', return_value=None)
     runner = HeadlessRunner(use_random_map=False)
     _ui_state(runner).remapping_action = InputAction.MOVE_UP
     runner.game_state.display_mode = DisplayMode.SETTINGS

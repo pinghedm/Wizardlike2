@@ -29,6 +29,20 @@ def try_get_singleton[T](component_type: type[T]) -> T | None:
     return components[0][1] if components else None
 
 
+def get_player() -> int | None:
+    """The player entity, or None if no player exists (e.g. at the title screen)."""
+    players = esper.get_component(PlayerTag)
+    return players[0][0] if players else None
+
+
+def get_player_component[T](component_type: type[T]) -> T | None:
+    """The player's `component_type`, or None when there's no player / no such component."""
+    player = get_player()
+    if player is None or not esper.has_component(player, component_type):
+        return None
+    return esper.component_for_entity(player, component_type)
+
+
 def get_display_name(entity: int) -> str:
     """Human-facing name for an entity, taken from its Renderable sprite id."""
     if esper.has_component(entity, Renderable):

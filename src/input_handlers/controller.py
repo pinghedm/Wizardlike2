@@ -9,6 +9,7 @@ from src.components import (
     Keybindings,
     UIState,
 )
+from src.ecs_helpers import get_singleton
 
 # Movement is fixed to the d-pad (and left stick); it is not rebindable.
 DPAD_MOVES: dict[ControllerButton, InputAction] = {
@@ -87,7 +88,7 @@ def try_capture_remap(event: tcod.event.Event) -> bool:
     d-pad are skipped (movement is fixed); trigger rebinds go through
     try_capture_remap_axis since triggers arrive as axis events.
     """
-    ui_state = esper.get_component(UIState)[0][1]
+    ui_state = get_singleton(UIState)
     action = ui_state.remapping_action
     if action is None:
         return False
@@ -110,7 +111,7 @@ def try_capture_remap_axis(event: tcod.event.ControllerAxis) -> bool:
 
     Only the triggers are bindable this way; the stick stays fixed to movement.
     """
-    ui_state = esper.get_component(UIState)[0][1]
+    ui_state = get_singleton(UIState)
     action = ui_state.remapping_action
     if action is None or action in MOVE_DELTAS:
         return False
@@ -234,7 +235,7 @@ def controller_binding_label(action: InputAction, keybindings: Keybindings) -> s
 
 def note_controller_button(button: ControllerButton) -> None:
     """Record the last controller button pressed, for the Settings live readout."""
-    esper.get_component(UIState)[0][1].last_controller_input = button.name
+    get_singleton(UIState).last_controller_input = button.name
 
 
 # tcod 21.2.0's get_controllers()/get_joysticks() pass 0-based indices to SDL3

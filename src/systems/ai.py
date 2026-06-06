@@ -13,13 +13,12 @@ from src.components import (
     GuardTag,
     MessageLog,
     PatrolTag,
-    PlayerTag,
     Point,
     Position,
 )
 from src.constants import UI_MAGENTA, UI_RED
 from src.debug import debug_log
-from src.ecs_helpers import get_display_name, get_singleton, try_get_singleton
+from src.ecs_helpers import get_display_name, get_player, get_player_component, get_singleton, try_get_singleton
 from src.map_objects import Map
 from src.states import DisplayMode, GameState
 from src.systems.combat import apply_effect, deal_damage, is_stunned
@@ -63,8 +62,8 @@ def _compute_path(ent: int, target: Point | None, pathfinding_context: PathConte
 def _remember_player_if_seen(ent: int):
     """Update an entity's last-known player position when the player is in its FOV."""
     fov = esper.component_for_entity(ent, FieldOfView)
-    player_pos = esper.get_components(Position, PlayerTag)[0][1][0]
-    if player_pos.point in fov.visible_tiles:
+    player_pos = get_player_component(Position)
+    if player_pos is not None and player_pos.point in fov.visible_tiles:
         esper.component_for_entity(ent, AI).last_known_player_position = player_pos.point
 
 
@@ -143,10 +142,10 @@ class AISystem(esper.Processor):
         if not game_map:
             return
 
-        player_ents = esper.get_components(Position, PlayerTag)
-        if not player_ents:
+        player_ent = get_player()
+        if player_ent is None:
             return
-        player_ent, (player_pos, _tag) = player_ents[0]
+        player_pos = esper.component_for_entity(player_ent, Position)
 
         # 1. Collect unique targets so each goal's Dijkstra map is built once.
         targets_to_compute: set[Point] = set()

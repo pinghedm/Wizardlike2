@@ -11,7 +11,6 @@ from src.components import (
     ItemType,
     KnownRecipes,
     MessageLog,
-    PlayerTag,
     Point,
     Position,
     RunStats,
@@ -22,7 +21,7 @@ from src.components import (
     StatusEffects,
 )
 from src.constants import UI_CYAN, UI_GRAY_MID
-from src.ecs_helpers import actor_name, try_get_singleton
+from src.ecs_helpers import actor_name, get_player, get_singleton, try_get_singleton
 from src.systems.combat import apply_effect
 from src.systems.visuals import trigger_projectile
 
@@ -127,13 +126,12 @@ def _apply_reaction_multiplier(target_ent: int, modifiers: list[DamageModifier],
 
 
 def cast_spell(spell_id: str, target_x: int, target_y: int):
-    log = esper.get_component(MessageLog)[0][1]
+    log = get_singleton(MessageLog)
 
-    # Query for player
-    player_ents = esper.get_components(SpellInventory, PlayerTag)
-    if not player_ents:
+    player = get_player()
+    if player is None:
         return
-    player, (player_spell_inv, _tag) = player_ents[0]
+    player_spell_inv = esper.component_for_entity(player, SpellInventory)
 
     stype = SpellType(spell_id)
 
