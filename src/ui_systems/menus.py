@@ -44,8 +44,10 @@ from src.systems import (
 )
 from src.ui_helpers import (
     draw_centered_frame,
+    draw_scroll_indicators,
     format_recipe,
     format_spell_effects,
+    scroll_window,
     wrap_message,
 )
 
@@ -110,10 +112,10 @@ class MenuSystem(LayoutProcessor):
         self._render_crafting_tabs(x + 2, y + 1, ui_state.crafting_view)
 
         if ui_state.crafting_view == CraftingView.SPELLBOOK:
-            self._render_spellbook(x, y, width, ui_state, player_recipes, player_spell_inv, player_inv)
+            self._render_spellbook(x, y, width, height, ui_state, player_recipes, player_spell_inv, player_inv)
             footer = 'Tab: Experiment | Up/Down: Select | Enter: Craft | Esc: Close'
         else:
-            self._render_experiment(x, y, ui_state, player_inv)
+            self._render_experiment(x, y, width, height, ui_state, player_inv)
             footer = 'Tab: Spellbook | L/R: Select | Enter: Combine | Esc: Close'
 
         self.console.print(x + 2, y + height - 2, footer, fg=UI_GRAY)
@@ -122,7 +124,7 @@ class MenuSystem(LayoutProcessor):
         self.console.print(tx, ty, 'Experiment', fg=UI_YELLOW if view == CraftingView.EXPERIMENT else UI_GRAY_DARK)
         self.console.print(tx + 13, ty, 'Spellbook', fg=UI_YELLOW if view == CraftingView.SPELLBOOK else UI_GRAY_DARK)
 
-    def _render_experiment(self, x: int, y: int, ui_state: UIState, player_inv: Inventory):
+    def _render_experiment(self, x: int, y: int, width: int, height: int, ui_state: UIState, player_inv: Inventory):
         self.console.print(x + 2, y + 3, 'Combine ingredients to discover spells:', fg=UI_SKY)
 
         inv_list = sorted(i for i in player_inv.items if is_reagent(i))
@@ -130,23 +132,32 @@ class MenuSystem(LayoutProcessor):
             self.console.print(x + 2, y + 5, 'No ingredients to combine.', fg=UI_GRAY_DARK)
             return
 
-        for i, itype in enumerate(inv_list):
-            selected = i == ui_state.crafting_cursor
+        item_top = y + 5
+        cursor = ui_state.crafting_cursor % len(inv_list)
+        visible = height - 7  # rows between the list top and the footer
+        start, end = scroll_window(len(inv_list), cursor, visible)
+        for row_i, itype in enumerate(inv_list[start:end]):
+            i = start + row_i
+            selected = i == cursor
             count = player_inv.items[itype]
             chosen = ui_state.selected_for_crafting.get(itype, 0)
             marker = '> ' if selected else '  '
             self.console.print(
                 x + 2,
-                y + 5 + i,
+                item_top + row_i,
                 f'{marker}{itype.name}: {count} (Selected: {chosen})',
                 fg=UI_WHITE if selected else UI_GRAY_DARK,
             )
+        draw_scroll_indicators(
+            self.console, x + width - 2, item_top, item_top + (end - start) - 1, start, end, len(inv_list), UI_YELLOW
+        )
 
     def _render_spellbook(
         self,
         x: int,
         y: int,
         width: int,
+        height: int,
         ui_state: UIState,
         player_recipes: KnownRecipes,
         player_spell_inv: SpellInventory,
@@ -155,14 +166,18 @@ class MenuSystem(LayoutProcessor):
         known = sorted(player_recipes.recipes.keys(), key=lambda s: s.name)
         list_x = x + 2
         detail_x = x + 26
+        list_top = y + 4
 
         if not known:
-            self.console.print(list_x, y + 4, 'No recipes discovered yet.', fg=UI_GRAY)
+            self.console.print(list_x, list_top, 'No recipes discovered yet.', fg=UI_GRAY)
             self.console.print(list_x, y + 6, 'Find them in the Experiment tab.', fg=UI_GRAY_DARK)
             return
 
         cursor = ui_state.spellbook_cursor % len(known)
-        for i, stype in enumerate(known):
+        visible = height - 6  # rows between the list top and the footer
+        start, end = scroll_window(len(known), cursor, visible)
+        for row_i, stype in enumerate(known[start:end]):
+            i = start + row_i
             # Spells with no affordable recipe are dimmed.
             craftable = can_craft_known_spell(stype)
             charges = player_spell_inv.spells.get(stype, 0)
@@ -171,15 +186,23 @@ class MenuSystem(LayoutProcessor):
             else:
                 color = UI_WHITE if craftable else UI_GRAY_DARK
             marker = '> ' if i == cursor else '  '
-            self.console.print(list_x, y + 4 + i, f'{marker}{stype.name} ({charges})', fg=color)
+            self.console.print(list_x, list_top + row_i, f'{marker}{stype.name} ({charges})', fg=color)
 
-        self._render_spell_detail(detail_x, y + 4, width - 28, known[cursor], player_recipes, player_inv)
+        # The indicators sit in the gap column between the list and the detail panel.
+        draw_scroll_indicators(
+            self.console, detail_x - 2, list_top, list_top + (end - start) - 1, start, end, len(known), UI_YELLOW
+        )
+        detail_bottom = y + height - 3  # last row above the footer
+        self._render_spell_detail(
+            detail_x, list_top, width - 28, detail_bottom, known[cursor], player_recipes, player_inv
+        )
 
     def _render_spell_detail(
         self,
         dx: int,
         dy: int,
         detail_width: int,
+        bottom: int,
         stype: SpellType,
         player_recipes: KnownRecipes,
         player_inv: Inventory,
@@ -211,6 +234,10 @@ class MenuSystem(LayoutProcessor):
             affordable = all(player_inv.items.get(itype, 0) >= count for itype, count in Counter(combo).items())
             text = f'{format_recipe(combo)}  (+{charges_by_combo.get(combo, 0)})'
             for line in wrap_message([(text, UI_WHITE if affordable else UI_GRAY_DARK)], detail_width):
+                if row > bottom:
+                    # A '...' on the last row signals the recipe list ran past the box.
+                    self.console.print(dx, bottom, '...', fg=UI_GRAY_DARK)
+                    return
                 self._print_segments(dx, row, line)
                 row += 1
 
@@ -243,8 +270,13 @@ class MenuSystem(LayoutProcessor):
                 fg=UI_RED,
             )
         else:
-            for i, stype in enumerate(available_spells):
-                color = UI_YELLOW if i == ui_state.casting_cursor else UI_WHITE
+            content_top = y + 2
+            cursor = ui_state.casting_cursor % len(available_spells)
+            visible = (height - 3) // 2  # spell rows are double-spaced above the footer
+            start, end = scroll_window(len(available_spells), cursor, visible)
+            for row_i, stype in enumerate(available_spells[start:end]):
+                i = start + row_i
+                color = UI_YELLOW if i == cursor else UI_WHITE
                 charges = player_spell_inv.spells[stype]
 
                 # Metadata for range/radius
@@ -253,10 +285,20 @@ class MenuSystem(LayoutProcessor):
 
                 self.console.print(
                     x + 2,
-                    y + 2 + (i * 2),
-                    f'{"> " if i == ui_state.casting_cursor else "  "}{stype.name}: {charges} charges{info}',
+                    content_top + (row_i * 2),
+                    f'{"> " if i == cursor else "  "}{stype.name}: {charges} charges{info}',
                     fg=color,
                 )
+            draw_scroll_indicators(
+                self.console,
+                x + width - 2,
+                content_top,
+                content_top + (end - start - 1) * 2,
+                start,
+                end,
+                len(available_spells),
+                UI_YELLOW,
+            )
 
         self.console.print(
             x + 2,
@@ -281,18 +323,32 @@ class MenuSystem(LayoutProcessor):
         if not offers:
             self.console.print(x + 2, y + 3, 'Sold out.', fg=UI_GRAY_DARK)
         else:
+            offer_top = y + 3
             cursor = ui_state.shop_cursor % len(offers)
-            for i, offer in enumerate(offers):
+            visible = height - 5  # rows between the offers top and the footer
+            start, end = scroll_window(len(offers), cursor, visible)
+            for row_i, offer in enumerate(offers[start:end]):
+                i = start + row_i
                 selected = i == cursor
                 affordable = gold >= offer.price
                 color = (UI_YELLOW if selected else UI_WHITE) if affordable else UI_GRAY_DARK
                 marker = '> ' if selected else '  '
                 row_text = f'{marker}{offer.label:<30}{offer.price:>4} G'
-                self.console.print(x + 2, y + 3 + i, row_text, fg=color)
+                self.console.print(x + 2, offer_top + row_i, row_text, fg=color)
                 if selected:
                     qty = ui_state.shop_quantity
                     detail = f'x{qty} ({offer.price * qty} G)'
-                    self.console.print(x + 2 + len(row_text) + 2, y + 3 + i, detail, fg=color)
+                    self.console.print(x + 2 + len(row_text) + 2, offer_top + row_i, detail, fg=color)
+            draw_scroll_indicators(
+                self.console,
+                x + width - 2,
+                offer_top,
+                offer_top + (end - start) - 1,
+                start,
+                end,
+                len(offers),
+                UI_YELLOW,
+            )
 
         self.console.print(x + 2, y + height - 2, 'L/R: Qty | Enter: Buy | Esc: Leave', fg=UI_GRAY)
 

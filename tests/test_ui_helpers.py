@@ -8,6 +8,7 @@ from src.ui_helpers import (
     compute_visible_slice,
     format_recipe,
     format_spell_effects,
+    scroll_window,
     wrap_message,
 )
 
@@ -49,6 +50,36 @@ VISIBLE_SLICE_CASES = [
 )
 def test_compute_visible_slice(total, scroll, height, expected):
     assert compute_visible_slice(total, scroll, height) == expected
+
+
+# (total, cursor, visible_height) -> (start, end)
+SCROLL_WINDOW_CASES = [
+    # list shorter than the window: show everything
+    ('fits', (3, 0, 5), (0, 3)),
+    # list exactly fills the window: still the whole list
+    ('exact_fit', (5, 2, 5), (0, 5)),
+    # cursor near the top of a long list: window pinned to the top
+    ('cursor_top', (10, 0, 4), (0, 4)),
+    # cursor mid-list: window centers on it
+    ('cursor_centered', (10, 5, 4), (3, 7)),
+    # cursor near the bottom: window clamped so it doesn't run past the end
+    ('cursor_bottom', (10, 9, 4), (6, 10)),
+    # degenerate zero-height region: no slice, never divides by zero
+    ('zero_height', (10, 5, 0), (0, 10)),
+]
+
+
+@pytest.mark.parametrize(
+    'total, cursor, height, expected',
+    [(t, c, h, exp) for _id, (t, c, h), exp in SCROLL_WINDOW_CASES],
+    ids=[c[0] for c in SCROLL_WINDOW_CASES],
+)
+def test_scroll_window(total, cursor, height, expected):
+    start, end = scroll_window(total, cursor, height)
+    assert (start, end) == expected
+    # The cursor is always inside the returned window (when there's anything to show).
+    if total:
+        assert start <= cursor < end
 
 
 def test_wrap_message_breaks_at_width():

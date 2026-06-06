@@ -141,6 +141,37 @@ def compute_visible_slice(total_lines: int, scroll_index: int, visible_height: i
     return clamped, start_idx, end_idx
 
 
+def scroll_window(total: int, cursor: int, visible_height: int) -> tuple[int, int]:
+    """Resolve the [start, end) slice of a cursor-driven list that keeps `cursor` in view.
+
+    The window is `visible_height` rows (or the whole list when it fits) and centers on
+    the cursor, clamped to the list bounds — so holding a direction scrolls one row at a
+    time, the cursor stays visible, and no scroll offset has to be stored anywhere.
+    """
+    if visible_height <= 0 or total <= visible_height:
+        return 0, total
+    start = max(0, min(cursor - visible_height // 2, total - visible_height))
+    return start, start + visible_height
+
+
+def draw_scroll_indicators(
+    console: tcod.console.Console,
+    x: int,
+    top_y: int,
+    bottom_y: int,
+    start: int,
+    end: int,
+    total: int,
+    fg: tuple[int, int, int],
+) -> None:
+    """Mark a windowed list as scrollable: '▲' at (x, top_y) when items precede the
+    window and '▼' at (x, bottom_y) when items follow it. A no-op when nothing is clipped."""
+    if start > 0:
+        console.print(x, top_y, '▲', fg=fg)
+    if end < total:
+        console.print(x, bottom_y, '▼', fg=fg)
+
+
 def wrap_message(segments: Message, width: int) -> list[Message]:
     """Wrap a segmented (multi-color) message into multiple lines of at most `width`."""
     lines: list[Message] = []

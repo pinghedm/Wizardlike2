@@ -190,6 +190,25 @@ def test_casting_menu_lists_spell_with_metadata():
     assert '(Range: 8, Radius: 0)' in text
 
 
+def test_casting_menu_windows_long_list_without_overflow():
+    # The casting box fits 6 double-spaced rows; charging all 7 fixture spells forces it
+    # to scroll. With the cursor on the last entry, that entry stays visible, an earlier
+    # one scrolls off behind a '▲', and the footer is not pushed out of the box.
+    runner = HeadlessRunner(use_random_map=False)
+    spell_ids = ['test_bolt', 'test_blast', 'test_rare', 'test_shove', 'test_soak', 'test_zap', 'test_quench']
+    for sid in spell_ids:
+        runner.give_spell(sid, 1)
+    available = sorted((SpellType(s) for s in spell_ids), key=lambda s: s.name)
+    _ui_state(runner).casting_cursor = len(available) - 1  # last spell
+    runner.game_state.display_mode = DisplayMode.CASTING
+
+    text = _full_text(runner)
+    assert available[-1].name in text  # cursor's spell is visible
+    assert available[0].name not in text  # first spell scrolled off the top
+    assert '▲' in text  # "more above" indicator
+    assert 'Arrows: Select' in text  # footer intact, not overwritten by an overflowing row
+
+
 def test_casting_menu_empty_shows_message():
     runner = HeadlessRunner(use_random_map=False)
     runner.game_state.display_mode = DisplayMode.CASTING
