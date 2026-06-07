@@ -10,10 +10,12 @@ import esper
 import pytest
 
 from src.components import Effect, EffectType, Position, StatusEffects, StatusType
-from src.constants import UI_BLACK, UI_YELLOW
+from src.constants import UI_BLACK
 from src.map_objects import Map
 from src.states import DisplayMode
 from src.systems import RenderSystem
+from src.systems.processors import STATUS_TINT_PRIORITY
+from src.systems.visuals import EFFECT_COLORS
 from src.ui_helpers import blend
 from tests.headless_runner import HeadlessRunner
 
@@ -71,23 +73,46 @@ def test_render_dims_explored_but_unseen_tiles():
     assert _fg(runner, ux, uy) == dimmed
 
 
-def test_render_highlights_stunned_entity_only():
+@pytest.mark.parametrize('status', STATUS_TINT_PRIORITY)
+def test_render_tints_entity_by_active_status(status):
     runner = HeadlessRunner(use_random_map=False)
     runner.tick()
     px, py = runner.player_pos
-    enemy = runner.spawn_enemy(px + 1, py)
-    esper.component_for_entity(runner.player, StatusEffects).active[StatusType.STUN] = Effect(
-        type=EffectType.STUN, duration=5
+    esper.component_for_entity(runner.player, StatusEffects).active[status] = Effect(
+        type=EffectType(status), duration=5
     )
 
     _draw(runner)
 
-    highlight = blend(UI_BLACK, UI_YELLOW, 0.5)
-    assert _bg(runner, px, py) == highlight
+    assert _bg(runner, px, py) == blend(UI_BLACK, EFFECT_COLORS[EffectType(status)], 0.5)
 
+
+def test_render_tint_prefers_higher_priority_status_when_stacked():
+    runner = HeadlessRunner(use_random_map=False)
+    runner.tick()
+    px, py = runner.player_pos
+    active = esper.component_for_entity(runner.player, StatusEffects).active
+    # STUN outranks POISON in STATUS_TINT_PRIORITY, so its tint wins over both being active.
+    active[StatusType.POISON] = Effect(type=EffectType.POISON, duration=5)
+    active[StatusType.STUN] = Effect(type=EffectType.STUN, duration=5)
+
+    _draw(runner)
+
+    assert _bg(runner, px, py) == blend(UI_BLACK, EFFECT_COLORS[EffectType.STUN], 0.5)
+
+
+def test_render_leaves_unstatused_entity_untinted():
+    runner = HeadlessRunner(use_random_map=False)
+    runner.tick()
+    px, py = runner.player_pos
+    enemy = runner.spawn_enemy(px + 1, py)
+
+    _draw(runner)
+
+    # No status, so the glyph draws over the tile's own background, not a tint.
     epos = esper.component_for_entity(enemy, Position)
     assert runner.console.ch[epos.y, epos.x] != SPACE
-    assert _bg(runner, epos.x, epos.y) != highlight
+    assert _bg(runner, epos.x, epos.y) == _game_map().tiles[epos.x][epos.y].bg
 
 
 RENDER_MODES = {

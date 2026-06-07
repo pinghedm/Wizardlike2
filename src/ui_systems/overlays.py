@@ -62,15 +62,28 @@ class TargetingOverlaySystem(LayoutProcessor):
         view = self.layout.map_viewport
         cam_x, cam_y = self.layout.camera_offset(player_pos.x, player_pos.y, game_map.width, game_map.height)
 
-        # Shade the spell's area-of-effect around the locked target.
-        for screen_x, screen_y, map_x, map_y in _iter_viewport_cells(view, cam_x, cam_y):
-            if (map_x - reticle.x) ** 2 + (map_y - reticle.y) ** 2 <= reticle.radius**2:
-                self.console.rgb[screen_y, screen_x]['bg'] = UI_MAROON
+        # Outline the spell's area-of-effect: shade only in-range cells that border an
+        # out-of-range one, leaving the interior (and any enemies in it) visible. Blend so
+        # an enemy on the ring keeps showing its glyph and status tint underneath.
+        if reticle.radius > 0:
+            r2 = reticle.radius**2
+            for screen_x, screen_y, map_x, map_y in _iter_viewport_cells(view, cam_x, cam_y):
+                if (map_x - reticle.x) ** 2 + (map_y - reticle.y) ** 2 > r2:
+                    continue
+                on_edge = any(
+                    (map_x + dx - reticle.x) ** 2 + (map_y + dy - reticle.y) ** 2 > r2
+                    for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))
+                )
+                if on_edge:
+                    base = to_rgb(self.console.rgb[screen_y, screen_x]['bg'])
+                    self.console.rgb[screen_y, screen_x]['bg'] = blend(base, UI_MAROON, 0.6)
 
-        # Draw yellow reticle X at its on-screen position.
-        screen_rx, screen_ry = self.layout.map_to_screen(map_x=reticle.x, map_y=reticle.y, cam_x=cam_x, cam_y=cam_y)
-        if view.contains(screen_rx, screen_ry):
-            self.console.print(screen_rx, screen_ry, 'X', fg=UI_YELLOW)
+        # Frame the locked cell with bright brackets instead of covering it, so the reticle
+        # reads clearly over the target's glyph and any status tint, never hiding the enemy.
+        for dx, bracket in ((-1, '['), (1, ']')):
+            bx, by = self.layout.map_to_screen(map_x=reticle.x + dx, map_y=reticle.y, cam_x=cam_x, cam_y=cam_y)
+            if view.contains(bx, by):
+                self.console.print(bx, by, bracket, fg=UI_YELLOW)
 
         # Name the spell being aimed, its remaining charges, and the controls.
         spell_id = get_singleton(UIState).active_targeting_spell_id

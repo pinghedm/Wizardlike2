@@ -7,6 +7,7 @@ from tcod import libtcodpy
 
 from src.components import (
     Actor,
+    EffectType,
     FieldOfView,
     Loot,
     MessageLog,
@@ -19,6 +20,7 @@ from src.components import (
     StatusType,
 )
 from src.constants import (
+    RGB,
     STATUS_PULSE_INTERVAL,
     UI_BLACK,
     UI_YELLOW,
@@ -38,11 +40,23 @@ from src.layout import LayoutProcessor
 from src.map_objects import Map
 from src.states import WORLD_VIEW_MODES, DisplayMode, GameState
 from src.systems.combat import apply_status_pulse, roll_loot
+from src.systems.visuals import EFFECT_COLORS
 from src.ui_helpers import blend
 
 if TYPE_CHECKING:
     from src.data_loaders import AssetLoader
     from src.layout import Layout
+
+# When statuses stack, an entity's glyph tints to the most action-relevant one first.
+STATUS_TINT_PRIORITY = (
+    StatusType.STUN,
+    StatusType.POISON,
+    StatusType.WET,
+    StatusType.SLOW,
+    StatusType.HASTE,
+    StatusType.SHIELD,
+    StatusType.REGEN,
+)
 
 
 class DeathSystem(esper.Processor):
@@ -205,14 +219,14 @@ class RenderSystem(LayoutProcessor):
 
             codepoint = self.asset_loader.get_codepoint(rend.sprite_id)
             debug_log(f'render entity {ent} sprite={rend.sprite_id} cp={codepoint} at {(pos.x, pos.y)}')
-            # A stunned entity keeps its own glyph color over a yellow highlight.
-            if get_status(ent, StatusType.STUN):
-                self.console.print(
-                    x=screen_x,
-                    y=screen_y,
-                    text=chr(codepoint),
-                    fg=rend.color,
-                    bg=blend(UI_BLACK, UI_YELLOW, 0.5),
-                )
-            else:
-                self.console.print(x=screen_x, y=screen_y, text=chr(codepoint), fg=rend.color)
+            # A statused entity keeps its glyph color over a tint of its active status.
+            tint = self._status_tint(ent)
+            bg = blend(UI_BLACK, tint, 0.5) if tint is not None else None
+            self.console.print(x=screen_x, y=screen_y, text=chr(codepoint), fg=rend.color, bg=bg)
+
+    def _status_tint(self, ent: int) -> RGB | None:
+        """The tint of the entity's highest-priority active status, or None if it has none."""
+        for status in STATUS_TINT_PRIORITY:
+            if get_status(ent, status):
+                return EFFECT_COLORS[EffectType(status)]
+        return None

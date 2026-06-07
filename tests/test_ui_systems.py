@@ -22,8 +22,10 @@ from src.components import (
     UIState,
 )
 from src.constants import (
+    UI_BLACK,
     UI_GRAY,
     UI_GRAY_DARK,
+    UI_MAROON,
     UI_RED,
     UI_RED_DARK,
     UI_WHITE,
@@ -37,6 +39,7 @@ from src.states import (
     DisplayMode,
     MenuOption,
 )
+from src.ui_helpers import blend
 
 from .headless_runner import HeadlessRunner
 
@@ -354,7 +357,7 @@ def test_modal_renders_message_and_prompt():
 # --- TargetingOverlaySystem -------------------------------------------------
 
 
-def test_targeting_overlay_draws_reticle_and_aoe():
+def test_targeting_overlay_brackets_target_without_covering_it():
     runner = HeadlessRunner(use_random_map=False)
     runner.game_state.display_mode = DisplayMode.TARGETING
     px, py = runner.player_pos
@@ -362,14 +365,29 @@ def test_targeting_overlay_draws_reticle_and_aoe():
     esper.create_entity(TargetingReticle(x=rx, y=ry, radius=1))
 
     rows = runner.get_console_text()
-    assert rows[ry][rx] == 'X'
-    assert runner.get_console_fg(rx, ry) == UI_YELLOW
-    # Cell adjacent to the reticle is inside the AOE radius -> dark red bg.
-    assert runner.get_console_bg(rx, ry + 1) == (100, 0, 0)
+    # The target cell itself is left alone; bright brackets frame it instead.
+    assert rows[ry][rx] != 'X'
+    assert (rows[ry][rx - 1], rows[ry][rx + 1]) == ('[', ']')
+    assert runner.get_console_fg(rx - 1, ry) == UI_YELLOW
+    assert runner.get_console_fg(rx + 1, ry) == UI_YELLOW
+
+
+def test_targeting_overlay_outlines_aoe_edge_not_interior():
+    runner = HeadlessRunner(use_random_map=False)
+    runner.game_state.display_mode = DisplayMode.TARGETING
+    px, py = runner.player_pos
+    rx, ry = px + 3, py
+    esper.create_entity(TargetingReticle(x=rx, y=ry, radius=2))
+
+    edge = blend(UI_BLACK, UI_MAROON, 0.6)
+    # An in-range cell on the rim of the radius is shaded...
+    assert runner.get_console_bg(rx, ry + 2) == edge
+    # ...but the interior (the target's own cell) is not, so the enemy stays visible.
+    assert runner.get_console_bg(rx, ry) != edge
 
 
 def test_targeting_overlay_absent_without_reticle():
     runner = HeadlessRunner(use_random_map=False)
 
     rows = runner.get_console_text()
-    assert not any('X' in row for row in rows)
+    assert not any(('[' in row or ']' in row) for row in rows)
