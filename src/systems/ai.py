@@ -28,7 +28,7 @@ from src.ecs_helpers import (
     try_get_singleton,
 )
 from src.map_objects import Map
-from src.states import DisplayMode, GameState
+from src.states import GameState
 from src.systems.combat import apply_effect, deal_damage
 from src.systems.movement import get_action_cooldown, move_entity
 from src.systems.utils import step_toward
@@ -143,7 +143,7 @@ class AISystem(esper.Processor):
 
     def process(self):
         game_state = get_singleton(GameState)
-        if game_state.time_paused or game_state.display_mode != DisplayMode.EXPLORING:
+        if game_state.time_paused:
             return
 
         game_map = try_get_singleton(Map)

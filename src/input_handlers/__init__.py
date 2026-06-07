@@ -8,6 +8,7 @@ so callers import them as `from src.input_handlers import X`.
 
 from src.input_handlers.controller import (
     DPAD_MOVES,
+    QUICK_CAST_FACE_BUTTONS,
     TRIGGER_ENGAGE,
     ControllerInput,
     connected_controller_name,
@@ -32,6 +33,7 @@ from src.input_handlers.handlers import (
 
 __all__ = [
     'DPAD_MOVES',
+    'QUICK_CAST_FACE_BUTTONS',
     'TRIGGER_ENGAGE',
     'ControllerInput',
     'connected_controller_name',

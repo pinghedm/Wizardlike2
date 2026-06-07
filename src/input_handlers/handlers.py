@@ -20,6 +20,7 @@ from src.components import (
     SpellType,
     StatusType,
     TargetingReticle,
+    TargetMode,
     UIState,
 )
 from src.constants import (
@@ -62,6 +63,7 @@ from src.systems import (
     match_recipe,
     move_entity,
 )
+from src.targeting import refresh_lock, visible_enemies
 
 
 def step_cursor(cursor: int, length: int, action: InputAction | None) -> int:
@@ -115,7 +117,7 @@ def handle_exploring_input(action: InputAction | None):
 
     if action in QUICK_CAST_ACTIONS:
         return enter_targeting_for_slot(QUICK_CAST_ACTIONS.index(action))
-    elif action == InputAction.CANCEL:
+    elif action == InputAction.OPEN_MENU:
         return DisplayMode.MENU
     elif action == InputAction.OPEN_CRAFTING:
         return DisplayMode.COMBINING
@@ -199,7 +201,7 @@ def handle_settings_input(action: InputAction | None):
     total_rows = 1 + len(actions)
     ui_state.settings_cursor %= total_rows
 
-    if action == InputAction.CANCEL:
+    if action in (InputAction.CANCEL, InputAction.OPEN_MENU):
         return DisplayMode.MENU
     if action in (InputAction.MOVE_UP, InputAction.MOVE_DOWN):
         ui_state.settings_cursor = step_cursor(ui_state.settings_cursor, total_rows, action)
@@ -233,8 +235,8 @@ def handle_menu_input(action: InputAction | None):
     options = PAUSE_MENU_OPTIONS if game_active else TITLE_MENU_OPTIONS
     ui_state.main_menu_cursor %= len(options)
 
-    if action == InputAction.CANCEL:
-        # Cancel resumes an active game; at the title screen there is nothing
+    if action in (InputAction.CANCEL, InputAction.OPEN_MENU):
+        # Cancel/menu resumes an active game; at the title screen there is nothing
         # to resume, so stay on the menu.
         return DisplayMode.EXPLORING if game_active else DisplayMode.MENU
 
@@ -270,8 +272,8 @@ def handle_combining_input(action: InputAction | None):
         )
         return DisplayMode.COMBINING
 
-    # The crafting action or Cancel closes the whole screen from either view.
-    if action in (InputAction.CANCEL, InputAction.OPEN_CRAFTING):
+    # The crafting action, Cancel, or the menu key closes the whole screen from either view.
+    if action in (InputAction.CANCEL, InputAction.OPEN_CRAFTING, InputAction.OPEN_MENU):
         return DisplayMode.EXPLORING
 
     if ui_state.crafting_view == CraftingView.SPELLBOOK:
@@ -395,14 +397,16 @@ def available_spells() -> list[SpellType]:
 
 
 def enter_targeting_for_slot(slot: int) -> DisplayMode:
-    """Open targeting for the spell in `slot` of the available list, skipping the picker.
+    """Ready the spell in `slot` of the available list, skipping the picker.
 
-    Replaces any reticle already up (so quick-cast works mid-aim too); a no-op that
-    leaves the mode unchanged when the slot is empty or there is no caster.
+    Self-cast spells (target: self, e.g. heals/buffs) resolve on the caster immediately,
+    with no targeting step. Otherwise the reticle locks onto the nearest visible enemy
+    (replacing any reticle already up, so quick-cast works mid-aim), or no-ops with a
+    message when none are in view. Returns the current mode when the slot is empty.
     """
     spells = available_spells()
-    player_pos = get_player_component(Position)
-    if slot >= len(spells) or player_pos is None:
+    player = get_player()
+    if slot >= len(spells) or player is None:
         return get_singleton(GameState).display_mode
 
     stype = spells[slot]
@@ -410,18 +414,53 @@ def enter_targeting_for_slot(slot: int) -> DisplayMode:
     if s_conf is None:
         return get_singleton(GameState).display_mode
 
+    ui_state = get_singleton(UIState)
+    player_pos = esper.component_for_entity(player, Position)
     for ret_ent, _reticle in esper.get_component(TargetingReticle):
         esper.delete_entity(ret_ent)
-    get_singleton(UIState).active_targeting_spell_id = stype.value
-    esper.create_entity(
-        TargetingReticle(
-            x=player_pos.x,
-            y=player_pos.y,
-            range=s_conf.get('range', 0),
-            radius=s_conf.get('radius', 0),
-        )
-    )
+
+    # A self-cast spell resolves on the caster, no targeting step.
+    if s_conf['target'] == TargetMode.SELF:
+        ui_state.active_targeting_spell_id = None
+        cast_spell(spell_id=stype.value, target_x=player_pos.x, target_y=player_pos.y)
+        return DisplayMode.EXPLORING
+
+    reticle = TargetingReticle(x=player_pos.x, y=player_pos.y, radius=s_conf.get('radius', 0))
+    refresh_lock(reticle, player)
+    if reticle.target_ent is None:
+        get_singleton(MessageLog).add_simple_message('No visible targets.', color=UI_GRAY)
+        ui_state.active_targeting_spell_id = None
+        return DisplayMode.EXPLORING
+
+    ui_state.active_targeting_spell_id = stype.value
+    esper.create_entity(reticle)
     return DisplayMode.TARGETING
+
+
+def _step_target(targets: list[int], current: int | None, step: int) -> int | None:
+    """The next/previous target after `current`, wrapping; None when there are none."""
+    if not targets:
+        return None
+    if current not in targets:
+        return targets[0]
+    return targets[(targets.index(current) + step) % len(targets)]
+
+
+def _resolve_after_cast(ret_ent: int, ui_state: UIState) -> DisplayMode:
+    """Apply the post-cast preference: stay readied while charges remain, else back to the
+    picker (or out to the map)."""
+    spell_id = ui_state.active_targeting_spell_id
+    behavior = get_singleton(Settings).post_cast
+    spell_inv = get_player_component(SpellInventory)
+    remaining = spell_inv.spells.get(SpellType(spell_id), 0) if (spell_inv and spell_id) else 0
+    if behavior == PostCastBehavior.STAY and remaining > 0:
+        return DisplayMode.TARGETING
+
+    esper.delete_entity(ret_ent)
+    ui_state.active_targeting_spell_id = None
+    if behavior == PostCastBehavior.EXPLORE:
+        return DisplayMode.EXPLORING
+    return DisplayMode.CASTING
 
 
 def handle_casting_input(action: InputAction | None):
@@ -435,7 +474,7 @@ def handle_casting_input(action: InputAction | None):
     spells = available_spells()
     ui_state.casting_cursor = step_cursor(ui_state.casting_cursor, len(spells), action)
 
-    if action in (InputAction.CANCEL, InputAction.OPEN_CASTING):
+    if action in (InputAction.CANCEL, InputAction.OPEN_CASTING, InputAction.OPEN_MENU):
         return DisplayMode.EXPLORING
     if action == InputAction.CONFIRM and spells:
         return enter_targeting_for_slot(ui_state.casting_cursor)
@@ -444,69 +483,53 @@ def handle_casting_input(action: InputAction | None):
 
 
 def handle_targeting_input(action: InputAction | None):
-    ui_state = get_singleton(UIState)
+    """Lock onto visible enemies while staying mobile: the arrows walk the caster, Tab
+    cycles to the next target, Confirm casts at the locked one (the reticle follows it as
+    everyone moves), and cancel backs out to the picker."""
     reticles = esper.get_component(TargetingReticle)
     if not reticles:
         return DisplayMode.EXPLORING
-
     ret_ent, reticle = reticles[0]
+    ui_state = get_singleton(UIState)
 
-    player_pos = get_player_component(Position)
-    if player_pos is None:
+    player = get_player()
+    if player is None:
         return DisplayMode.EXPLORING
 
     # A quick-cast key swaps to that spell without leaving targeting.
     if action in QUICK_CAST_ACTIONS:
         return enter_targeting_for_slot(QUICK_CAST_ACTIONS.index(action))
 
-    # Cancel or the casting action both back out to the spell picker (the input
-    # that opened targeting also closes it).
-    if action in (InputAction.CANCEL, InputAction.OPEN_CASTING):
+    # Cancel, the casting action, or the menu key back out to the picker.
+    if action in (InputAction.CANCEL, InputAction.OPEN_CASTING, InputAction.OPEN_MENU):
         esper.delete_entity(ret_ent)
         ui_state.active_targeting_spell_id = None
         return DisplayMode.CASTING
 
+    refresh_lock(reticle, player)
+
+    if action == InputAction.CYCLE_TAB:
+        reticle.target_ent = _step_target(visible_enemies(player), reticle.target_ent, 1)
+        refresh_lock(reticle, player)
+        return DisplayMode.TARGETING
+
     dx, dy = move_delta(action)
     if dx != 0 or dy != 0:
-        new_x = reticle.x + dx
-        new_y = reticle.y + dy
+        # Walk the caster (same SLOW gating as exploring); the lock re-evaluates next tick.
+        if get_status(player, StatusType.SLOW) and esper.component_for_entity(player, Actor).cooldown > 0:
+            return DisplayMode.TARGETING
+        move_entity(player, dx, dy)
+        return DisplayMode.TARGETING
 
-        # Check for map bounds and walkability
-        maps = esper.get_component(Map)
-        if maps:
-            game_map = maps[0][1]
-            if not game_map.is_walkable(new_x, new_y):
-                return DisplayMode.TARGETING
-
-        # Clamp to range (squared compare avoids a per-move sqrt).
-        rdx = new_x - player_pos.x
-        rdy = new_y - player_pos.y
-        if rdx * rdx + rdy * rdy <= reticle.range**2:
-            reticle.x = new_x
-            reticle.y = new_y
-
-    elif action == InputAction.CONFIRM:
+    if action == InputAction.CONFIRM:
         spell_id = ui_state.active_targeting_spell_id
         if spell_id is None:
             esper.delete_entity(ret_ent)
             return DisplayMode.CASTING
-
+        if reticle.target_ent is None:
+            return DisplayMode.TARGETING  # nothing to hit; wait for one to wander in
         cast_spell(spell_id=spell_id, target_x=reticle.x, target_y=reticle.y)
-
-        # What happens next is the player's post-cast preference. STAY keeps the same
-        # spell readied for an immediate re-cast, but only while charges remain; when it
-        # runs dry we fall back to the picker so the player can pick another spell.
-        behavior = get_singleton(Settings).post_cast
-        spell_inv = get_player_component(SpellInventory)
-        remaining = spell_inv.spells.get(SpellType(spell_id), 0) if spell_inv else 0
-        if behavior == PostCastBehavior.STAY and remaining > 0:
-            return DisplayMode.TARGETING
-
-        esper.delete_entity(ret_ent)
-        ui_state.active_targeting_spell_id = None
-        if behavior == PostCastBehavior.EXPLORE:
-            return DisplayMode.EXPLORING
-        return DisplayMode.CASTING
+        return _resolve_after_cast(ret_ent, ui_state)
 
     return DisplayMode.TARGETING
 
@@ -520,7 +543,7 @@ def handle_shop_input(action: InputAction | None):
         return DisplayMode.EXPLORING
     offers = shopkeepers[0][1].offers
 
-    if action == InputAction.CANCEL:
+    if action in (InputAction.CANCEL, InputAction.OPEN_MENU):
         return DisplayMode.EXPLORING
     if not offers:
         return DisplayMode.SHOPPING

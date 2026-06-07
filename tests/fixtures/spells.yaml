@@ -2,7 +2,7 @@ spells:
   - id: test_bolt
     name: Test Bolt
     description: A test bolt that zaps and slows its target.
-    range: 8
+    target: enemy
     radius: 0
     effects:
       - type: damage
@@ -18,7 +18,7 @@ spells:
   - id: test_blast
     name: Test Blast
     description: A test blast that damages a small area.
-    range: 6
+    target: enemy
     radius: 1
     effects:
       - type: damage
@@ -30,7 +30,7 @@ spells:
     name: Test Rare
     description: A rare spell sold only at shops.
     rare: true
-    range: 6
+    target: enemy
     radius: 1
     effects:
       - type: damage
@@ -44,7 +44,7 @@ spells:
   - id: test_shove
     name: Test Shove
     description: A test spell that damages and knocks back its target.
-    range: 5
+    target: enemy
     radius: 0
     effects:
       - type: damage
@@ -57,7 +57,7 @@ spells:
   - id: test_soak
     name: Test Soak
     description: A test spell that leaves its target wet.
-    range: 6
+    target: enemy
     radius: 0
     effects:
       - type: wet
@@ -68,7 +68,7 @@ spells:
   - id: test_zap
     name: Test Zap
     description: A test spell that hits wet targets twice as hard.
-    range: 6
+    target: enemy
     radius: 0
     effects:
       - type: damage
@@ -82,7 +82,7 @@ spells:
   - id: test_quench
     name: Test Quench
     description: A test spell that wet targets shrug off.
-    range: 6
+    target: enemy
     radius: 0
     effects:
       - type: damage
@@ -92,4 +92,15 @@ spells:
         damage_mult: 0.5
     recipes:
       - ingredients: [reagent_b, reagent_c]
+        charges: 3
+  - id: test_heal
+    name: Test Heal
+    description: A self-cast heal.
+    target: self
+    radius: 0
+    effects:
+      - type: heal
+        power: 15
+    recipes:
+      - ingredients: [reagent_a, reagent_a, reagent_c]
         charges: 3

@@ -261,12 +261,13 @@ class Enemy:
 
 @dataclass
 class TargetingReticle:
-    """Component to track the position of a spell targeting reticle."""
+    """Tracks the spell targeting reticle: the tile it sits on (and shows the AoE radius
+    of) and `target_ent`, the locked-on enemy it follows."""
 
     x: int
     y: int
-    range: int
     radius: int
+    target_ent: int | None = None
 
 
 @dataclass

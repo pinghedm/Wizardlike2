@@ -2,29 +2,34 @@ import esper
 import pytest
 import tcod.event
 
-from src.components import SpellInventory, SpellType, Stats, StatusEffects, StatusType
+from src.components import FieldOfView, Point, SpellInventory, SpellType, Stats, StatusEffects, StatusType
 from src.states import DisplayMode
 from src.systems import cast_spell
 from tests.headless_runner import HeadlessRunner
 
 
+def _make_visible(runner: HeadlessRunner, *points: Point):
+    fov = esper.component_for_entity(runner.player, FieldOfView)
+    fov.visible_tiles = set(points)
+    fov.dirty = False
+
+
 def test_full_cast_cycle_applies_fixture_effects():
     runner = HeadlessRunner(use_random_map=False)
-    runner.give_spell('test_bolt', 1)  # range 8, radius 0, damage 12 + slow 40
+    runner.give_spell('test_bolt', 1)  # radius 0, damage 12 + slow 40
     px, py = runner.player_pos
     enemy = runner.spawn_enemy(px + 2, py)
+    _make_visible(runner, Point(px + 2, py))
 
     runner.simulate_key(tcod.event.KeySym.s)  # EXPLORING -> CASTING
     assert runner.display_mode == DisplayMode.CASTING
 
-    runner.simulate_key(tcod.event.KeySym.RETURN)  # select test_bolt -> TARGETING
+    runner.simulate_key(tcod.event.KeySym.RETURN)  # select test_bolt; locks the enemy -> TARGETING
     assert runner.display_mode == DisplayMode.TARGETING
 
-    runner.simulate_key(tcod.event.KeySym.RIGHT)  # walk reticle onto the enemy
-    runner.simulate_key(tcod.event.KeySym.RIGHT)
-    runner.simulate_key(tcod.event.KeySym.RETURN)  # cast
+    runner.simulate_key(tcod.event.KeySym.RETURN)  # cast at the locked enemy
 
-    # Casting returns to the spell picker so the player can chain casts.
+    # With the last charge spent, post-cast falls back to the spell picker.
     assert runner.display_mode == DisplayMode.CASTING
     assert esper.component_for_entity(runner.player, SpellInventory).spells[SpellType('test_bolt')] == 0
     assert esper.component_for_entity(enemy, Stats).hp == 30 - 12
@@ -37,9 +42,12 @@ def test_targeting_cancels_back_to_picker_without_casting(cancel_key):
     # discarding the reticle and leaving the charge unspent.
     runner = HeadlessRunner(use_random_map=False)
     runner.give_spell('test_bolt', 1)
+    px, py = runner.player_pos
+    runner.spawn_enemy(px + 1, py)
+    _make_visible(runner, Point(px + 1, py))
 
     runner.simulate_key(tcod.event.KeySym.s)  # EXPLORING -> CASTING
-    runner.simulate_key(tcod.event.KeySym.RETURN)  # -> TARGETING
+    runner.simulate_key(tcod.event.KeySym.RETURN)  # locks the enemy -> TARGETING
     assert runner.display_mode == DisplayMode.TARGETING
 
     runner.simulate_key(cancel_key)

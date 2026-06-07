@@ -21,8 +21,9 @@ DPAD_MOVES: dict[ControllerButton, InputAction] = {
     ControllerButton.DPAD_RIGHT: InputAction.MOVE_RIGHT,
 }
 
-# START is a fixed escape/back button; like movement, it is not rebindable.
-FIXED_BUTTONS: dict[ControllerButton, InputAction] = {ControllerButton.START: InputAction.CANCEL}
+# START is the fixed pause-menu button (B is cancel/back, and never opens the menu);
+# like movement, it is not rebindable.
+FIXED_BUTTONS: dict[ControllerButton, InputAction] = {ControllerButton.START: InputAction.OPEN_MENU}
 
 # Quick-cast is fixed (not rebindable), like movement, so it never enters the remap list.
 # Keyboard: number keys 1-9 map to spell slots 1-9.
@@ -45,13 +46,17 @@ QUICK_CAST_KEYS: dict[tcod.event.KeySym, InputAction] = dict(
 )
 
 # Controller: hold this shoulder as a modifier, then tap a face button for slots 1-4.
+# Buttons in slot order (counter-clockwise from A), so slot index -> button is positional.
 QUICK_CAST_MODIFIER = ControllerButton.LEFTSHOULDER
-QUICK_CAST_FACE: dict[ControllerButton, InputAction] = {
-    ControllerButton.A: InputAction.QUICK_CAST_1,
-    ControllerButton.B: InputAction.QUICK_CAST_2,
-    ControllerButton.X: InputAction.QUICK_CAST_3,
-    ControllerButton.Y: InputAction.QUICK_CAST_4,
-}
+QUICK_CAST_FACE_BUTTONS = (
+    ControllerButton.A,
+    ControllerButton.X,
+    ControllerButton.Y,
+    ControllerButton.B,
+)
+QUICK_CAST_FACE: dict[ControllerButton, InputAction] = dict(
+    zip(QUICK_CAST_FACE_BUTTONS, QUICK_CAST_ACTIONS, strict=False)
+)
 
 # How a movement action displaces the cursor / player on each axis.
 MOVE_DELTAS: dict[InputAction, tuple[int, int]] = {
@@ -279,9 +284,13 @@ class ControllerInput:
 
 
 def controller_binding_label(action: InputAction, keybindings: Keybindings) -> str:
-    """The controller control bound to an action, by enum name. Movement is fixed."""
+    """The controller control bound to an action, by enum name. Movement and the fixed
+    buttons (e.g. START) are not rebindable."""
     if action in MOVE_DELTAS:
         return 'D-Pad / Stick'
+    for button, fixed_action in FIXED_BUTTONS.items():
+        if fixed_action == action:
+            return button.name
     control = keybindings.controller.get(action)
     # `is not None`, not truthiness: ControllerButton.A == 0, so `if control` is falsy.
     return control.name if control is not None else '-'

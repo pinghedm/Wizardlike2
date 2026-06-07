@@ -2,7 +2,7 @@ from typing import TYPE_CHECKING, NotRequired, TypedDict
 
 if TYPE_CHECKING:
     from src.components.components import DamageModifier, Effect, LootDrop
-    from src.components.enums import ItemType
+    from src.components.enums import ItemType, TargetMode
 
 
 class RecipeConfig(TypedDict):
@@ -16,7 +16,7 @@ class SpellConfig(TypedDict):
     id: str
     name: str
     description: NotRequired[str]
-    range: int
+    target: TargetMode
     radius: int
     effects: list[Effect]
     modifiers: NotRequired[list[DamageModifier]]

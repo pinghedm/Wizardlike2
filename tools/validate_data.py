@@ -3,7 +3,7 @@ from pathlib import Path
 
 import yaml
 
-from src.components import EffectType, StatusType
+from src.components import EffectType, StatusType, TargetMode
 
 VALID_EFFECT_INFO = {
     EffectType.DAMAGE: ['power'],
@@ -28,7 +28,7 @@ ALLOWED_SPELL_FIELDS = {
     'id',
     'name',
     'description',
-    'range',
+    'target',
     'radius',
     'effects',
     'modifiers',
@@ -36,6 +36,8 @@ ALLOWED_SPELL_FIELDS = {
     'shop',
     'rare',
 }
+
+VALID_TARGETS = {t.value for t in TargetMode}
 
 ALLOWED_MODIFIER_FIELDS = {'vs_status', 'damage_mult'}
 
@@ -292,13 +294,19 @@ def validate_data() -> bool:
             if 'shop' in spell:
                 errors += validate_shop(spell['shop'], f'Spell "{sid}"')
 
-            for field in ['range', 'radius']:
-                if field not in spell:
-                    print(f'ERROR: Spell "{sid}" missing "{field}".')
-                    errors += 1
-                elif not isinstance(spell[field], int) or spell[field] < 0:
-                    print(f'ERROR: Spell "{sid}" {field} must be a non-negative integer.')
-                    errors += 1
+            if 'target' not in spell:
+                print(f'ERROR: Spell "{sid}" missing "target".')
+                errors += 1
+            elif spell['target'] not in VALID_TARGETS:
+                print(f'ERROR: Spell "{sid}" target must be one of {sorted(VALID_TARGETS)}.')
+                errors += 1
+
+            if 'radius' not in spell:
+                print(f'ERROR: Spell "{sid}" missing "radius".')
+                errors += 1
+            elif not isinstance(spell['radius'], int) or spell['radius'] < 0:
+                print(f'ERROR: Spell "{sid}" radius must be a non-negative integer.')
+                errors += 1
 
             errors += validate_effects(spell.get('effects', []), f'Spell "{sid}"')
 

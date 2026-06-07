@@ -3,7 +3,7 @@ import pytest
 import tcod.event
 from tcod.sdl.joystick import ControllerAxis, ControllerButton
 
-from src.components import InputAction, Keybindings, Point, Settings, UIState
+from src.components import FieldOfView, InputAction, Keybindings, Point, Settings, UIState
 from src.input_handlers import (
     TRIGGER_ENGAGE,
     ControllerInput,
@@ -64,9 +64,9 @@ def test_unbound_controller_button_resolves_to_nothing():
     assert resolve_action(_button(ControllerButton.GUIDE), _kb()) is None
 
 
-def test_start_button_resolves_to_cancel():
-    # START is a fixed escape button, resolved outside the rebindable bindings.
-    assert resolve_action(_button(ControllerButton.START), _kb()) == InputAction.CANCEL
+def test_start_button_resolves_to_open_menu():
+    # START is the fixed pause-menu button, resolved outside the rebindable bindings.
+    assert resolve_action(_button(ControllerButton.START), _kb()) == InputAction.OPEN_MENU
 
 
 def test_rebound_controller_button_resolves_to_its_action():
@@ -175,10 +175,11 @@ def test_releasing_a_trigger_stops_the_repeat():
 @pytest.mark.parametrize(
     ('button', 'action'),
     [
+        # Slots 1-4 map counter-clockwise from A: A, X, Y, B.
         (ControllerButton.A, InputAction.QUICK_CAST_1),
-        (ControllerButton.B, InputAction.QUICK_CAST_2),
-        (ControllerButton.X, InputAction.QUICK_CAST_3),
-        (ControllerButton.Y, InputAction.QUICK_CAST_4),
+        (ControllerButton.X, InputAction.QUICK_CAST_2),
+        (ControllerButton.Y, InputAction.QUICK_CAST_3),
+        (ControllerButton.B, InputAction.QUICK_CAST_4),
     ],
 )
 def test_held_modifier_turns_face_buttons_into_quick_cast(button, action):
@@ -218,15 +219,22 @@ def test_face_button_opens_crafting_from_exploring():
 def test_controller_quick_cast_enters_targeting_from_exploring():
     runner = HeadlessRunner(use_random_map=False)
     runner.give_spell('test_bolt', 2)
+    px, py = runner.player_pos
+    runner.spawn_enemy(px + 1, py)
+    fov = esper.component_for_entity(runner.player, FieldOfView)
+    fov.visible_tiles = {Point(px + 1, py)}
+    fov.dirty = False
+
     runner.simulate_controller_button(ControllerButton.LEFTSHOULDER)  # hold the modifier
     runner.simulate_controller_button(ControllerButton.A)  # slot 1
     assert runner.display_mode == DisplayMode.TARGETING
 
 
-def test_cancel_button_opens_the_menu_from_exploring():
+def test_b_button_does_not_open_the_menu_from_exploring():
+    # B is cancel/back only; on the map there's nothing to cancel, so it never pauses.
     runner = HeadlessRunner(use_random_map=False)
     runner.simulate_controller_button(ControllerButton.B)
-    assert runner.display_mode == DisplayMode.MENU
+    assert runner.display_mode == DisplayMode.EXPLORING
 
 
 def test_start_button_opens_the_menu_from_exploring():

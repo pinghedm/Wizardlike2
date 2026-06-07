@@ -134,7 +134,7 @@ def test_spellbook_view_shows_recipe_and_stats():
     assert 'TEST_BOLT' in text  # list entry (enum name)
     assert 'Test Bolt' in text  # detail header (display name)
     assert 'zaps and slows' in text  # description
-    assert 'Range 8' in text
+    assert 'Radius 0' in text
     assert 'Damage 12' in text
     assert 'REAGENT_A, REAGENT_B' in text  # recipe, comma-joined
 
@@ -182,12 +182,12 @@ def test_combining_menu_highlights_cursor_row():
 
 def test_casting_menu_lists_spell_with_metadata():
     runner = HeadlessRunner(use_random_map=False)
-    runner.give_spell('test_bolt', 2)  # fixtures: range 8, radius 0
+    runner.give_spell('test_bolt', 2)  # fixtures: radius 0
     runner.game_state.display_mode = DisplayMode.CASTING
 
     text = _full_text(runner)
     assert 'TEST_BOLT: 2 charges' in text
-    assert '(Range: 8, Radius: 0)' in text
+    assert '(Radius: 0)' in text
 
 
 def test_casting_menu_windows_long_list_without_overflow():
@@ -354,20 +354,18 @@ def test_modal_renders_message_and_prompt():
 # --- TargetingOverlaySystem -------------------------------------------------
 
 
-def test_targeting_overlay_draws_reticle_and_zones():
+def test_targeting_overlay_draws_reticle_and_aoe():
     runner = HeadlessRunner(use_random_map=False)
     runner.game_state.display_mode = DisplayMode.TARGETING
     px, py = runner.player_pos
     rx, ry = px + 2, py
-    esper.create_entity(TargetingReticle(x=rx, y=ry, range=8, radius=1))
+    esper.create_entity(TargetingReticle(x=rx, y=ry, radius=1))
 
     rows = runner.get_console_text()
     assert rows[ry][rx] == 'X'
     assert runner.get_console_fg(rx, ry) == UI_YELLOW
     # Cell adjacent to the reticle is inside the AOE radius -> dark red bg.
     assert runner.get_console_bg(rx, ry + 1) == (100, 0, 0)
-    # A cell within cast range but outside the radius -> dark blue bg.
-    assert runner.get_console_bg(px + 5, py) == (0, 0, 50)
 
 
 def test_targeting_overlay_absent_without_reticle():

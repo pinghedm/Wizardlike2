@@ -2,7 +2,7 @@ spells:
   - id: fireball
     name: Fireball
     description: A roaring ball of flame that bursts on impact.
-    range: 6
+    target: enemy
     radius: 1
     effects:
       - type: damage
@@ -23,7 +23,7 @@ spells:
   - id: ice_lance
     name: Ice Lance
     description: A spear of ice that pierces and chills its target.
-    range: 8
+    target: enemy
     radius: 0
     effects:
       - type: damage
@@ -36,7 +36,7 @@ spells:
   - id: rejuvenation
     name: Rejuvenation
     description: Mends your wounds with a surge of restorative magic.
-    range: 0
+    target: self
     radius: 0
     effects:
       - type: heal
@@ -50,7 +50,7 @@ spells:
   - id: steam_blast
     name: Steam Blast
     description: A scalding burst of steam that scorches a small area.
-    range: 4
+    target: enemy
     radius: 1
     effects:
       - type: damage
@@ -63,7 +63,7 @@ spells:
   - id: blight
     name: Blight
     description: A toxic hex that festers, poisoning the target over time.
-    range: 8
+    target: enemy
     radius: 0
     effects:
       - type: damage
@@ -77,7 +77,7 @@ spells:
   - id: renewal
     name: Renewal
     description: A lingering blessing that regenerates your health.
-    range: 0
+    target: self
     radius: 0
     effects:
       - type: regen
@@ -89,7 +89,7 @@ spells:
   - id: quicken
     name: Quicken
     description: Hastens your movements, letting you act more often.
-    range: 0
+    target: self
     radius: 0
     effects:
       - type: haste
@@ -100,8 +100,8 @@ spells:
   - id: meteor
     name: Meteor
     description: Calls down a devastating meteor, scorching a wide area.
+    target: enemy
     rare: true
-    range: 7
     radius: 2
     effects:
       - type: damage
@@ -115,7 +115,7 @@ spells:
   - id: concussion
     name: Concussion
     description: A close blast that batters the target and hurls it backward.
-    range: 4
+    target: enemy
     radius: 0
     effects:
       - type: damage
@@ -128,7 +128,7 @@ spells:
   - id: cryo_lock
     name: Cryo-Lock
     description: Flash-freezes a foe, locking it in place for a few moments.
-    range: 7
+    target: enemy
     radius: 0
     effects:
       - type: damage
@@ -141,7 +141,7 @@ spells:
   - id: aegis
     name: Aegis
     description: Wraps you in a ward that blunts incoming blows.
-    range: 0
+    target: self
     radius: 0
     effects:
       - type: shield
@@ -153,7 +153,7 @@ spells:
   - id: siphon
     name: Siphon
     description: Leeches an enemy's vitality, healing you for part of the harm.
-    range: 7
+    target: enemy
     radius: 0
     effects:
       - type: drain
@@ -165,7 +165,7 @@ spells:
   - id: douse
     name: Douse
     description: A bracing splash that leaves the target soaked.
-    range: 6
+    target: enemy
     radius: 1
     effects:
       - type: damage
@@ -178,7 +178,7 @@ spells:
   - id: lightning_bolt
     name: Lightning Bolt
     description: A searing bolt that overloads soaked foes.
-    range: 8
+    target: enemy
     radius: 0
     effects:
       - type: damage

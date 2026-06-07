@@ -38,6 +38,13 @@ class ShopOfferKind(enum.StrEnum):
     HEAL = 'heal'
 
 
+class TargetMode(enum.StrEnum):
+    """Who a spell is aimed at: the caster (self-cast, skips targeting) or an enemy."""
+
+    SELF = 'self'
+    ENEMY = 'enemy'
+
+
 if TYPE_CHECKING:
     # The real enums are built from YAML at runtime (below); these stubs exist only so
     # the type checker knows the members the code references by name.
@@ -67,8 +74,9 @@ class InputAction(enum.Enum):
     MOVE_RIGHT = enum.auto()
     OPEN_CRAFTING = enum.auto()
     OPEN_CASTING = enum.auto()
+    OPEN_MENU = enum.auto()  # open the pause menu (exploring); also backs out of a submenu
     CONFIRM = enum.auto()
-    CANCEL = enum.auto()
+    CANCEL = enum.auto()  # back out of a submenu; a no-op on the map (never opens the menu)
     CYCLE_TAB = enum.auto()
     SCROLL_UP = enum.auto()
     SCROLL_DOWN = enum.auto()
@@ -111,8 +119,8 @@ DEFAULT_KEYBOARD_BINDINGS: dict[InputAction, tcod.event.KeySym] = {
     InputAction.MOVE_RIGHT: tcod.event.KeySym.RIGHT,
     InputAction.OPEN_CRAFTING: tcod.event.KeySym.C,
     InputAction.OPEN_CASTING: tcod.event.KeySym.S,
+    InputAction.OPEN_MENU: tcod.event.KeySym.ESCAPE,
     InputAction.CONFIRM: tcod.event.KeySym.RETURN,
-    InputAction.CANCEL: tcod.event.KeySym.ESCAPE,
     InputAction.CYCLE_TAB: tcod.event.KeySym.TAB,
     InputAction.SCROLL_UP: tcod.event.KeySym.PAGEUP,
     InputAction.SCROLL_DOWN: tcod.event.KeySym.PAGEDOWN,

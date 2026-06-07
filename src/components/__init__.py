@@ -66,6 +66,7 @@ from src.components.enums import (
     ShopOfferKind,
     SpellType,
     StatusType,
+    TargetMode,
 )
 from src.components.utils import Message, MessageSegment
 
@@ -123,6 +124,7 @@ __all__ = [
     'Stats',
     'StatusEffects',
     'StatusType',
+    'TargetMode',
     'TargetingReticle',
     'TileConfig',
     'UIState',

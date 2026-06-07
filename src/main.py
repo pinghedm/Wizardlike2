@@ -58,6 +58,7 @@ from src.systems import (
     RenderSystem,
     StatusSystem,
 )
+from src.targeting import CycleTargetSystem
 from src.ui_systems import (
     EffectOverlaySystem,
     HUDSystem,
@@ -97,12 +98,14 @@ def init_game_world(asset_loader: AssetLoader):
 
 
 def add_logic_systems():
-    # Order matters: Death -> Action -> AI -> FOV
+    # Order matters: Death -> Action -> AI -> FOV -> CycleTarget (after FOV so it
+    # re-locks against fresh visibility and enemy positions).
     esper.add_processor(DeathSystem())
     esper.add_processor(ActionSystem())
     esper.add_processor(StatusSystem())
     esper.add_processor(AISystem())
     esper.add_processor(FOVSystem())
+    esper.add_processor(CycleTargetSystem())
 
 
 def add_render_systems(layout: Layout, asset_loader: AssetLoader):

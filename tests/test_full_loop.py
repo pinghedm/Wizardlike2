@@ -1,7 +1,7 @@
 import esper
 import tcod
 
-from src.components import Configuration, EffectType, SpellInventory, SpellType, Stats
+from src.components import Configuration, EffectType, FieldOfView, Point, SpellInventory, SpellType, Stats
 from src.states import DisplayMode
 from tests.headless_runner import HeadlessRunner
 
@@ -15,9 +15,12 @@ def test_full_gameplay_loop():
 
     # 2. Spawn enemy
     enemy_starting_hp = 20
-    enemy_ent = runner.spawn_enemy(
-        runner.player_pos.x + 1, runner.player_pos.y, {**runner.enemy_config(), 'hp': enemy_starting_hp}
-    )
+    ex, ey = runner.player_pos.x + 1, runner.player_pos.y
+    enemy_ent = runner.spawn_enemy(ex, ey, {**runner.enemy_config(), 'hp': enemy_starting_hp})
+    # Make the foe visible so targeting can lock onto it.
+    fov = esper.component_for_entity(runner.player, FieldOfView)
+    fov.visible_tiles = {Point(ex, ey)}
+    fov.dirty = False
 
     # 3. Enter Crafting Mode
     runner.simulate_key(tcod.event.KeySym.c)
@@ -40,13 +43,10 @@ def test_full_gameplay_loop():
     # 7. Cast
     runner.simulate_key(tcod.event.KeySym.s)
     assert runner.display_mode == DisplayMode.CASTING
-    runner.simulate_key(tcod.event.KeySym.RETURN)  # Confirm spell
+    runner.simulate_key(tcod.event.KeySym.RETURN)  # select the spell; locks onto the foe
     assert runner.display_mode == DisplayMode.TARGETING
 
-    # 8. Fire
-    # Currently, the UI system targets the player's position by default.
-    # Move the reticle to the enemy's position.
-    runner.simulate_key(tcod.event.KeySym.RIGHT)
+    # 8. Fire at the locked enemy.
     runner.simulate_key(tcod.event.KeySym.RETURN)  # Confirm targeting
     # Default post-cast behavior keeps the spell readied (charges remain) for a re-cast.
     assert runner.display_mode == DisplayMode.TARGETING

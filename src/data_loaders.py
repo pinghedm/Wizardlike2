@@ -22,6 +22,7 @@ from src.components import (
     RecipeConfig,
     SpellConfig,
     StatusType,
+    TargetMode,
     TileConfig,
 )
 from src.constants import DATA_DIR, FONT_FILE, FONT_TILE_PX
@@ -116,6 +117,7 @@ def load_spells_config(asset_loader: AssetLoader) -> list[SpellConfig]:
         for spell in data:
             spell['effects'] = _parse_effects(spell.get('effects', []))
             spell['modifiers'] = _parse_modifiers(spell.get('modifiers', []))
+            spell['target'] = TargetMode(spell['target'])
 
             processed_recipes: list[RecipeConfig] = []
             for r_data in spell['recipes']:

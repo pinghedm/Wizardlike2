@@ -26,7 +26,7 @@ from src.constants import (
     UI_YELLOW,
 )
 from src.ecs_helpers import get_singleton, try_get_singleton
-from src.input_handlers import connected_controller_name, controller_binding_label
+from src.input_handlers import QUICK_CAST_FACE_BUTTONS, connected_controller_name, controller_binding_label
 from src.layout import LayoutProcessor
 from src.states import (
     PAUSE_MENU_OPTIONS,
@@ -50,6 +50,16 @@ from src.ui_helpers import (
     scroll_window,
     wrap_message,
 )
+
+
+def _quick_cast_label(slot: int, has_controller: bool) -> str:
+    """The quick-cast prefix for a spell row: its number key, plus the controller face
+    button (when a pad is connected) for the first four slots; blank past slot 9."""
+    if slot >= 9:
+        return '   '
+    if has_controller and slot < len(QUICK_CAST_FACE_BUTTONS):
+        return f'{slot + 1}/{QUICK_CAST_FACE_BUTTONS[slot].name}) '
+    return f'{slot + 1}) '
 
 
 class MenuSystem(LayoutProcessor):
@@ -222,7 +232,7 @@ class MenuSystem(LayoutProcessor):
                 row += 1
         row += 1
 
-        self.console.print(dx, row, f'Range {s_conf.get("range", 0)}   Radius {s_conf.get("radius", 0)}', fg=UI_WHITE)
+        self.console.print(dx, row, f'Radius {s_conf.get("radius", 0)}', fg=UI_WHITE)
         row += 1
         self.console.print(dx, row, format_spell_effects(s_conf.get('effects', [])), fg=UI_WHITE)
         row += 2
@@ -254,7 +264,7 @@ class MenuSystem(LayoutProcessor):
             return
 
         width = 68
-        height = 15
+        height = 16  # one row of padding between the last (double-spaced) spell and the footer
         x, y = draw_centered_frame(self.console, width, height, title='Select Spell to Cast')
 
         available_spells = sorted(
@@ -270,6 +280,7 @@ class MenuSystem(LayoutProcessor):
                 fg=UI_RED,
             )
         else:
+            has_controller = connected_controller_name() is not None
             content_top = y + 2
             cursor = ui_state.casting_cursor % len(available_spells)
             visible = (height - 3) // 2  # spell rows are double-spaced above the footer
@@ -279,18 +290,12 @@ class MenuSystem(LayoutProcessor):
                 color = UI_YELLOW if i == cursor else UI_WHITE
                 charges = player_spell_inv.spells[stype]
 
-                # Metadata for range/radius
                 s_conf = get_spell_config(stype.value) or {}
-                info = f' (Range: {s_conf.get("range", 0)}, Radius: {s_conf.get("radius", 0)})'
+                info = f' (Radius: {s_conf.get("radius", 0)})'
 
-                # The first nine spells show their quick-cast key (1-9).
-                slot = f'{i + 1}) ' if i < 9 else '   '
-                self.console.print(
-                    x + 2,
-                    content_top + (row_i * 2),
-                    f'{"> " if i == cursor else "  "}{slot}{stype.name}: {charges} charges{info}',
-                    fg=color,
-                )
+                marker = '> ' if i == cursor else '  '
+                text = f'{marker}{_quick_cast_label(i, has_controller)}{stype.name}: {charges} charges{info}'
+                self.console.print(x + 2, content_top + (row_i * 2), text, fg=color)
             draw_scroll_indicators(
                 self.console,
                 x + width - 2,

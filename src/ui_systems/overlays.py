@@ -10,6 +10,7 @@ from src.components import (
     Position,
     Projectile,
     ScreenFlash,
+    SpellInventory,
     SpellType,
     TargetingReticle,
     UIState,
@@ -61,24 +62,26 @@ class TargetingOverlaySystem(LayoutProcessor):
         view = self.layout.map_viewport
         cam_x, cam_y = self.layout.camera_offset(player_pos.x, player_pos.y, game_map.width, game_map.height)
 
+        # Shade the spell's area-of-effect around the locked target.
         for screen_x, screen_y, map_x, map_y in _iter_viewport_cells(view, cam_x, cam_y):
-            dist_to_reticle_sq = (map_x - reticle.x) ** 2 + (map_y - reticle.y) ** 2
-            dist_to_player_sq = (map_x - player_pos.x) ** 2 + (map_y - player_pos.y) ** 2
-
-            if dist_to_reticle_sq <= reticle.radius**2:
+            if (map_x - reticle.x) ** 2 + (map_y - reticle.y) ** 2 <= reticle.radius**2:
                 self.console.rgb[screen_y, screen_x]['bg'] = UI_MAROON
-            elif dist_to_player_sq <= reticle.range**2:
-                self.console.rgb[screen_y, screen_x]['bg'] = UI_NAVY
 
         # Draw yellow reticle X at its on-screen position.
         screen_rx, screen_ry = self.layout.map_to_screen(map_x=reticle.x, map_y=reticle.y, cam_x=cam_x, cam_y=cam_y)
         if view.contains(screen_rx, screen_ry):
             self.console.print(screen_rx, screen_ry, 'X', fg=UI_YELLOW)
 
-        # Name the spell being aimed, anchored to the viewport's top-left.
+        # Name the spell being aimed, its remaining charges, and the controls.
         spell_id = get_singleton(UIState).active_targeting_spell_id
         if spell_id is not None:
-            self.console.print(view.x, view.y, f' Aiming: {SpellType(spell_id).name} ', fg=UI_YELLOW, bg=UI_NAVY)
+            spell_inv = get_player_component(SpellInventory)
+            charges = spell_inv.spells.get(SpellType(spell_id), 0) if spell_inv else 0
+            label = f' Aiming: {SpellType(spell_id).name} ({charges} charges)'
+            if reticle.target_ent is None:
+                label += ' (no target)'
+            self.console.print(view.x, view.y, f'{label} ', fg=UI_YELLOW, bg=UI_NAVY)
+            self.console.print(view.x, view.y + 1, ' Move: arrows  Tab: switch  Enter: cast ', fg=UI_YELLOW, bg=UI_NAVY)
 
 
 class EffectOverlaySystem(LayoutProcessor):
