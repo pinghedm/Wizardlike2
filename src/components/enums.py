@@ -1,6 +1,7 @@
 import enum
 from typing import TYPE_CHECKING
 
+import tcod.event
 from tcod.sdl.joystick import ControllerAxis, ControllerButton
 
 from src.constants import DATA_DIR
@@ -71,21 +72,58 @@ class InputAction(enum.Enum):
     CYCLE_TAB = enum.auto()
     SCROLL_UP = enum.auto()
     SCROLL_DOWN = enum.auto()
+    # Quick-cast a spell by its slot, skipping the picker (keyboard 1-9, controller LB + face).
+    QUICK_CAST_1 = enum.auto()
+    QUICK_CAST_2 = enum.auto()
+    QUICK_CAST_3 = enum.auto()
+    QUICK_CAST_4 = enum.auto()
+    QUICK_CAST_5 = enum.auto()
+    QUICK_CAST_6 = enum.auto()
+    QUICK_CAST_7 = enum.auto()
+    QUICK_CAST_8 = enum.auto()
+    QUICK_CAST_9 = enum.auto()
+
+
+# Quick-cast actions in slot order, so a slot index is QUICK_CAST_ACTIONS.index(action).
+QUICK_CAST_ACTIONS = (
+    InputAction.QUICK_CAST_1,
+    InputAction.QUICK_CAST_2,
+    InputAction.QUICK_CAST_3,
+    InputAction.QUICK_CAST_4,
+    InputAction.QUICK_CAST_5,
+    InputAction.QUICK_CAST_6,
+    InputAction.QUICK_CAST_7,
+    InputAction.QUICK_CAST_8,
+    InputAction.QUICK_CAST_9,
+)
 
 
 # A controller binding is the SDL button or trigger axis driving an action.
 type ControllerBinding = ControllerButton | ControllerAxis
 
 
-def default_controller_bindings() -> dict[InputAction, ControllerBinding]:
-    """Default gamepad bindings for the rebindable actions. Movement is omitted:
-    it is fixed to the d-pad and left stick."""
-    return {
-        InputAction.CONFIRM: ControllerButton.A,
-        InputAction.CANCEL: ControllerButton.B,
-        InputAction.OPEN_CASTING: ControllerButton.X,
-        InputAction.OPEN_CRAFTING: ControllerButton.Y,
-        InputAction.CYCLE_TAB: ControllerButton.RIGHTSHOULDER,
-        InputAction.SCROLL_UP: ControllerAxis.TRIGGERLEFT,
-        InputAction.SCROLL_DOWN: ControllerAxis.TRIGGERRIGHT,
-    }
+# Default bindings for the rebindable actions.
+# Movement is omitted from the controller map: it is fixed to the d-pad and left stick.
+DEFAULT_KEYBOARD_BINDINGS: dict[InputAction, tcod.event.KeySym] = {
+    InputAction.MOVE_UP: tcod.event.KeySym.UP,
+    InputAction.MOVE_DOWN: tcod.event.KeySym.DOWN,
+    InputAction.MOVE_LEFT: tcod.event.KeySym.LEFT,
+    InputAction.MOVE_RIGHT: tcod.event.KeySym.RIGHT,
+    InputAction.OPEN_CRAFTING: tcod.event.KeySym.C,
+    InputAction.OPEN_CASTING: tcod.event.KeySym.S,
+    InputAction.CONFIRM: tcod.event.KeySym.RETURN,
+    InputAction.CANCEL: tcod.event.KeySym.ESCAPE,
+    InputAction.CYCLE_TAB: tcod.event.KeySym.TAB,
+    InputAction.SCROLL_UP: tcod.event.KeySym.PAGEUP,
+    InputAction.SCROLL_DOWN: tcod.event.KeySym.PAGEDOWN,
+}
+
+DEFAULT_CONTROLLER_BINDINGS: dict[InputAction, ControllerBinding] = {
+    InputAction.CONFIRM: ControllerButton.A,
+    InputAction.CANCEL: ControllerButton.B,
+    InputAction.OPEN_CASTING: ControllerButton.X,
+    InputAction.OPEN_CRAFTING: ControllerButton.Y,
+    InputAction.CYCLE_TAB: ControllerButton.RIGHTSHOULDER,
+    InputAction.SCROLL_UP: ControllerAxis.TRIGGERLEFT,
+    InputAction.SCROLL_DOWN: ControllerAxis.TRIGGERRIGHT,
+}

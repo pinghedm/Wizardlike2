@@ -7,10 +7,10 @@ from src import persistence
 from src.components import (
     Inventory,
     ItemType,
-    Keybindings,
     KnownRecipes,
     Message,
     RunStats,
+    Settings,
     Shopkeeper,
     SpellInventory,
     SpellType,
@@ -253,7 +253,7 @@ class MenuSystem(LayoutProcessor):
         if not player_spell_inv:
             return
 
-        width = 50
+        width = 68
         height = 15
         x, y = draw_centered_frame(self.console, width, height, title='Select Spell to Cast')
 
@@ -283,10 +283,12 @@ class MenuSystem(LayoutProcessor):
                 s_conf = get_spell_config(stype.value) or {}
                 info = f' (Range: {s_conf.get("range", 0)}, Radius: {s_conf.get("radius", 0)})'
 
+                # The first nine spells show their quick-cast key (1-9).
+                slot = f'{i + 1}) ' if i < 9 else '   '
                 self.console.print(
                     x + 2,
                     content_top + (row_i * 2),
-                    f'{"> " if i == cursor else "  "}{stype.name}: {charges} charges{info}',
+                    f'{"> " if i == cursor else "  "}{slot}{stype.name}: {charges} charges{info}',
                     fg=color,
                 )
             draw_scroll_indicators(
@@ -303,7 +305,7 @@ class MenuSystem(LayoutProcessor):
         self.console.print(
             x + 2,
             y + height - 2,
-            'Arrows: Select | Enter: Target | S/Esc: Cancel',
+            'Arrows: Select | 1-9: Quick-cast | Enter: Target | S/Esc: Cancel',
             fg=UI_GRAY,
         )
 
@@ -359,33 +361,45 @@ class MenuSystem(LayoutProcessor):
 
     def render_settings_menu(self):
         ui_state = get_singleton(UIState)
-        keybindings = try_get_singleton(Keybindings)
-        if not keybindings:
+        settings = try_get_singleton(Settings)
+        if not settings:
             return
 
+        keybindings = settings.keybindings
         actions = list(keybindings.bindings.keys())
         controller_name = connected_controller_name()
         has_controller = controller_name is not None
 
         width = 70
-        height = len(actions) + (8 if has_controller else 6)
+        # +2 rows for the post-cast toggle and the blank line under it.
+        height = len(actions) + (10 if has_controller else 8)
         x, y = draw_centered_frame(self.console, width, height, title='Settings')
 
         self.console.print(x + 2, y + 1, f'Controller: {controller_name or "none detected"}', fg=UI_SKY)
         if has_controller:
             self.console.print(x + 2, y + 2, f'Last input: {ui_state.last_controller_input or "-"}', fg=UI_GRAY)
 
-        header_row = y + (4 if has_controller else 3)
+        # Row 0 of the selectable list: the post-cast behavior toggle.
+        toggle_row = y + (4 if has_controller else 3)
+        toggle_selected = ui_state.settings_cursor == 0
+        toggle_color = UI_YELLOW if toggle_selected else UI_WHITE
+        marker = '> ' if toggle_selected else '  '
+        self.console.print(x + self.SETTINGS_ACTION_COL, toggle_row, f'{marker}After casting', fg=toggle_color)
+        self.console.print(x + self.SETTINGS_KEY_COL, toggle_row, f'< {settings.post_cast.name} >', fg=toggle_color)
+
+        header_row = toggle_row + 2
         self.console.print(x + self.SETTINGS_ACTION_COL, header_row, 'Action', fg=UI_CYAN_DARK)
         self.console.print(x + self.SETTINGS_KEY_COL, header_row, 'Keyboard', fg=UI_CYAN_DARK)
         if has_controller:
             self.console.print(x + self.SETTINGS_CONTROLLER_COL, header_row, 'Controller', fg=UI_CYAN_DARK)
 
         for i, action in enumerate(actions):
-            color = UI_YELLOW if i == ui_state.settings_cursor else UI_WHITE
+            # Keybindings occupy cursor rows 1.. (row 0 is the toggle above).
+            selected = ui_state.settings_cursor == i + 1
+            color = UI_YELLOW if selected else UI_WHITE
             row = header_row + 1 + i
 
-            marker = '> ' if i == ui_state.settings_cursor else '  '
+            marker = '> ' if selected else '  '
             self.console.print(x + self.SETTINGS_ACTION_COL, row, f'{marker}{action.name}', fg=color)
 
             if ui_state.remapping_action == action:
@@ -401,7 +415,7 @@ class MenuSystem(LayoutProcessor):
             self.console.print(
                 x + 2, y + height - 3, 'Left stick: move    Triggers: scroll log    Start: back', fg=UI_GRAY_DARK
             )
-        self.console.print(x + 2, y + height - 2, 'Arrows: Select | Enter: Remap | Esc: Back', fg=UI_GRAY)
+        self.console.print(x + 2, y + height - 2, 'Arrows: Select | L/R: Change | Enter: Remap | Esc: Back', fg=UI_GRAY)
 
     def render_game_over(self):
         game_state = get_singleton(GameState)

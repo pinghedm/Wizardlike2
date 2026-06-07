@@ -1,12 +1,14 @@
-import esper
 import tcod
 import tcod.sdl.joystick
 from tcod.sdl.joystick import ControllerAxis, ControllerButton
 
+from src import persistence
 from src.components import (
+    QUICK_CAST_ACTIONS,
     ControllerBinding,
     InputAction,
     Keybindings,
+    Settings,
     UIState,
 )
 from src.ecs_helpers import get_singleton
@@ -21,6 +23,35 @@ DPAD_MOVES: dict[ControllerButton, InputAction] = {
 
 # START is a fixed escape/back button; like movement, it is not rebindable.
 FIXED_BUTTONS: dict[ControllerButton, InputAction] = {ControllerButton.START: InputAction.CANCEL}
+
+# Quick-cast is fixed (not rebindable), like movement, so it never enters the remap list.
+# Keyboard: number keys 1-9 map to spell slots 1-9.
+QUICK_CAST_KEYS: dict[tcod.event.KeySym, InputAction] = dict(
+    zip(
+        (
+            tcod.event.KeySym.N1,
+            tcod.event.KeySym.N2,
+            tcod.event.KeySym.N3,
+            tcod.event.KeySym.N4,
+            tcod.event.KeySym.N5,
+            tcod.event.KeySym.N6,
+            tcod.event.KeySym.N7,
+            tcod.event.KeySym.N8,
+            tcod.event.KeySym.N9,
+        ),
+        QUICK_CAST_ACTIONS,
+        strict=True,
+    )
+)
+
+# Controller: hold this shoulder as a modifier, then tap a face button for slots 1-4.
+QUICK_CAST_MODIFIER = ControllerButton.LEFTSHOULDER
+QUICK_CAST_FACE: dict[ControllerButton, InputAction] = {
+    ControllerButton.A: InputAction.QUICK_CAST_1,
+    ControllerButton.B: InputAction.QUICK_CAST_2,
+    ControllerButton.X: InputAction.QUICK_CAST_3,
+    ControllerButton.Y: InputAction.QUICK_CAST_4,
+}
 
 # How a movement action displaces the cursor / player on each axis.
 MOVE_DELTAS: dict[InputAction, tuple[int, int]] = {
@@ -61,16 +92,17 @@ def action_for_control(control: ControllerBinding, keybindings: Keybindings) -> 
 def resolve_action(event: tcod.event.Event, keybindings: Keybindings) -> InputAction | None:
     """Map a raw keyboard / controller-button event to its action, or None.
 
-    Keyboard presses resolve through the (remappable) keymap, controller buttons
-    through the (remappable) controller bindings. The d-pad and triggers resolve
-    to nothing here: movement is fixed and triggers arrive as axes, so both are
-    handled by ControllerInput (which lets them repeat).
+    Keyboard presses resolve through the (remappable) keymap, then the fixed
+    quick-cast number keys; controller buttons through the (remappable) controller
+    bindings. The d-pad and triggers resolve to nothing here: movement is fixed and
+    triggers arrive as axes, so both are handled by ControllerInput (which lets them
+    repeat). The controller quick-cast modifier is also handled there (it is stateful).
     """
     if isinstance(event, tcod.event.KeyDown):
         for action, sym in keybindings.bindings.items():
             if sym == event.sym:
                 return action
-        return None
+        return QUICK_CAST_KEYS.get(event.sym)
     if isinstance(event, tcod.event.ControllerButton):
         if not event.pressed or event.button in DPAD_MOVES:
             return None
@@ -92,16 +124,20 @@ def try_capture_remap(event: tcod.event.Event) -> bool:
     action = ui_state.remapping_action
     if action is None:
         return False
-    keybindings = esper.get_component(Keybindings)[0][1]
+    keybindings = get_singleton(Settings).keybindings
     if isinstance(event, tcod.event.KeyDown):
         keybindings.bindings[action] = event.sym
         ui_state.remapping_action = None
+        persistence.save_meta()
         return True
     if isinstance(event, tcod.event.ControllerButton) and event.pressed:
-        if action in MOVE_DELTAS or event.button in DPAD_MOVES or event.button in FIXED_BUTTONS:
+        # The d-pad, START, and the quick-cast modifier are fixed; they can't be bound.
+        reserved = event.button in DPAD_MOVES or event.button in FIXED_BUTTONS or event.button == QUICK_CAST_MODIFIER
+        if action in MOVE_DELTAS or reserved:
             return False
         keybindings.controller[action] = event.button
         ui_state.remapping_action = None
+        persistence.save_meta()
         return True
     return False
 
@@ -117,8 +153,9 @@ def try_capture_remap_axis(event: tcod.event.ControllerAxis) -> bool:
         return False
     if event.axis not in (ControllerAxis.TRIGGERLEFT, ControllerAxis.TRIGGERRIGHT) or event.value < TRIGGER_ENGAGE:
         return False
-    esper.get_component(Keybindings)[0][1].controller[action] = event.axis
+    get_singleton(Settings).keybindings.controller[action] = event.axis
     ui_state.remapping_action = None
+    persistence.save_meta()
     return True
 
 
@@ -144,6 +181,7 @@ class ControllerInput:
         self.repeat_action: InputAction | None = None
         self.repeat_source: object = None  # 'move', or the ControllerAxis driving a repeat
         self.next_repeat = 0.0
+        self.quick_cast_held = False  # the quick-cast shoulder modifier is down
 
     def on_button(self, button: ControllerButton, pressed: bool, now: float) -> InputAction | None:
         """Handle a d-pad button (movement). Other buttons are handled elsewhere."""
@@ -154,6 +192,22 @@ class ControllerInput:
         else:
             self.dpad.discard(button)
         return self._engage_movement(now)
+
+    def resolve_button(self, event: tcod.event.ControllerButton, keybindings: Keybindings) -> InputAction | None:
+        """Resolve a non-d-pad controller button, honoring the quick-cast shoulder modifier.
+
+        Holding the modifier turns the face buttons into quick-cast slots; otherwise the
+        button resolves normally (its bound action / a fixed button). The modifier is
+        stateful, which is why these buttons route through here rather than resolve_action.
+        """
+        if event.button == QUICK_CAST_MODIFIER:
+            self.quick_cast_held = event.pressed
+            return None
+        if not event.pressed:
+            return None
+        if self.quick_cast_held and event.button in QUICK_CAST_FACE:
+            return QUICK_CAST_FACE[event.button]
+        return resolve_action(event, keybindings)
 
     def on_axis(self, event: tcod.event.ControllerAxis, now: float, keybindings: Keybindings) -> InputAction | None:
         """Handle the left stick (movement) and the triggers (their bound action)."""

@@ -11,12 +11,14 @@ from src.components import (
     MessageLog,
     Point,
     Position,
+    Settings,
     SpellInventory,
     SpellType,
 )
 from src.constants import SCREEN_HEIGHT, SCREEN_WIDTH
 from src.data_loaders import AssetLoader, get_game_configs
-from src.input_handlers import DPAD_MOVES, ControllerInput
+from src.ecs_helpers import get_singleton
+from src.input_handlers import DPAD_MOVES, ControllerInput, note_controller_button, try_capture_remap
 from src.layout import Layout
 from src.main import add_logic_systems, dispatch_action, dispatch_input, init_game_world, update_pause_state
 from src.map_objects import Map, Tile
@@ -82,10 +84,10 @@ class HeadlessRunner:
         from src.entities import (
             create_configuration,
             create_game_state,
-            create_keybindings,
             create_message_log,
             create_player,
             create_run_stats,
+            create_settings,
             create_ui_state,
         )
 
@@ -95,7 +97,7 @@ class HeadlessRunner:
         create_message_log()
         create_configuration(configs)
         create_ui_state()
-        create_keybindings()
+        create_settings()
         create_run_stats()
 
         # 3. Create a basic floor tile
@@ -138,14 +140,18 @@ class HeadlessRunner:
         update_pause_state(game_state)
 
     def simulate_controller_button(self, button: ControllerButton, pressed: bool = True):
-        """Simulate a controller button event, routed as the game loop routes it:
-        the d-pad drives movement through the controller, other buttons dispatch."""
+        """Simulate a controller button event, routed as the game loop routes it: the
+        d-pad drives movement through the controller; other buttons resolve through it
+        too (honoring the quick-cast modifier), after the Settings remap-capture check."""
         game_state = esper.get_component(GameState)[0][1]
+        event = tcod.event.ControllerButton(which=0, button=button, pressed=pressed)
+        if pressed:
+            note_controller_button(button)
         if button in DPAD_MOVES:
             dispatch_action(self._controller.on_button(button, pressed, now=0.0), game_state)
-        else:
-            event = tcod.event.ControllerButton(which=0, button=button, pressed=pressed)
-            dispatch_input(event, game_state)
+        elif not (game_state.display_mode == DisplayMode.SETTINGS and try_capture_remap(event)):
+            keybindings = get_singleton(Settings).keybindings
+            dispatch_action(self._controller.resolve_button(event, keybindings), game_state)
         update_pause_state(game_state)
 
     @property
@@ -181,6 +187,11 @@ class HeadlessRunner:
         """Grant the player charges of a spell."""
         spell_inv = esper.component_for_entity(self.player, SpellInventory)
         spell_inv.spells[SpellType(spell_id)] = charges
+
+    def spell_charges(self, spell_id: str) -> int:
+        """The player's remaining charges of a spell (0 if none)."""
+        spell_inv = esper.component_for_entity(self.player, SpellInventory)
+        return spell_inv.spells.get(SpellType(spell_id), 0)
 
     def give_item(self, item_id: str, count: int):
         """Add ingredient items to the player's inventory."""

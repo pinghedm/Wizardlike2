@@ -48,7 +48,8 @@ def test_full_gameplay_loop():
     # Move the reticle to the enemy's position.
     runner.simulate_key(tcod.event.KeySym.RIGHT)
     runner.simulate_key(tcod.event.KeySym.RETURN)  # Confirm targeting
-    assert runner.display_mode == DisplayMode.CASTING
+    # Default post-cast behavior keeps the spell readied (charges remain) for a re-cast.
+    assert runner.display_mode == DisplayMode.TARGETING
 
     # 9. Tick to process damage
     runner.tick(2)

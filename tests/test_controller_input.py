@@ -3,7 +3,7 @@ import pytest
 import tcod.event
 from tcod.sdl.joystick import ControllerAxis, ControllerButton
 
-from src.components import InputAction, Keybindings, Point, UIState
+from src.components import InputAction, Keybindings, Point, Settings, UIState
 from src.input_handlers import (
     TRIGGER_ENGAGE,
     ControllerInput,
@@ -84,6 +84,19 @@ def test_unbound_key_resolves_to_nothing():
     assert resolve_action(_key(tcod.event.KeySym.Z), kb) is None
 
 
+@pytest.mark.parametrize(
+    ('sym', 'action'),
+    [
+        (tcod.event.KeySym.N1, InputAction.QUICK_CAST_1),
+        (tcod.event.KeySym.N5, InputAction.QUICK_CAST_5),
+        (tcod.event.KeySym.N9, InputAction.QUICK_CAST_9),
+    ],
+)
+def test_number_key_resolves_to_quick_cast(sym, action):
+    # Quick-cast keys are fixed; they resolve even with an empty rebindable keymap.
+    assert resolve_action(_key(sym), _kb()) == action
+
+
 # --- ControllerInput: stick + triggers + d-pad, with repeat -----------------
 
 
@@ -156,6 +169,36 @@ def test_releasing_a_trigger_stops_the_repeat():
     assert c.tick(REPEAT * 3) is None
 
 
+# --- quick-cast: shoulder modifier + face buttons ---------------------------
+
+
+@pytest.mark.parametrize(
+    ('button', 'action'),
+    [
+        (ControllerButton.A, InputAction.QUICK_CAST_1),
+        (ControllerButton.B, InputAction.QUICK_CAST_2),
+        (ControllerButton.X, InputAction.QUICK_CAST_3),
+        (ControllerButton.Y, InputAction.QUICK_CAST_4),
+    ],
+)
+def test_held_modifier_turns_face_buttons_into_quick_cast(button, action):
+    c = ControllerInput()
+    assert c.resolve_button(_button(ControllerButton.LEFTSHOULDER), _kb()) is None  # modifier down
+    assert c.resolve_button(_button(button), _kb()) == action
+
+
+def test_face_button_without_modifier_resolves_normally():
+    c = ControllerInput()
+    assert c.resolve_button(_button(ControllerButton.A), _kb()) == InputAction.CONFIRM
+
+
+def test_releasing_the_modifier_restores_normal_face_buttons():
+    c = ControllerInput()
+    c.resolve_button(_button(ControllerButton.LEFTSHOULDER, pressed=True), _kb())
+    c.resolve_button(_button(ControllerButton.LEFTSHOULDER, pressed=False), _kb())
+    assert c.resolve_button(_button(ControllerButton.A), _kb()) == InputAction.CONFIRM
+
+
 # --- integration through the dispatch path ----------------------------------
 
 
@@ -170,6 +213,14 @@ def test_face_button_opens_crafting_from_exploring():
     runner = HeadlessRunner(use_random_map=False)
     runner.simulate_controller_button(ControllerButton.Y)
     assert runner.display_mode == DisplayMode.COMBINING
+
+
+def test_controller_quick_cast_enters_targeting_from_exploring():
+    runner = HeadlessRunner(use_random_map=False)
+    runner.give_spell('test_bolt', 2)
+    runner.simulate_controller_button(ControllerButton.LEFTSHOULDER)  # hold the modifier
+    runner.simulate_controller_button(ControllerButton.A)  # slot 1
+    assert runner.display_mode == DisplayMode.TARGETING
 
 
 def test_cancel_button_opens_the_menu_from_exploring():
@@ -198,10 +249,10 @@ def test_remapping_binds_a_pressed_controller_button():
     esper.get_component(UIState)[0][1].remapping_action = InputAction.CONFIRM
     runner.game_state.display_mode = DisplayMode.SETTINGS
 
-    runner.simulate_controller_button(ControllerButton.LEFTSHOULDER)
+    runner.simulate_controller_button(ControllerButton.LEFTSTICK)
 
-    keybindings = esper.get_component(Keybindings)[0][1]
-    assert keybindings.controller[InputAction.CONFIRM] == ControllerButton.LEFTSHOULDER
+    keybindings = esper.get_component(Settings)[0][1].keybindings
+    assert keybindings.controller[InputAction.CONFIRM] == ControllerButton.LEFTSTICK
     assert esper.get_component(UIState)[0][1].remapping_action is None
 
 
@@ -211,7 +262,7 @@ def test_remapping_binds_a_pulled_trigger():
 
     assert try_capture_remap_axis(_axis(ControllerAxis.TRIGGERRIGHT, TRIGGER_ENGAGE)) is True
 
-    keybindings = esper.get_component(Keybindings)[0][1]
+    keybindings = esper.get_component(Settings)[0][1].keybindings
     assert keybindings.controller[InputAction.OPEN_CASTING] == ControllerAxis.TRIGGERRIGHT
 
 
@@ -222,8 +273,20 @@ def test_start_is_not_rebindable():
 
     runner.simulate_controller_button(ControllerButton.START)  # fixed; can't be bound
 
-    keybindings = esper.get_component(Keybindings)[0][1]
+    keybindings = esper.get_component(Settings)[0][1].keybindings
     assert keybindings.controller[InputAction.CONFIRM] == ControllerButton.A
+
+
+def test_quick_cast_modifier_is_not_rebindable():
+    runner = HeadlessRunner(use_random_map=False)
+    esper.get_component(UIState)[0][1].remapping_action = InputAction.CONFIRM
+    runner.game_state.display_mode = DisplayMode.SETTINGS
+
+    runner.simulate_controller_button(ControllerButton.LEFTSHOULDER)  # reserved quick-cast modifier
+
+    keybindings = esper.get_component(Settings)[0][1].keybindings
+    assert keybindings.controller[InputAction.CONFIRM] == ControllerButton.A
+    assert esper.get_component(UIState)[0][1].remapping_action == InputAction.CONFIRM
 
 
 def test_movement_controller_binding_is_fixed():
@@ -231,8 +294,8 @@ def test_movement_controller_binding_is_fixed():
     esper.get_component(UIState)[0][1].remapping_action = InputAction.MOVE_UP
     runner.game_state.display_mode = DisplayMode.SETTINGS
 
-    runner.simulate_controller_button(ControllerButton.LEFTSHOULDER)  # not captured for movement
+    runner.simulate_controller_button(ControllerButton.LEFTSTICK)  # not captured for movement
 
-    keybindings = esper.get_component(Keybindings)[0][1]
+    keybindings = esper.get_component(Settings)[0][1].keybindings
     assert InputAction.MOVE_UP not in keybindings.controller
     assert esper.get_component(UIState)[0][1].remapping_action == InputAction.MOVE_UP

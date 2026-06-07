@@ -1,27 +1,25 @@
 import esper
-import tcod
 
 from src.components import (
     Actor,
     Configuration,
     FieldOfView,
     GameConfigs,
-    InputAction,
     Inventory,
     ItemType,
-    Keybindings,
     KnownRecipes,
     MessageLog,
     PlayerTag,
     Position,
     Renderable,
     RunStats,
+    Settings,
     SpellInventory,
     Stats,
     StatusEffects,
     UIState,
 )
-from src.persistence import MetaData
+from src.persistence import MetaData, load_meta
 from src.states import GameState
 
 
@@ -57,25 +55,18 @@ def create_run_stats():
     return esper.create_entity(RunStats())
 
 
-def create_keybindings():
-    """Create the singleton Keybindings entity."""
-    return esper.create_entity(
-        Keybindings(
-            bindings={
-                InputAction.MOVE_UP: tcod.event.KeySym.UP,
-                InputAction.MOVE_DOWN: tcod.event.KeySym.DOWN,
-                InputAction.MOVE_LEFT: tcod.event.KeySym.LEFT,
-                InputAction.MOVE_RIGHT: tcod.event.KeySym.RIGHT,
-                InputAction.OPEN_CRAFTING: tcod.event.KeySym.C,
-                InputAction.OPEN_CASTING: tcod.event.KeySym.S,
-                InputAction.CONFIRM: tcod.event.KeySym.RETURN,
-                InputAction.CANCEL: tcod.event.KeySym.ESCAPE,
-                InputAction.CYCLE_TAB: tcod.event.KeySym.TAB,
-                InputAction.SCROLL_UP: tcod.event.KeySym.PAGEUP,
-                InputAction.SCROLL_DOWN: tcod.event.KeySym.PAGEDOWN,
-            }
-        )
-    )
+def create_settings():
+    """Create the singleton Settings entity, seeded from saved cross-run preferences.
+
+    Any saved remaps layer over the default bindings, so an older meta file (missing a
+    newer action) still resolves every binding; post-cast falls back to its default.
+    """
+    settings = Settings()
+    meta = load_meta()
+    settings.keybindings.bindings.update(meta['keybindings'].bindings)
+    settings.keybindings.controller.update(meta['keybindings'].controller)
+    settings.post_cast = meta['post_cast']
+    return esper.create_entity(settings)
 
 
 def create_player(x: int, y: int, meta: MetaData | None = None):

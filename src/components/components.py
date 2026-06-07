@@ -7,6 +7,8 @@ import tcod
 
 from src.components.configs import EnemyConfig, IngredientConfig, SpellConfig, TileConfig
 from src.components.enums import (
+    DEFAULT_CONTROLLER_BINDINGS,
+    DEFAULT_KEYBOARD_BINDINGS,
     ControllerBinding,
     EffectType,
     InputAction,
@@ -14,10 +16,9 @@ from src.components.enums import (
     ShopOfferKind,
     SpellType,
     StatusType,
-    default_controller_bindings,
 )
 from src.components.utils import Message
-from src.states import CraftingView
+from src.states import CraftingView, PostCastBehavior
 
 
 class Point(NamedTuple):
@@ -128,14 +129,22 @@ class Configuration:
 
 @dataclass
 class Keybindings:
-    """Singleton component to hold gameplay keybindings."""
+    """Keyboard and controller input bindings (an attribute of the Settings singleton)."""
 
-    bindings: dict[InputAction, tcod.event.KeySym]
-    controller: dict[InputAction, ControllerBinding] = field(default_factory=default_controller_bindings)
+    bindings: dict[InputAction, tcod.event.KeySym] = field(default_factory=DEFAULT_KEYBOARD_BINDINGS.copy)
+    controller: dict[InputAction, ControllerBinding] = field(default_factory=DEFAULT_CONTROLLER_BINDINGS.copy)
 
     def __setstate__(self, state: dict[str, object]) -> None:
         self.__dict__.update(state)
-        self.__dict__.setdefault('controller', default_controller_bindings())
+        self.__dict__.setdefault('controller', DEFAULT_CONTROLLER_BINDINGS.copy())
+
+
+@dataclass
+class Settings:
+    """Singleton component for persistent player preferences (input bindings + behavior)."""
+
+    keybindings: Keybindings = field(default_factory=Keybindings)
+    post_cast: PostCastBehavior = PostCastBehavior.STAY
 
 
 @dataclass

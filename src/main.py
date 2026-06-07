@@ -6,7 +6,7 @@ import tcod
 import tcod.sdl.joystick
 
 from src import persistence
-from src.components import InputAction, Keybindings, MessageLog, Modal
+from src.components import InputAction, MessageLog, Modal, Settings
 from src.constants import (
     DISPLAY_SCALE,
     MAX_ITEMS_PER_ROOM,
@@ -23,10 +23,10 @@ from src.ecs_helpers import get_singleton, try_get_singleton
 from src.entities import (
     create_configuration,
     create_game_state,
-    create_keybindings,
     create_message_log,
     create_player,
     create_run_stats,
+    create_settings,
     create_ui_state,
 )
 from src.input_handlers import (
@@ -79,7 +79,7 @@ def init_game_world(asset_loader: AssetLoader):
     create_message_log()
     create_configuration(configs)
     create_ui_state()
-    create_keybindings()
+    create_settings()
     create_run_stats()
 
     # Generate Dungeon & Spawns
@@ -117,28 +117,30 @@ def add_render_systems(layout: Layout, asset_loader: AssetLoader):
 def init_main_menu():
     """Create the minimal state for the startup title screen.
 
-    GameState (in MENU mode), UIState, and Keybindings are needed; the title
-    screen has no player, map, or config. Keybindings let the menu resolve input
-    through the same action layer as the game. New Game / Continue build the full
-    world from here.
+    GameState (in MENU mode), UIState, and Settings are needed; the title screen has
+    no player, map, or config. Settings (which holds the keybindings) lets the menu
+    resolve input through the same action layer as the game, honoring any saved
+    remaps. New Game / Continue build the full world from here.
     """
     create_game_state()
     create_ui_state()
-    create_keybindings()
+    create_settings()
     get_singleton(GameState).display_mode = DisplayMode.MENU
 
 
+# Modes where game time keeps running: the live map (exploring) and aiming a spell
+# (targeting), so foes keep acting while the player lines up a shot.
+_REAL_TIME_MODES = (DisplayMode.EXPLORING, DisplayMode.TARGETING)
+
+
 def update_pause_state(game_state: GameState):
-    """Pause game time whenever not exploring or a modal is open."""
+    """Pause game time outside the real-time modes, or whenever a modal is open."""
     has_modal = bool(esper.get_component(Modal))
-    game_state.time_paused = (game_state.display_mode != DisplayMode.EXPLORING) or has_modal
+    game_state.time_paused = (game_state.display_mode not in _REAL_TIME_MODES) or has_modal
 
 
 def dispatch_input(event: tcod.event.Event, game_state: GameState):
-    keybindings = esper.get_component(Keybindings)[0][1]
-
-    if isinstance(event, tcod.event.ControllerButton) and event.pressed:
-        note_controller_button(event.button)
+    keybindings = get_singleton(Settings).keybindings
 
     # A pending key remap captures the next raw keypress, before it resolves to
     # whatever action it is currently bound to.
@@ -192,6 +194,9 @@ def apply_pending_transition(game_state: GameState, asset_loader: AssetLoader) -
         sys.exit()
     elif mode == DisplayMode.LOADING_SAVE:
         persistence.load_game()
+        # A save predating the Settings component carries none; seed one from meta.
+        if try_get_singleton(Settings) is None:
+            create_settings()
         get_singleton(GameState).display_mode = DisplayMode.EXPLORING
     elif mode == DisplayMode.STARTING_NEW_GAME:
         esper.clear_database()
@@ -297,13 +302,18 @@ def main():
                 if isinstance(event, tcod.event.ControllerAxis):
                     # Sticks/triggers resolve to a (possibly repeating) action here.
                     if not (game_state.display_mode == DisplayMode.SETTINGS and try_capture_remap_axis(event)):
-                        keybindings = esper.get_component(Keybindings)[0][1]
+                        keybindings = get_singleton(Settings).keybindings
                         dispatch_action(controller.on_axis(event, frame_start, keybindings), game_state)
-                elif isinstance(event, tcod.event.ControllerButton) and event.button in DPAD_MOVES:
-                    # The d-pad drives movement directly so it can hold-to-repeat.
+                elif isinstance(event, tcod.event.ControllerButton):
                     if event.pressed:
                         note_controller_button(event.button)
-                    dispatch_action(controller.on_button(event.button, event.pressed, frame_start), game_state)
+                    if event.button in DPAD_MOVES:
+                        # The d-pad drives movement directly so it can hold-to-repeat.
+                        dispatch_action(controller.on_button(event.button, event.pressed, frame_start), game_state)
+                    elif not (game_state.display_mode == DisplayMode.SETTINGS and try_capture_remap(event)):
+                        # resolve_button (not resolve_action) so the quick-cast modifier is honored.
+                        keybindings = get_singleton(Settings).keybindings
+                        dispatch_action(controller.resolve_button(event, keybindings), game_state)
                 else:
                     dispatch_input(event, game_state)
 

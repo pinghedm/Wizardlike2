@@ -37,6 +37,14 @@ class CraftingView(enum.StrEnum):
     SPELLBOOK = 'spellbook'  # browse known recipes and re-craft them
 
 
+class PostCastBehavior(enum.StrEnum):
+    """What the targeting screen does after a spell is cast (a user preference)."""
+
+    STAY = 'stay'  # keep aiming the same spell, so it can be fired again at once
+    RESELECT = 'reselect'  # back to the spell picker
+    EXPLORE = 'explore'  # back to the map
+
+
 class MenuOption(enum.StrEnum):
     NEW_GAME = 'New Game'
     CONTINUE = 'Continue'

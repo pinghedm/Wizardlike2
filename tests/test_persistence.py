@@ -1,23 +1,26 @@
 import esper
 import tcod.event
+from tcod.sdl.joystick import ControllerAxis, ControllerButton
 
 from src import persistence
 from src.components import (
     AI,
     ChaseTag,
     FieldOfView,
+    InputAction,
     Inventory,
     ItemType,
     KnownRecipes,
     PlayerTag,
     Position,
+    Settings,
     SpellInventory,
     SpellType,
     Stats,
 )
 from src.ecs_helpers import spawn_item_entity
 from src.map_objects import Map
-from src.states import GameState
+from src.states import GameState, PostCastBehavior
 from tests.headless_runner import HeadlessRunner
 
 
@@ -38,8 +41,31 @@ def test_meta_round_trips_grimoire_and_gold():
     assert loaded['gold'] == 17
 
 
+def test_meta_round_trips_settings():
+    HeadlessRunner(use_random_map=False)
+    settings = esper.get_component(Settings)[0][1]
+    settings.post_cast = PostCastBehavior.EXPLORE
+    settings.keybindings.bindings[InputAction.CONFIRM] = tcod.event.KeySym.SPACE
+    settings.keybindings.controller[InputAction.CONFIRM] = ControllerButton.Y
+
+    persistence.save_meta()
+    loaded = persistence.load_meta()['keybindings']
+
+    assert persistence.load_meta()['post_cast'] == PostCastBehavior.EXPLORE
+    assert loaded.bindings[InputAction.CONFIRM] == tcod.event.KeySym.SPACE
+    assert loaded.controller[InputAction.CONFIRM] == ControllerButton.Y
+    # An axis binding (the trigger scroll) survives the button/axis-tagged round trip.
+    assert loaded.controller[InputAction.SCROLL_UP] == ControllerAxis.TRIGGERLEFT
+
+
 def test_load_meta_defaults_when_file_absent():
-    assert persistence.load_meta() == {'recipes': {}, 'gold': 0}
+    meta = persistence.load_meta()
+    assert meta['recipes'] == {}
+    assert meta['gold'] == 0
+    assert meta['post_cast'] == PostCastBehavior.STAY
+    # No saved overrides: the empty maps layer over the in-code defaults at create time.
+    assert meta['keybindings'].bindings == {}
+    assert meta['keybindings'].controller == {}
 
 
 def test_gold_pickup_persists_to_meta():

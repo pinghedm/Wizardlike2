@@ -13,12 +13,16 @@ OPENABLE_MODES = [
 ]
 
 
+# Time keeps running on the live map and while aiming a spell; every other mode pauses it.
+REAL_TIME_MODES = {DisplayMode.EXPLORING, DisplayMode.TARGETING}
+
+
 @pytest.mark.parametrize('mode', list(DisplayMode))
-def test_only_exploring_leaves_time_unpaused(mode):
+def test_only_real_time_modes_leave_time_unpaused(mode):
     runner = HeadlessRunner(use_random_map=False)
     runner.game_state.display_mode = mode
     update_pause_state(runner.game_state)
-    assert runner.game_state.time_paused == (mode != DisplayMode.EXPLORING)
+    assert runner.game_state.time_paused == (mode not in REAL_TIME_MODES)
 
 
 @pytest.mark.parametrize('open_key, mode', OPENABLE_MODES)

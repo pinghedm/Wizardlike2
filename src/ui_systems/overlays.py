@@ -10,7 +10,9 @@ from src.components import (
     Position,
     Projectile,
     ScreenFlash,
+    SpellType,
     TargetingReticle,
+    UIState,
 )
 from src.constants import (
     UI_MAROON,
@@ -72,6 +74,11 @@ class TargetingOverlaySystem(LayoutProcessor):
         screen_rx, screen_ry = self.layout.map_to_screen(map_x=reticle.x, map_y=reticle.y, cam_x=cam_x, cam_y=cam_y)
         if view.contains(screen_rx, screen_ry):
             self.console.print(screen_rx, screen_ry, 'X', fg=UI_YELLOW)
+
+        # Name the spell being aimed, anchored to the viewport's top-left.
+        spell_id = get_singleton(UIState).active_targeting_spell_id
+        if spell_id is not None:
+            self.console.print(view.x, view.y, f' Aiming: {SpellType(spell_id).name} ', fg=UI_YELLOW, bg=UI_NAVY)
 
 
 class EffectOverlaySystem(LayoutProcessor):

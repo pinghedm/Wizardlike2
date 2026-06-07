@@ -4,12 +4,24 @@ import pickle
 from typing import TypedDict
 
 import esper
+import tcod.event
+from tcod.sdl.joystick import ControllerAxis, ControllerButton
 
-from src.components import Inventory, ItemType, KnownRecipes, SpellType
+from src.components import (
+    ControllerBinding,
+    InputAction,
+    Inventory,
+    ItemType,
+    Keybindings,
+    KnownRecipes,
+    Settings,
+    SpellType,
+)
 from src.constants import SAVE_DIR
 from src.ecs_helpers import try_get_singleton
+from src.states import PostCastBehavior
 
-# Cross-run progression (grimoire + gold), one file so it can grow more fields later.
+# Cross-run progression and preferences, one file so it can grow more fields later.
 META_FILE = os.path.join(SAVE_DIR, 'meta.json')
 SAVE_FILE = os.path.join(SAVE_DIR, 'savegame.sav')
 
@@ -18,10 +30,12 @@ Grimoire = dict[SpellType, set[tuple[ItemType, ...]]]
 
 
 class MetaData(TypedDict):
-    """Cross-run progression loaded from / saved to meta.json."""
+    """Cross-run progression and preferences loaded from / saved to meta.json."""
 
     recipes: Grimoire
     gold: int
+    keybindings: Keybindings
+    post_cast: PostCastBehavior
 
 
 def ensure_save_dir():
@@ -43,33 +57,82 @@ def _deserialize_recipes(serialized: dict[str, list[list[str]]]) -> Grimoire:
     }
 
 
+def _serialize_control(control: ControllerBinding) -> dict[str, str]:
+    # Tag the kind so a button and an axis with the same int value don't collide on load.
+    kind = 'axis' if isinstance(control, ControllerAxis) else 'button'
+    return {kind: control.name}
+
+
+def _deserialize_control(control: dict[str, str]) -> ControllerBinding:
+    if 'axis' in control:
+        return ControllerAxis[control['axis']]
+    return ControllerButton[control['button']]
+
+
+def _serialize_keybindings(keybindings: Keybindings) -> dict[str, dict[str, object]]:
+    return {
+        'bindings': {action.name: int(sym) for action, sym in keybindings.bindings.items()},
+        'controller': {action.name: _serialize_control(c) for action, c in keybindings.controller.items()},
+    }
+
+
+def _deserialize_keybindings(data: dict[str, dict[str, object]]) -> Keybindings:
+    return Keybindings(
+        bindings={InputAction[name]: tcod.event.KeySym(value) for name, value in data.get('bindings', {}).items()},
+        controller={InputAction[name]: _deserialize_control(c) for name, c in data.get('controller', {}).items()},
+    )
+
+
+def _read_meta_file() -> dict[str, object]:
+    """The raw meta.json dict, or {} when it is absent or corrupt."""
+    if not os.path.exists(META_FILE):
+        return {}
+    try:
+        with open(META_FILE) as f:
+            return json.load(f)
+    except json.JSONDecodeError, OSError, ValueError:
+        return {}
+
+
 def save_meta():
-    """Persist cross-run progression, gathered from the live world."""
+    """Persist cross-run progression and preferences, gathered from the live world.
+
+    Merges into the existing file and only writes a section whose source component is
+    present, so saving from a context that lacks one (e.g. the title screen has no
+    player) never clobbers the others.
+    """
     ensure_save_dir()
+    data = _read_meta_file()
     recipes = try_get_singleton(KnownRecipes)
     inventory = try_get_singleton(Inventory)
-    data = {
-        'grimoire': _serialize_recipes(recipes.recipes if recipes else {}),
-        'gold': inventory.items.get(ItemType.GOLD, 0) if inventory else 0,
-    }
+    settings = try_get_singleton(Settings)
+    if recipes is not None:
+        data['grimoire'] = _serialize_recipes(recipes.recipes)
+    if inventory is not None:
+        data['gold'] = inventory.items.get(ItemType.GOLD, 0)
+    if settings is not None:
+        data['settings'] = {
+            'post_cast': settings.post_cast.value,
+            'keybindings': _serialize_keybindings(settings.keybindings),
+        }
     with open(META_FILE, 'w') as f:
         json.dump(data, f, indent=2)
 
 
 def load_meta() -> MetaData:
-    """Load cross-run progression: {'recipes': ..., 'gold': ...}.
+    """Load cross-run progression and preferences, filling defaults for missing fields.
 
-    Falls back to an empty grimoire and zero gold when the file is absent or corrupt.
+    Always returns a complete record (empty grimoire, zero gold, empty saved bindings,
+    default post-cast) when the file is absent, corrupt, or predates a field.
     """
-    if not os.path.exists(META_FILE):
-        return {'recipes': {}, 'gold': 0}
-
-    try:
-        with open(META_FILE) as f:
-            data = json.load(f)
-        return {'recipes': _deserialize_recipes(data.get('grimoire', {})), 'gold': data.get('gold', 0)}
-    except json.JSONDecodeError, OSError, ValueError:
-        return {'recipes': {}, 'gold': 0}
+    data = _read_meta_file()
+    settings = data.get('settings', {})
+    return {
+        'recipes': _deserialize_recipes(data.get('grimoire', {})),
+        'gold': data.get('gold', 0),
+        'keybindings': _deserialize_keybindings(settings.get('keybindings', {})),
+        'post_cast': PostCastBehavior(settings.get('post_cast', PostCastBehavior.STAY.value)),
+    }
 
 
 def save_game():
