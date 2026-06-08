@@ -9,6 +9,7 @@ from src.components import (
     ItemType,
     KnownRecipes,
     MessageLog,
+    MetaSaveState,
     PlayerTag,
     Position,
     Renderable,
@@ -53,6 +54,11 @@ def create_ui_state():
 def create_run_stats():
     """Create the singleton RunStats entity for a fresh run."""
     return esper.create_entity(RunStats())
+
+
+def create_meta_save_state():
+    """Create the singleton MetaSaveState entity (clean: no pending cross-run changes)."""
+    return esper.create_entity(MetaSaveState())
 
 
 def create_settings():

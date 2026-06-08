@@ -5,12 +5,14 @@ import tcod
 import tcod.map
 from tcod import libtcodpy
 
+from src import persistence
 from src.components import (
     Actor,
     EffectType,
     FieldOfView,
     Loot,
     MessageLog,
+    MetaSaveState,
     Point,
     Position,
     Renderable,
@@ -90,6 +92,22 @@ class DeathSystem(esper.Processor):
         pos = esper.component_for_entity(ent, Position)
         itype, count = drop
         spawn_item_entity(itype, pos.x, pos.y, count)
+
+
+class MetaSaveSystem(esper.Processor):
+    """Persists deferred cross-run progression at a safe moment.
+
+    Gold pickups only mark MetaSaveState dirty (no disk write mid-step); this flushes
+    once whenever the game is paused — a menu, a modal, or the descend prompt — which
+    coalesces a floor's worth of pickups into a single write off the movement path.
+    """
+
+    def process(self):
+        if not get_singleton(GameState).time_paused:
+            return
+        state = try_get_singleton(MetaSaveState)
+        if state is not None and state.dirty:
+            persistence.save_meta()
 
 
 class ActionSystem(esper.Processor):

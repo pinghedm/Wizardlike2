@@ -11,6 +11,7 @@ from src.components import (
     Inventory,
     ItemType,
     KnownRecipes,
+    MetaSaveState,
     PlayerTag,
     Position,
     Settings,
@@ -18,9 +19,9 @@ from src.components import (
     SpellType,
     Stats,
 )
-from src.ecs_helpers import spawn_item_entity
+from src.ecs_helpers import get_singleton, spawn_item_entity
 from src.map_objects import Map
-from src.states import GameState, PostCastBehavior
+from src.states import DisplayMode, GameState, PostCastBehavior
 from tests.headless_runner import HeadlessRunner
 
 
@@ -68,14 +69,38 @@ def test_load_meta_defaults_when_file_absent():
     assert meta['keybindings'].controller == {}
 
 
-def test_gold_pickup_persists_to_meta():
+def test_gold_pickup_defers_meta_write_until_flush():
     runner = HeadlessRunner(use_random_map=False)
     px, py = runner.player_pos
     spawn_item_entity(ItemType('gold'), px + 1, py, count=5)
 
     runner.simulate_key(tcod.event.KeySym.RIGHT)
 
+    # The pickup only marks meta dirty; it must not touch the disk mid-step.
+    assert get_singleton(MetaSaveState).dirty is True
+    assert persistence.load_meta()['gold'] == 0
+
+    # flush_meta (the shutdown hook's job) then writes the pending gold and clears the flag.
+    persistence.flush_meta()
     assert persistence.load_meta()['gold'] == 5
+    assert get_singleton(MetaSaveState).dirty is False
+
+
+def test_meta_save_system_flushes_pending_gold_when_paused():
+    runner = HeadlessRunner(use_random_map=False)
+    px, py = runner.player_pos
+    spawn_item_entity(ItemType('gold'), px + 1, py, count=5)
+    runner.simulate_key(tcod.event.KeySym.RIGHT)
+
+    # While exploring (unpaused) the MetaSaveSystem leaves the pending write alone.
+    runner.tick()
+    assert persistence.load_meta()['gold'] == 0
+
+    # Pausing (a menu/modal) is the safe moment it writes the coalesced pickups.
+    runner.game_state.display_mode = DisplayMode.MENU
+    runner.tick()
+    assert persistence.load_meta()['gold'] == 5
+    assert get_singleton(MetaSaveState).dirty is False
 
 
 def test_world_serialization():

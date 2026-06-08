@@ -57,10 +57,10 @@ from src.systems import (
     cast_spell,
     craft_known_spell,
     deal_damage,
+    discover_and_craft,
     get_spell_config,
     is_game_active,
     is_reagent,
-    match_recipe,
     move_entity,
 )
 from src.targeting import refresh_lock, visible_enemies
@@ -139,57 +139,75 @@ def handle_exploring_input(action: InputAction | None):
         if get_status(player, StatusType.SLOW) and esper.component_for_entity(player, Actor).cooldown > 0:
             return DisplayMode.EXPLORING
 
-        # Bumping an enemy deals bump damage to the player (combat is decoupled from
-        # movement). move_entity then walks the player onto a non-blocking enemy, or
-        # is stopped by a blocking one.
-        target_x, target_y = player_pos.x + dx, player_pos.y + dy
-        for ent, (epos, enemy) in esper.get_components(Position, Enemy):
-            if epos.x == target_x and epos.y == target_y:
-                deal_damage(
-                    player,
-                    enemy.bump_damage,
-                    f'You bump into a {get_display_name(ent)} and take damage!',
-                    color=UI_RED,
-                )
-                break
-
+        _bump_adjacent_enemy(player, player_pos.x + dx, player_pos.y + dy)
         move_entity(player, dx, dy)
-        player_pos = esper.component_for_entity(player, Position)
-        player_inv = esper.component_for_entity(player, Inventory)
-        log = get_singleton(MessageLog)
+        _pick_up_items(player)
+        return _try_descend(game_state)
 
-        # Pickup Logic
+    return DisplayMode.EXPLORING
+
+
+def _bump_adjacent_enemy(player: int, target_x: int, target_y: int):
+    """Deal an enemy's bump damage to the player when its tile is the move target.
+
+    Combat is decoupled from movement: this only applies the bump hit. move_entity then
+    walks the player onto a non-blocking enemy, or is stopped by a blocking one.
+    """
+    for ent, (epos, enemy) in esper.get_components(Position, Enemy):
+        if epos.x == target_x and epos.y == target_y:
+            deal_damage(
+                player,
+                enemy.bump_damage,
+                f'You bump into a {get_display_name(ent)} and take damage!',
+                color=UI_RED,
+            )
+            return
+
+
+def _pick_up_items(player: int):
+    """Collect every item on the player's tile into their inventory, tallying run stats
+    and persisting gold the moment it is picked up."""
+    player_pos = esper.component_for_entity(player, Position)
+    player_inv = esper.component_for_entity(player, Inventory)
+    log = get_singleton(MessageLog)
+    run_stats = try_get_singleton(RunStats)
+    for ent, (pos, item) in esper.get_components(Position, Item):
+        if pos.x == player_pos.x and pos.y == player_pos.y:
+            player_inv.items[item.type] = player_inv.items.get(item.type, 0) + item.count
+            log.add_simple_message(f'Picked up {item.count} {item.type.name}!', color=UI_GRAY)
+            esper.delete_entity(ent)
+            if item.type == ItemType.GOLD:
+                if run_stats:
+                    run_stats.gold_collected += item.count
+                persistence.mark_meta_dirty()
+            elif run_stats:
+                run_stats.ingredients_collected[item.type] += item.count
+
+
+def _try_descend(game_state: GameState) -> DisplayMode:
+    """When the player stands on the exit, finish the run on the last floor (victory) or
+    open the descend modal. Returns the resulting mode (EXPLORING when not on an exit)."""
+    player = get_player()
+    maps = esper.get_component(Map)
+    if player is None or not maps:
+        return DisplayMode.EXPLORING
+    player_pos = esper.component_for_entity(player, Position)
+    if not maps[0][1].tiles[player_pos.x][player_pos.y].is_exit:
+        return DisplayMode.EXPLORING
+
+    if game_state.floor >= MAX_FLOORS:
+        get_singleton(MessageLog).add_simple_message('Level Complete!', color=UI_YELLOW)
         run_stats = try_get_singleton(RunStats)
-        for ent, (pos, item) in esper.get_components(Position, Item):
-            if pos.x == player_pos.x and pos.y == player_pos.y:
-                player_inv.items[item.type] = player_inv.items.get(item.type, 0) + item.count
-                log.add_simple_message(f'Picked up {item.count} {item.type.name}!', color=UI_GRAY)
-                esper.delete_entity(ent)
-                if item.type == ItemType.GOLD:
-                    if run_stats:
-                        run_stats.gold_collected += item.count
-                    persistence.save_meta()
-                elif run_stats:
-                    run_stats.ingredients_collected[item.type] += item.count
+        if run_stats:
+            run_stats.won = True
+        return DisplayMode.GAME_OVER
 
-        # Check for exit
-        maps = esper.get_component(Map)
-        if maps:
-            game_map = maps[0][1]
-            if game_map.tiles[player_pos.x][player_pos.y].is_exit:
-                if game_state.floor >= MAX_FLOORS:
-                    log.add_simple_message('Level Complete!', color=UI_YELLOW)
-                    if run_stats:
-                        run_stats.won = True
-                    return DisplayMode.GAME_OVER
-                else:
-                    esper.create_entity(
-                        Modal(
-                            message='You descend deeper into the dungeon... (Press Enter)',
-                            on_close=transition_to_next_floor,
-                        )
-                    )
-
+    esper.create_entity(
+        Modal(
+            message='You descend deeper into the dungeon... (Press Enter)',
+            on_close=transition_to_next_floor,
+        )
+    )
     return DisplayMode.EXPLORING
 
 
@@ -304,57 +322,38 @@ def _handle_experiment_input(action: InputAction | None, ui_state: UIState):
                 ui_state.selected_for_crafting[itype] -= 1
 
     elif action == InputAction.CONFIRM:
-        # Try Combining
-        flat_selection: list[ItemType] = []
-        for itype, count in ui_state.selected_for_crafting.items():
-            flat_selection.extend([itype] * count)
-        sorted_selection = tuple(sorted(flat_selection))
-
-        if not sorted_selection:
-            return DisplayMode.COMBINING
-
-        log = get_singleton(MessageLog)
-        result = match_recipe(sorted_selection)
-
-        if result is None:
-            log.add_simple_message('The combination fizzles...', color=UI_RED)
-            ui_state.selected_for_crafting = {}
-            return DisplayMode.COMBINING
-
-        stype, charges = result
-        player_recipes = esper.component_for_entity(player, KnownRecipes)
-        player_spell_inv = esper.component_for_entity(player, SpellInventory)
-
-        # Record the recipe discovery
-        if stype not in player_recipes.recipes:
-            player_recipes.recipes[stype] = set()
-            run_stats = try_get_singleton(RunStats)
-            if run_stats:
-                run_stats.spells_discovered += 1
-        player_recipes.recipes[stype].add(sorted_selection)
-
-        # PERSISTENT META-PROGRESSION: Save grimoire on discovery
-        persistence.save_meta()
-
-        # Grant charges
-        player_spell_inv.spells[stype] = player_spell_inv.spells.get(stype, 0) + charges
-
-        # Consume ingredients
-        for itype, count in ui_state.selected_for_crafting.items():
-            player_inv.items[itype] -= count
-
-        log.add_message(
-            [
-                ('SUCCESS: Crafted ', UI_WHITE),
-                (stype.name, UI_SKY),
-                (f'! (+{charges} charges)', UI_WHITE),
-            ]
-        )
-        # Clear selection on success
-        ui_state.selected_for_crafting = {}
-        return DisplayMode.EXPLORING
+        return _combine_selection(ui_state)
 
     return DisplayMode.COMBINING
+
+
+def _combine_selection(ui_state: UIState) -> DisplayMode:
+    """Combine the experiment's selected ingredients into a spell. Reports success or a
+    fizzle and clears the mix; returns EXPLORING on a successful craft, else COMBINING."""
+    flat_selection: list[ItemType] = []
+    for itype, count in ui_state.selected_for_crafting.items():
+        flat_selection.extend([itype] * count)
+    selection = tuple(sorted(flat_selection))
+    if not selection:
+        return DisplayMode.COMBINING
+
+    log = get_singleton(MessageLog)
+    result = discover_and_craft(selection)
+    ui_state.selected_for_crafting = {}
+
+    if result is None:
+        log.add_simple_message('The combination fizzles...', color=UI_RED)
+        return DisplayMode.COMBINING
+
+    stype, charges = result
+    log.add_message(
+        [
+            ('SUCCESS: Crafted ', UI_WHITE),
+            (stype.name, UI_SKY),
+            (f'! (+{charges} charges)', UI_WHITE),
+        ]
+    )
+    return DisplayMode.EXPLORING
 
 
 def _handle_spellbook_input(action: InputAction | None, ui_state: UIState):

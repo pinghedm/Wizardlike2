@@ -14,6 +14,7 @@ from src.components import (
     ItemType,
     Keybindings,
     KnownRecipes,
+    MetaSaveState,
     Settings,
     SpellType,
 )
@@ -64,6 +65,22 @@ class MetaData(TypedDict):
 def ensure_save_dir():
     if not os.path.exists(SAVE_DIR):
         os.makedirs(SAVE_DIR, exist_ok=True)
+
+
+def mark_meta_dirty():
+    """Flag cross-run progression as changed in-world (e.g. a gold pickup) so the
+    MetaSaveSystem persists it at the next paused moment, rather than writing now."""
+    state = try_get_singleton(MetaSaveState)
+    if state is not None:
+        state.dirty = True
+
+
+def flush_meta():
+    """Persist cross-run progression now if it has unsaved in-world changes. Used at exit,
+    where the per-frame MetaSaveSystem won't get another chance to flush."""
+    state = try_get_singleton(MetaSaveState)
+    if state is not None and state.dirty:
+        save_meta()
 
 
 def _serialize_recipes(recipes: Grimoire) -> dict[str, list[list[str]]]:
@@ -145,6 +162,12 @@ def save_meta():
         }
     with open(META_FILE, 'w') as f:
         json.dump(data, f, indent=2)
+
+    # Any pending in-world change is now on disk, whether this write was a deliberate
+    # commit (purchase, remap, discovery) or a MetaSaveSystem flush.
+    state = try_get_singleton(MetaSaveState)
+    if state is not None:
+        state.dirty = False
 
 
 def load_meta() -> MetaData:

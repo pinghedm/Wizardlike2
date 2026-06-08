@@ -1,3 +1,4 @@
+import atexit
 import sys
 import time
 
@@ -6,7 +7,7 @@ import tcod
 import tcod.sdl.joystick
 
 from src import persistence
-from src.components import InputAction, MessageLog, Modal, Settings
+from src.components import InputAction, MessageLog, MetaSaveState, Modal, Settings
 from src.constants import (
     DISPLAY_SCALE,
     MAX_ITEMS_PER_ROOM,
@@ -24,6 +25,7 @@ from src.entities import (
     create_configuration,
     create_game_state,
     create_message_log,
+    create_meta_save_state,
     create_player,
     create_run_stats,
     create_settings,
@@ -55,6 +57,7 @@ from src.systems import (
     AISystem,
     DeathSystem,
     FOVSystem,
+    MetaSaveSystem,
     RenderSystem,
     StatusSystem,
 )
@@ -82,6 +85,7 @@ def init_game_world(asset_loader: AssetLoader):
     create_ui_state()
     create_settings()
     create_run_stats()
+    create_meta_save_state()
 
     # Generate Dungeon & Spawns
     game_map, player_start = generate_dungeon(
@@ -106,6 +110,7 @@ def add_logic_systems():
     esper.add_processor(AISystem())
     esper.add_processor(FOVSystem())
     esper.add_processor(CycleTargetSystem())
+    esper.add_processor(MetaSaveSystem())
 
 
 def add_render_systems(layout: Layout, asset_loader: AssetLoader):
@@ -128,6 +133,7 @@ def init_main_menu():
     create_game_state()
     create_ui_state()
     create_settings()
+    create_meta_save_state()
     get_singleton(GameState).display_mode = DisplayMode.MENU
 
 
@@ -197,9 +203,12 @@ def apply_pending_transition(game_state: GameState, asset_loader: AssetLoader) -
         sys.exit()
     elif mode == DisplayMode.LOADING_SAVE:
         persistence.load_game()
-        # A save predating the Settings component carries none; seed one from meta.
+        # A save predating these singletons carries none; seed them so input still
+        # resolves and in-world gold changes still get flushed.
         if try_get_singleton(Settings) is None:
             create_settings()
+        if try_get_singleton(MetaSaveState) is None:
+            create_meta_save_state()
         get_singleton(GameState).display_mode = DisplayMode.EXPLORING
     elif mode == DisplayMode.STARTING_NEW_GAME:
         esper.clear_database()
@@ -217,6 +226,11 @@ def apply_pending_transition(game_state: GameState, asset_loader: AssetLoader) -
 
 
 def main():
+    # Persist any deferred cross-run progress on shutdown — covers every exit path
+    # (window close, menu Quit, an unhandled exit) that the per-frame MetaSaveSystem,
+    # which only flushes while paused, might not catch first.
+    atexit.register(persistence.flush_meta)
+
     # Asset Loader
     asset_loader = AssetLoader()
 

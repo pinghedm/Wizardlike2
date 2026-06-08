@@ -85,6 +85,7 @@ class HeadlessRunner:
             create_configuration,
             create_game_state,
             create_message_log,
+            create_meta_save_state,
             create_player,
             create_run_stats,
             create_settings,
@@ -99,6 +100,7 @@ class HeadlessRunner:
         create_ui_state()
         create_settings()
         create_run_stats()
+        create_meta_save_state()
 
         # 3. Create a basic floor tile
         floor_cfg = next(t for t in configs['tiles'] if t['type'] == 'floor')

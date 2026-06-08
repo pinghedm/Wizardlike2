@@ -148,6 +148,15 @@ class Settings:
 
 
 @dataclass
+class MetaSaveState:
+    """Singleton flag: cross-run progression (gold) changed in-world and is awaiting a
+    flush to disk. The MetaSaveSystem writes it at the next paused moment, coalescing a
+    burst of gold pickups into one write instead of touching disk on every step."""
+
+    dirty: bool = False
+
+
+@dataclass
 class UIState:
     """Component to store transient UI state like cursors and selections."""
 

@@ -3,6 +3,7 @@ from dataclasses import replace
 
 import esper
 
+from src import persistence
 from src.components import (
     Configuration,
     DamageModifier,
@@ -102,6 +103,37 @@ def craft_known_spell(stype: SpellType) -> int | None:
         inventory.items[itype] -= count
     spell_inv.spells[stype] = spell_inv.spells.get(stype, 0) + charges
     return charges
+
+
+def discover_and_craft(selection: tuple[ItemType, ...]) -> tuple[SpellType, int] | None:
+    """Combine a sorted ingredient selection: match it to a recipe and, on a hit, record the
+    discovery (persisting the grimoire), grant the spell's charges, and consume the
+    ingredients. Returns (spell, charges) on success, or None when nothing matches."""
+    result = match_recipe(selection)
+    if result is None:
+        return None
+    stype, charges = result
+
+    recipes = try_get_singleton(KnownRecipes)
+    spell_inv = try_get_singleton(SpellInventory)
+    inventory = try_get_singleton(Inventory)
+    if recipes is None or spell_inv is None or inventory is None:
+        return None
+
+    # A spell seen for the first time counts as a discovery; the recipe set then accrues
+    # every combination found for it.
+    if stype not in recipes.recipes:
+        recipes.recipes[stype] = set()
+        run_stats = try_get_singleton(RunStats)
+        if run_stats:
+            run_stats.spells_discovered += 1
+    recipes.recipes[stype].add(selection)
+    persistence.save_meta()
+
+    spell_inv.spells[stype] = spell_inv.spells.get(stype, 0) + charges
+    for itype, count in Counter(selection).items():
+        inventory.items[itype] -= count
+    return stype, charges
 
 
 def _apply_reaction_multiplier(target_ent: int, modifiers: list[DamageModifier], log: MessageLog) -> float:
