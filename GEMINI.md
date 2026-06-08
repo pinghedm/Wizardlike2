@@ -48,10 +48,17 @@ Run the headless playtest suite:
 ```
 Tests run against a real `esper.World` via `tests/headless_runner.py` (simulate input, tick systems, query state). They load their own data from `tests/fixtures/` rather than `data/` — `tests/conftest.py` sets `WIZARDLIKE_DATA_DIR=tests/fixtures` before import, so tests stay decoupled from shipped game content.
 
+### Type Checking
+Static type checking is done with `pyright` in **strict** mode (configured under `[tool.pyright]` in `pyproject.toml`, which scopes checking to `src/` against the venv interpreter, so run it plain):
+```bash
+./venv/bin/pyright
+```
+Keep `src/` at zero errors. When a third-party stub is inaccurate (e.g. `tcod` types `ControllerAxis` event fields as `int` though it delivers the enum), normalize the value at the boundary (`ControllerAxis(event.axis)`) rather than reaching for `# type: ignore`.
+
 ## Development Conventions
 
 - **Formatting & Linting:** Code must be formatted and linted with `ruff`.
-- **Type Safety:** Use Type Hints and `StrEnum` for ingredient/spell identifiers.
+- **Type Safety:** Use Type Hints and `StrEnum` for ingredient/spell identifiers. Code must pass `pyright` in strict mode (`./venv/bin/pyright`) with zero errors.
 - **Data Integrity:** All new items or recipes must be added to `data/ingredients.yaml` or `data/spells.yaml` and pass `python -m tools.validate_data`.
 - **Testing:** Tests must not assert against shipped `data/` values; build the recipe/spell/config under test in-fixtures (`tests/fixtures/`) or override it in-test, so balance changes don't break tests.
 - **Function Calls:** Use explicit keyword arguments for functions with many parameters (e.g., `generate_dungeon`).
@@ -65,6 +72,7 @@ Tests run against a real `esper.World` via `tests/headless_runner.py` (simulate 
 
 - **Data Integrity:** Always run `./venv/bin/python -m tools.validate_data` before committing changes to any YAML data files.
 - **Code Quality:** Run `./venv/bin/python -m ruff check --fix . && ./venv/bin/python -m ruff format .` to maintain formatting and linting compliance.
+- **Type Checking:** Run `./venv/bin/pyright` before committing; keep it at zero errors.
 - **Testing:** Run `./venv/bin/python -m pytest tests/` before committing logic changes.
 - **Verification:** Ensure the game runs and transitions through levels correctly after any changes to `procgen.py` or input logic.
 

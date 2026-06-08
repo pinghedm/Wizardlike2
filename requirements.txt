@@ -18,7 +18,7 @@ pycparser==3.0
     # via cffi
 pyyaml==6.0.3
     # via -r requirements.in
-tcod==21.2.0
+tcod==21.2.1
     # via -r requirements.in
 typing-extensions==4.15.0
     # via tcod

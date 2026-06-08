@@ -29,6 +29,29 @@ SAVE_FILE = os.path.join(SAVE_DIR, 'savegame.sav')
 Grimoire = dict[SpellType, set[tuple[ItemType, ...]]]
 
 
+# The JSON shapes written to / read from meta.json, before parsing into runtime types.
+# Loader-internal: app code sees only the parsed MetaData below.
+class _RawControl(TypedDict, total=False):
+    axis: str
+    button: str
+
+
+class _RawKeybindings(TypedDict, total=False):
+    bindings: dict[str, int]
+    controller: dict[str, _RawControl]
+
+
+class _RawSettings(TypedDict, total=False):
+    post_cast: str
+    keybindings: _RawKeybindings
+
+
+class _RawMeta(TypedDict, total=False):
+    grimoire: dict[str, list[list[str]]]
+    gold: int
+    settings: _RawSettings
+
+
 class MetaData(TypedDict):
     """Cross-run progression and preferences loaded from / saved to meta.json."""
 
@@ -57,33 +80,38 @@ def _deserialize_recipes(serialized: dict[str, list[list[str]]]) -> Grimoire:
     }
 
 
-def _serialize_control(control: ControllerBinding) -> dict[str, str]:
+def _serialize_control(control: ControllerBinding) -> _RawControl:
     # Tag the kind so a button and an axis with the same int value don't collide on load.
-    kind = 'axis' if isinstance(control, ControllerAxis) else 'button'
-    return {kind: control.name}
+    if isinstance(control, ControllerAxis):
+        return {'axis': control.name}
+    return {'button': control.name}
 
 
-def _deserialize_control(control: dict[str, str]) -> ControllerBinding:
-    if 'axis' in control:
-        return ControllerAxis[control['axis']]
-    return ControllerButton[control['button']]
+def _deserialize_control(control: _RawControl) -> ControllerBinding:
+    axis = control.get('axis')
+    if axis is not None:
+        return ControllerAxis[axis]
+    button = control.get('button')
+    if button is not None:
+        return ControllerButton[button]
+    raise ValueError(f'serialized control has neither axis nor button: {control!r}')
 
 
-def _serialize_keybindings(keybindings: Keybindings) -> dict[str, dict[str, object]]:
+def _serialize_keybindings(keybindings: Keybindings) -> _RawKeybindings:
     return {
         'bindings': {action.name: int(sym) for action, sym in keybindings.bindings.items()},
         'controller': {action.name: _serialize_control(c) for action, c in keybindings.controller.items()},
     }
 
 
-def _deserialize_keybindings(data: dict[str, dict[str, object]]) -> Keybindings:
+def _deserialize_keybindings(data: _RawKeybindings) -> Keybindings:
     return Keybindings(
         bindings={InputAction[name]: tcod.event.KeySym(value) for name, value in data.get('bindings', {}).items()},
         controller={InputAction[name]: _deserialize_control(c) for name, c in data.get('controller', {}).items()},
     )
 
 
-def _read_meta_file() -> dict[str, object]:
+def _read_meta_file() -> _RawMeta:
     """The raw meta.json dict, or {} when it is absent or corrupt."""
     if not os.path.exists(META_FILE):
         return {}
@@ -126,7 +154,7 @@ def load_meta() -> MetaData:
     default post-cast) when the file is absent, corrupt, or predates a field.
     """
     data = _read_meta_file()
-    settings = data.get('settings', {})
+    settings: _RawSettings = data.get('settings', {})
     return {
         'recipes': _deserialize_recipes(data.get('grimoire', {})),
         'gold': data.get('gold', 0),

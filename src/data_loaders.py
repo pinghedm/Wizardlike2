@@ -5,6 +5,7 @@ from functools import lru_cache
 from typing import NotRequired, TypedDict
 
 import numpy as np
+import numpy.typing as npt
 import tcod
 import yaml
 from PIL import Image
@@ -26,6 +27,7 @@ from src.components import (
     TileConfig,
 )
 from src.constants import DATA_DIR, FONT_FILE, FONT_TILE_PX
+from src.debug import debug_log
 
 
 class AssetType(Enum):
@@ -60,6 +62,50 @@ class SpriteDefinition:
     region: tuple[int, int, int, int] | None = None
     scale: float = 1.0
     codepoint: int | None = None
+
+
+def _fit_sprite_to_tile(tile_pixels: npt.NDArray[np.uint8], tw: int, th: int, scale: float) -> npt.NDArray[np.uint8]:
+    """Normalize a sprite's pixels to RGBA and center it, scaled by `scale`, in a fresh
+    (th, tw, 4) tile. A grayscale sprite becomes an opacity mask over white; an RGB sprite
+    derives its alpha from its brightest channel. A sprite larger than the tile is clipped
+    to the tile bounds."""
+    # Transparency / RGBA normalization.
+    if tile_pixels.ndim == 2:
+        h, w = tile_pixels.shape
+        rgba = np.zeros((h, w, 4), dtype=np.uint8)
+        rgba[..., :3] = 255
+        rgba[..., 3] = tile_pixels
+        tile_pixels = rgba
+    elif tile_pixels.ndim == 3 and tile_pixels.shape[2] == 3:
+        h, w, _ = tile_pixels.shape
+        rgba = np.zeros((h, w, 4), dtype=np.uint8)
+        rgba[..., :3] = 255
+        rgba[..., 3] = np.max(tile_pixels, axis=2)
+        tile_pixels = rgba
+
+    # Resize to `scale` of the tile via nearest-neighbor (skip if already that size).
+    target_w = int(tw * scale)
+    target_h = int(th * scale)
+    if (target_w, target_h) != (tile_pixels.shape[1], tile_pixels.shape[0]):
+        row_indices = np.linspace(0, tile_pixels.shape[0] - 1, target_h, dtype=np.intp)
+        col_indices = np.linspace(0, tile_pixels.shape[1] - 1, target_w, dtype=np.intp)
+        resized = tile_pixels[np.ix_(row_indices, col_indices)]
+    else:
+        resized = tile_pixels
+
+    # Center the sprite in the tile, clipping the source when scale > 1.0.
+    final_tile = np.zeros((th, tw, 4), dtype=np.uint8)
+    start_x = max(0, (tw - target_w) // 2)
+    start_y = max(0, (th - target_h) // 2)
+    copy_w = min(target_w, tw - start_x)
+    copy_h = min(target_h, th - start_y)
+    src_start_x = max(0, (target_w - tw) // 2) if target_w > tw else 0
+    src_start_y = max(0, (target_h - th) // 2) if target_h > th else 0
+    final_tile[start_y : start_y + copy_h, start_x : start_x + copy_w] = resized[
+        src_start_y : src_start_y + copy_h,
+        src_start_x : src_start_x + copy_w,
+    ]
+    return final_tile
 
 
 def load_ingredients_config(
@@ -250,7 +296,7 @@ class AssetLoader:
         current_codepoint = 0xE000
         asset_to_codepoint = {}
 
-        for _sprite_id, definition in self._mapping.items():
+        for sprite_id, definition in self._mapping.items():
             if definition.path is None:
                 continue
 
@@ -270,65 +316,23 @@ class AssetLoader:
 
                 full_image = self._cache[definition.path]
 
-                # 1. Slicing
                 if definition.region:
                     x, y, w, h = definition.region
                     tile_pixels = full_image[y : y + h, x : x + w]
                 else:
                     tile_pixels = full_image
 
-                # 2. Transparency/RGBA Normalization
-                if tile_pixels.ndim == 2:
-                    h, w = tile_pixels.shape
-                    rgba = np.zeros((h, w, 4), dtype=np.uint8)
-                    rgba[..., :3] = 255
-                    rgba[..., 3] = tile_pixels
-                    tile_pixels = rgba
-                elif tile_pixels.ndim == 3 and tile_pixels.shape[2] == 3:
-                    h, w, _ = tile_pixels.shape
-                    rgba = np.zeros((h, w, 4), dtype=np.uint8)
-                    rgba[..., :3] = 255
-                    rgba[..., 3] = np.max(tile_pixels, axis=2)
-                    tile_pixels = rgba
-
-                # 3. Scaling and Centering
-                # We want the sprite to be 'definition.scale' size relative to the target tile
-                final_tile = np.zeros((th, tw, 4), dtype=np.uint8)
-
-                target_w = int(tw * definition.scale)
-                target_h = int(th * definition.scale)
-
-                # Simple nearest-neighbor resize if needed
-                if (target_w, target_h) != (tile_pixels.shape[1], tile_pixels.shape[0]):
-                    # Calculate indices for nearest neighbor
-                    row_indices = (np.linspace(0, tile_pixels.shape[0] - 1, target_h)).astype(int)
-                    col_indices = (np.linspace(0, tile_pixels.shape[1] - 1, target_w)).astype(int)
-                    resized = tile_pixels[np.ix_(row_indices, col_indices)]
-                else:
-                    resized = tile_pixels
-
-                # Center the resized sprite in the final tile
-                # Clip to tile boundaries if scale > 1.0
-                start_x = max(0, (tw - target_w) // 2)
-                start_y = max(0, (th - target_h) // 2)
-
-                copy_w = min(target_w, tw - start_x)
-                copy_h = min(target_h, th - start_y)
-
-                # If scale > 1.0, we might need to clip the source 'resized' image
-                src_start_x = max(0, (target_w - tw) // 2) if target_w > tw else 0
-                src_start_y = max(0, (target_h - th) // 2) if target_h > th else 0
-
-                final_tile[start_y : start_y + copy_h, start_x : start_x + copy_w] = resized[
-                    src_start_y : src_start_y + copy_h,
-                    src_start_x : src_start_x + copy_w,
-                ]
+                final_tile = _fit_sprite_to_tile(tile_pixels, tw, th, definition.scale)
 
                 self.tileset[current_codepoint] = final_tile
                 definition.codepoint = current_codepoint
                 asset_to_codepoint[key] = current_codepoint
                 current_codepoint += 1
-            except Exception:
+            except Exception as exc:
+                # Fall back to the block glyph so one bad sprite doesn't abort the boot,
+                # but log which sprite failed and why (silent otherwise: it just renders
+                # as a solid block with no hint).
+                debug_log(f'build_tileset: sprite {sprite_id!r} ({definition.path}) failed: {exc!r}')
                 definition.codepoint = ord('\u2588')
                 asset_to_codepoint[key] = definition.codepoint
 

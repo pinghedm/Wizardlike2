@@ -22,6 +22,7 @@ indent-style = "space"
 line-ending = "lf"
 
 [tool.coverage.run]
+source = ["src"]
 omit = ["src/**/__init__.py"]
 
 [tool.pyright]

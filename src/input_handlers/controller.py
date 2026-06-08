@@ -250,23 +250,25 @@ class ControllerInput:
     def _engage_trigger(
         self, event: tcod.event.ControllerAxis, now: float, keybindings: Keybindings
     ) -> InputAction | None:
-        was_engaged = event.axis in self.engaged_triggers
+        # tcod types event.axis as int but delivers the enum; pin it to ControllerAxis.
+        axis = ControllerAxis(event.axis)
+        was_engaged = axis in self.engaged_triggers
         now_engaged = event.value >= (TRIGGER_RELEASE if was_engaged else TRIGGER_ENGAGE)
         if now_engaged == was_engaged:
             return None
         if not now_engaged:
-            self.engaged_triggers.discard(event.axis)
-            if self.repeat_source == event.axis:
+            self.engaged_triggers.discard(axis)
+            if self.repeat_source == axis:
                 self.repeat_action = None
                 self.repeat_source = None
             return None
-        self.engaged_triggers.add(event.axis)
-        action = action_for_control(event.axis, keybindings)
+        self.engaged_triggers.add(axis)
+        action = action_for_control(axis, keybindings)
         if action is None:
             return None
         if action in REPEATING_ACTIONS:
             self.repeat_action = action
-            self.repeat_source = event.axis
+            self.repeat_source = axis
             self.next_repeat = now + self.REPEAT_INTERVAL
         return action
 
@@ -301,30 +303,14 @@ def note_controller_button(button: ControllerButton) -> None:
     get_singleton(UIState).last_controller_input = button.name
 
 
-# tcod 21.2.0's get_controllers()/get_joysticks() pass 0-based indices to SDL3
-# APIs that expect instance IDs (which start at 1), so they never see a connected
-# pad (and get_joysticks even raises). These read the real instance-ID array and
-# query/open by ID instead. Remove once tcod fixes the upstream bug.
-def _gamepad_instance_ids() -> list[int]:
-    tcod.sdl.joystick.init()
-    lib, ffi = tcod.sdl.joystick.lib, tcod.sdl.joystick.ffi
-    count = ffi.new('int*')
-    ids = lib.SDL_GetJoysticks(count)
-    try:
-        return [ids[i] for i in range(count[0]) if lib.SDL_IsGamepad(ids[i])]
-    finally:
-        lib.SDL_free(ids)
-
-
 def connected_controllers() -> list[tcod.sdl.joystick.GameController]:
     """Open and return the connected game controllers. The caller must keep the
     list referenced so SDL holds the pads open and keeps delivering their events."""
-    return [tcod.sdl.joystick.GameController._open(jid) for jid in _gamepad_instance_ids()]
+    tcod.sdl.joystick.init()
+    return tcod.sdl.joystick.get_controllers()
 
 
 def connected_controller_name() -> str | None:
-    """Name of the first connected game controller, or None — without opening it."""
-    lib, ffi = tcod.sdl.joystick.lib, tcod.sdl.joystick.ffi
-    for jid in _gamepad_instance_ids():
-        return ffi.string(lib.SDL_GetJoystickNameForID(jid)).decode()
-    return None
+    """Name of the first connected game controller, or None."""
+    controllers = connected_controllers()
+    return controllers[0].joystick.name if controllers else None

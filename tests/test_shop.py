@@ -14,6 +14,7 @@ from src.components import (
     SpellInventory,
     SpellType,
     Stats,
+    UIState,
 )
 from src.procgen import generate_shop_floor, is_shop_floor, spawn_shopkeeper
 from src.shop import build_shop_offers, purchase_offer
@@ -214,3 +215,40 @@ def test_buying_through_the_shop_ui_spends_gold_for_stock():
 
     runner.simulate_key(tcod.event.KeySym.ESCAPE)
     assert runner.display_mode == DisplayMode.EXPLORING
+
+
+def test_quantity_adjusts_with_left_right_and_resets_when_the_cursor_moves():
+    runner = HeadlessRunner()
+    px, py = runner.player_pos
+    esper.component_for_entity(runner.player, Inventory).items[GOLD] = 100
+    esper.create_entity(
+        Position(px + 1, py),
+        Shopkeeper(offers=[_ingredient_offer(price=5), _ingredient_offer(price=10)]),
+    )
+    ui_state = esper.get_component(UIState)[0][1]
+
+    runner.simulate_key(tcod.event.KeySym.RETURN)  # open shop
+    runner.simulate_key(tcod.event.KeySym.RIGHT)  # quantity -> 2
+    runner.simulate_key(tcod.event.KeySym.RIGHT)  # quantity -> 3
+    assert ui_state.shop_quantity == 3
+
+    runner.simulate_key(tcod.event.KeySym.LEFT)  # quantity -> 2
+    assert ui_state.shop_quantity == 2
+
+    runner.simulate_key(tcod.event.KeySym.DOWN)  # move to the next offer
+    assert ui_state.shop_cursor == 1
+    assert ui_state.shop_quantity == 1  # quantity resets for the new selection
+
+
+def test_buying_without_enough_gold_logs_a_warning_and_keeps_the_shop_open():
+    runner = HeadlessRunner()
+    px, py = runner.player_pos
+    esper.component_for_entity(runner.player, Inventory).items[GOLD] = 3
+    esper.create_entity(Position(px + 1, py), Shopkeeper(offers=[_ingredient_offer(price=5)]))
+
+    runner.simulate_key(tcod.event.KeySym.RETURN)  # open shop
+    runner.simulate_key(tcod.event.KeySym.RETURN)  # try to buy (can't afford)
+
+    assert runner.display_mode == DisplayMode.SHOPPING
+    assert any('Not enough gold' in m for m in runner.get_log_messages())
+    assert ItemType('reagent_a') not in esper.component_for_entity(runner.player, Inventory).items

@@ -242,6 +242,42 @@ def test_cycle_relocks_when_target_leaves_but_others_remain():
     assert reticle.target_ent == other
 
 
+def test_quick_cast_while_aiming_swaps_to_the_other_spell():
+    runner = HeadlessRunner(use_random_map=False)
+    runner.give_spell(SPELL, 2)
+    runner.give_spell('test_blast', 2)
+    px, py = runner.player_pos
+    _guardian(runner, px + 1, py)
+    _freeze_fov(runner, Point(px + 1, py))
+
+    # Slots follow the name-sorted available-spells list, so derive them rather than assume.
+    order = sorted([SPELL, 'test_blast'])
+    other = 'test_blast'
+    runner.simulate_key(getattr(tcod.event.KeySym, f'N{order.index(SPELL) + 1}'))
+    assert _ui().active_targeting_spell_id == SPELL
+
+    runner.simulate_key(getattr(tcod.event.KeySym, f'N{order.index(other) + 1}'))  # swap, still aiming
+
+    assert runner.display_mode == DisplayMode.TARGETING
+    assert _ui().active_targeting_spell_id == other
+
+
+def test_confirm_with_no_locked_target_waits_in_targeting_without_spending():
+    runner = HeadlessRunner(use_random_map=False)
+    runner.give_spell(SPELL, 2)
+    px, py = runner.player_pos
+    _guardian(runner, px + 1, py)
+    _freeze_fov(runner, Point(px + 1, py))
+    runner.simulate_key(tcod.event.KeySym.N1)
+    # The enemy leaves view, so the next refresh finds nothing to lock onto.
+    _freeze_fov(runner)
+
+    runner.simulate_key(tcod.event.KeySym.RETURN)
+
+    assert runner.display_mode == DisplayMode.TARGETING
+    assert runner.spell_charges(SPELL) == 2  # no charge spent without a target
+
+
 def test_self_cast_spell_skips_targeting_and_heals_caster():
     # A target: self spell resolves on the caster with no targeting step.
     runner = HeadlessRunner(use_random_map=False)

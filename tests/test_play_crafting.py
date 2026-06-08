@@ -46,6 +46,37 @@ def test_combining_ingredients_creates_spell():
     assert esper.component_for_entity(runner.player, Inventory).items[ItemType('reagent_a')] == 0
 
 
+def test_left_removes_a_selected_reagent_from_the_mix():
+    runner = HeadlessRunner(use_random_map=False)
+    runner.give_item('reagent_a', 2)
+    ui_state = esper.get_component(UIState)[0][1]
+
+    runner.simulate_key(tcod.event.KeySym.c)  # -> COMBINING
+    runner.simulate_key(tcod.event.KeySym.RIGHT)  # add 1st
+    runner.simulate_key(tcod.event.KeySym.RIGHT)  # add 2nd
+    assert ui_state.selected_for_crafting[ItemType('reagent_a')] == 2
+
+    runner.simulate_key(tcod.event.KeySym.LEFT)  # remove one back
+
+    assert ui_state.selected_for_crafting[ItemType('reagent_a')] == 1
+
+
+def test_combining_an_unknown_combo_fizzles_and_clears_the_mix():
+    runner = HeadlessRunner(use_random_map=False)
+    runner.give_item('reagent_c', 2)  # fixtures: reagent_c + reagent_c -> no recipe
+    ui_state = esper.get_component(UIState)[0][1]
+
+    runner.simulate_key(tcod.event.KeySym.c)
+    runner.simulate_key(tcod.event.KeySym.RIGHT)
+    runner.simulate_key(tcod.event.KeySym.RIGHT)
+    runner.simulate_key(tcod.event.KeySym.RETURN)  # combine
+
+    assert runner.display_mode == DisplayMode.COMBINING  # stays open after a fizzle
+    assert ui_state.selected_for_crafting == {}  # the mix is reset
+    assert any('fizzle' in m for m in runner.get_log_messages())
+    assert esper.component_for_entity(runner.player, Inventory).items[ItemType('reagent_c')] == 2  # nothing consumed
+
+
 def test_tab_toggles_crafting_view():
     runner = HeadlessRunner(use_random_map=False)
     runner.simulate_key(tcod.event.KeySym.c)  # -> COMBINING (Experiment by default)
