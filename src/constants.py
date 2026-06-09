@@ -51,13 +51,17 @@ DISPLAY_SCALE = 1
 # earlier floors descend deeper. Tune for run length / difficulty.
 MAX_FLOORS = 10
 
+# Every SHOP_FLOOR_INTERVAL floors is a safe shop floor instead of a combat level, and the
+# shop "tier" (floor // SHOP_FLOOR_INTERVAL) scales its heal cost/amount and rare-spell odds.
+SHOP_FLOOR_INTERVAL = 3
+
 # Bases for the shopkeeper's healing service. Each shop scales both the gold cost
 # and the HP restored up with depth from these values.
 SHOP_HEAL_BASE_PRICE = 20
 SHOP_HEAL_BASE_AMOUNT = 50
 
-# Chance per shop tier (floor // 3) that a shop also stocks a rare, shop-only spell:
-# ~10% at floor 3, ~20% at 6, ~30% at 9.
+# Chance per shop tier that a shop also stocks a rare, shop-only spell:
+# ~10% at the first shop, ~20% at the second, ~30% at the third.
 SHOP_RARE_SPELL_CHANCE = 0.1
 
 # Cooldown (in ticks) the player incurs per move/cast, before status modifiers.

@@ -32,6 +32,7 @@ from src.constants import (
     MAX_ROOMS,
     ROOM_MAX_SIZE,
     ROOM_MIN_SIZE,
+    SHOP_FLOOR_INTERVAL,
     UI_BLACK,
     UI_WHITE,
     to_rgb,
@@ -44,7 +45,7 @@ from src.states import GameState
 
 def is_shop_floor(floor: int) -> bool:
     """Whether `floor` is a safe shop floor rather than a combat level."""
-    return floor % 3 == 0
+    return floor % SHOP_FLOOR_INTERVAL == 0
 
 
 def _delete_all(*component_types: type[object]):
@@ -64,7 +65,8 @@ def transition_to_next_floor():
     game_state = get_singleton(GameState)
     game_state.floor += 1
 
-    # 2. Calculate floor-dependent parameters
+    # 2. Calculate floor-dependent parameters. Deeper floors are bigger and richer: one
+    # more room attempt every 2 floors, and the per-room item cap rises by 1 every 5 floors.
     max_rooms = MAX_ROOMS + (game_state.floor // 2)
     max_items = MAX_ITEMS_PER_ROOM + (game_state.floor // 5)
 

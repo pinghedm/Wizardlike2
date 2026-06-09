@@ -21,7 +21,7 @@ from src.systems.crafting import (
     is_reagent,
     match_recipe,
 )
-from src.systems.movement import get_action_cooldown, move_entity
+from src.systems.movement import can_act, get_action_cooldown, move_entity
 from src.systems.processors import (
     ActionSystem,
     DeathSystem,
@@ -50,6 +50,7 @@ __all__ = [
     'RenderSystem',
     'StatusSystem',
     'apply_effect',
+    'can_act',
     'can_craft_known_spell',
     'cast_spell',
     'craft_known_spell',

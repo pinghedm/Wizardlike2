@@ -3,7 +3,6 @@ import esper
 from src import persistence
 from src.components import (
     QUICK_CAST_ACTIONS,
-    Actor,
     Enemy,
     InputAction,
     Inventory,
@@ -18,7 +17,6 @@ from src.components import (
     Shopkeeper,
     SpellInventory,
     SpellType,
-    StatusType,
     TargetingReticle,
     TargetMode,
     UIState,
@@ -37,7 +35,6 @@ from src.ecs_helpers import (
     get_player,
     get_player_component,
     get_singleton,
-    get_status,
     try_get_singleton,
 )
 from src.input_handlers.controller import move_delta
@@ -56,6 +53,7 @@ from src.states import (
     PostCastBehavior,
 )
 from src.systems import (
+    can_act,
     cast_spell,
     craft_known_spell,
     deal_damage,
@@ -134,11 +132,7 @@ def handle_exploring_input(action: InputAction | None):
 
     dx, dy = move_delta(action)
     if dx != 0 or dy != 0:
-        # Default movement is uncapped (as fast as the player presses). Only a SLOW
-        # status throttles it: each move sets a (doubled) cooldown via move_entity,
-        # and we ignore further input until it elapses. Without slow, the cooldown
-        # is left to decay but never gates input, keeping movement responsive.
-        if get_status(player, StatusType.SLOW) and esper.component_for_entity(player, Actor).cooldown > 0:
+        if not can_act(player):
             return DisplayMode.EXPLORING
 
         _bump_adjacent_enemy(player, player_pos.x + dx, player_pos.y + dy)
@@ -516,10 +510,9 @@ def handle_targeting_input(action: InputAction | None):
 
     dx, dy = move_delta(action)
     if dx != 0 or dy != 0:
-        # Walk the caster (same SLOW gating as exploring); the lock re-evaluates next tick.
-        if get_status(player, StatusType.SLOW) and esper.component_for_entity(player, Actor).cooldown > 0:
+        if not can_act(player):
             return DisplayMode.TARGETING
-        move_entity(player, dx, dy)
+        move_entity(player, dx, dy)  # the lock re-evaluates next tick
         return DisplayMode.TARGETING
 
     if action == InputAction.CONFIRM:

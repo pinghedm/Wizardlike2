@@ -14,7 +14,7 @@ from src.components import (
     SpellType,
     Stats,
 )
-from src.constants import SHOP_HEAL_BASE_AMOUNT, SHOP_HEAL_BASE_PRICE, SHOP_RARE_SPELL_CHANCE
+from src.constants import SHOP_FLOOR_INTERVAL, SHOP_HEAL_BASE_AMOUNT, SHOP_HEAL_BASE_PRICE, SHOP_RARE_SPELL_CHANCE
 from src.ecs_helpers import get_player_component, get_singleton, try_get_singleton
 from src.states import GameState
 
@@ -26,7 +26,7 @@ class ShopHealConfig(TypedDict):
 
 def shop_heal(floor: int) -> ShopHealConfig:
     """The heal service's gold cost and HP restored, scaled up with depth."""
-    tier = max(1, floor // 3)
+    tier = max(1, floor // SHOP_FLOOR_INTERVAL)
     return {'price': SHOP_HEAL_BASE_PRICE * tier, 'amount': SHOP_HEAL_BASE_AMOUNT * tier}
 
 
@@ -84,7 +84,7 @@ def build_shop_offers() -> list[ShopOffer]:
         offers.append(_spell_offer(random.choice(ordinary), known))
 
     rare = [s for s in shop_spells if s.get('rare')]
-    if rare and random.random() < SHOP_RARE_SPELL_CHANCE * (floor // 3):
+    if rare and random.random() < SHOP_RARE_SPELL_CHANCE * (floor // SHOP_FLOOR_INTERVAL):
         offers.append(_spell_offer(random.choice(rare), known))
 
     return offers
