@@ -3,6 +3,9 @@ from dataclasses import dataclass
 
 
 class DisplayMode(enum.Enum):
+    """A screen the player is currently looking at. An input handler returns one to switch
+    screens."""
+
     EXPLORING = enum.auto()
     MENU = enum.auto()
     COMBINING = enum.auto()
@@ -11,11 +14,22 @@ class DisplayMode(enum.Enum):
     SHOPPING = enum.auto()
     SETTINGS = enum.auto()
     GAME_OVER = enum.auto()
-    LOADING_SAVE = enum.auto()
-    STARTING_NEW_GAME = enum.auto()
+
+
+class PendingTransition(enum.Enum):
+    """A world-level command an input handler queues for the main loop to carry out after
+    it runs (see apply_pending_transition)."""
+
+    NEW_GAME = enum.auto()
+    LOAD_SAVE = enum.auto()
+    SAVE = enum.auto()
     RETURN_TO_TITLE = enum.auto()
-    SAVING = enum.auto()
-    EXITING = enum.auto()
+    EXIT = enum.auto()
+
+
+# An input handler's return value: either the screen to show next (DisplayMode) or a
+# one-shot world command for the main loop to run (PendingTransition).
+HandlerResult = DisplayMode | PendingTransition
 
 
 # Display modes that draw the dungeon view (map, entities, HUD). The crafting/casting/

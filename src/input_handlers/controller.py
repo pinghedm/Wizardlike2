@@ -164,6 +164,15 @@ def try_capture_remap_axis(event: tcod.event.ControllerAxis) -> bool:
     return True
 
 
+def try_capture_remap_event(event: tcod.event.Event) -> bool:
+    """Route an event to the matching remap-capture path: triggers (axes) bind via
+    try_capture_remap_axis, keys and buttons via try_capture_remap. Returns True when a
+    pending Settings remap consumed the event."""
+    if isinstance(event, tcod.event.ControllerAxis):
+        return try_capture_remap_axis(event)
+    return try_capture_remap(event)
+
+
 class ControllerInput:
     """Turns the gamepad's streamed/edge inputs into discrete, repeating actions.
 
@@ -187,6 +196,21 @@ class ControllerInput:
         self.repeat_source: object = None  # 'move', or the ControllerAxis driving a repeat
         self.next_repeat = 0.0
         self.quick_cast_held = False  # the quick-cast shoulder modifier is down
+
+    def handle_event(
+        self, event: tcod.event.ControllerAxis | tcod.event.ControllerButton, now: float, keybindings: Keybindings
+    ) -> InputAction | None:
+        """Resolve any controller event to an action, or None — the single gamepad entry
+        point. Axes drive the stick/triggers, the d-pad drives movement, and other buttons
+        resolve through resolve_button (honoring the quick-cast modifier). Noting the pressed
+        button for the live readout and Settings remap capture are the caller's job, since
+        both happen before an event resolves to an action.
+        """
+        if isinstance(event, tcod.event.ControllerAxis):
+            return self.on_axis(event, now, keybindings)
+        if event.button in DPAD_MOVES:
+            return self.on_button(event.button, event.pressed, now)
+        return self.resolve_button(event, keybindings)
 
     def on_button(self, button: ControllerButton, pressed: bool, now: float) -> InputAction | None:
         """Handle a d-pad button (movement). Other buttons are handled elsewhere."""

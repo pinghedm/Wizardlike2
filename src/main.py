@@ -32,7 +32,6 @@ from src.entities import (
     create_ui_state,
 )
 from src.input_handlers import (
-    DPAD_MOVES,
     ControllerInput,
     connected_controllers,
     handle_casting_input,
@@ -46,12 +45,11 @@ from src.input_handlers import (
     handle_targeting_input,
     note_controller_button,
     resolve_action,
-    try_capture_remap,
-    try_capture_remap_axis,
+    try_capture_remap_event,
 )
 from src.layout import Layout
 from src.procgen import generate_dungeon
-from src.states import DisplayMode, GameState
+from src.states import DisplayMode, GameState, PendingTransition
 from src.systems import (
     ActionSystem,
     AISystem,
@@ -148,60 +146,87 @@ def update_pause_state(game_state: GameState):
     game_state.time_paused = (game_state.display_mode not in _REAL_TIME_MODES) or has_modal
 
 
-def dispatch_input(event: tcod.event.Event, game_state: GameState):
+def dispatch_input(
+    event: tcod.event.Event, game_state: GameState, controller: ControllerInput, now: float
+) -> PendingTransition | None:
+    """The single input router: resolve any raw event to an action and dispatch it.
+
+    Keyboard events resolve through resolve_action; controller events through
+    ControllerInput.handle_event (d-pad/stick/triggers + the quick-cast modifier, with
+    hold-to-repeat) — `now` drives that repeat timing. The live controller readout records
+    a pressed button even when a pending Settings remap then consumes the event, so noting
+    it comes first; the remap capture comes next, before the event resolves to its action.
+    """
     keybindings = get_singleton(Settings).keybindings
 
-    # A pending key remap captures the next raw keypress, before it resolves to
-    # whatever action it is currently bound to.
-    if game_state.display_mode == DisplayMode.SETTINGS and try_capture_remap(event):
-        return
+    if isinstance(event, tcod.event.ControllerButton) and event.pressed:
+        note_controller_button(event.button)
 
-    dispatch_action(resolve_action(event, keybindings), game_state)
+    if game_state.display_mode == DisplayMode.SETTINGS and try_capture_remap_event(event):
+        return None
+
+    if isinstance(event, (tcod.event.ControllerAxis, tcod.event.ControllerButton)):
+        action = controller.handle_event(event, now, keybindings)
+    else:
+        action = resolve_action(event, keybindings)
+    return dispatch_action(action, game_state)
 
 
-def dispatch_action(action: InputAction | None, game_state: GameState):
+def dispatch_action(action: InputAction | None, game_state: GameState) -> PendingTransition | None:
     """Route a resolved input action to the active mode's handler.
 
     Both keyboard and controller input funnel through here as InputActions, so
     the handlers never see raw keys or buttons. A None action (unbound input) is
-    a no-op.
+    a no-op. A handler either returns the next screen (applied to display_mode here)
+    or a PendingTransition, which is returned for the main loop to carry out.
     """
     if action is None:
-        return
+        return None
 
     if esper.get_component(Modal):
         handle_modal_input(action)
-        return
+        return None
 
-    if game_state.display_mode == DisplayMode.EXPLORING:
-        game_state.display_mode = handle_exploring_input(action)
-    elif game_state.display_mode == DisplayMode.MENU:
-        game_state.display_mode = handle_menu_input(action)
-    elif game_state.display_mode == DisplayMode.COMBINING:
-        game_state.display_mode = handle_combining_input(action)
-    elif game_state.display_mode == DisplayMode.CASTING:
-        game_state.display_mode = handle_casting_input(action)
-    elif game_state.display_mode == DisplayMode.TARGETING:
-        game_state.display_mode = handle_targeting_input(action)
-    elif game_state.display_mode == DisplayMode.SHOPPING:
-        game_state.display_mode = handle_shop_input(action)
-    elif game_state.display_mode == DisplayMode.SETTINGS:
-        game_state.display_mode = handle_settings_input(action)
-    elif game_state.display_mode == DisplayMode.GAME_OVER:
-        game_state.display_mode = handle_game_over_input(action)
-
-
-def apply_pending_transition(game_state: GameState, asset_loader: AssetLoader) -> None:
-    """Carry out the side effects of a pending world-transition display_mode.
-
-    EXITING quits the process. LOADING_SAVE / STARTING_NEW_GAME / SAVING perform
-    their I/O and reset the mode to EXPLORING. clear_database()/load_game()
-    replace the GameState singleton, so re-fetch it via get_singleton().
-    """
     mode = game_state.display_mode
-    if mode == DisplayMode.EXITING:
+    if mode == DisplayMode.EXPLORING:
+        result = handle_exploring_input(action)
+    elif mode == DisplayMode.MENU:
+        result = handle_menu_input(action)
+    elif mode == DisplayMode.COMBINING:
+        result = handle_combining_input(action)
+    elif mode == DisplayMode.CASTING:
+        result = handle_casting_input(action)
+    elif mode == DisplayMode.TARGETING:
+        result = handle_targeting_input(action)
+    elif mode == DisplayMode.SHOPPING:
+        result = handle_shop_input(action)
+    elif mode == DisplayMode.SETTINGS:
+        result = handle_settings_input(action)
+    elif mode == DisplayMode.GAME_OVER:
+        result = handle_game_over_input(action)
+    else:
+        return None
+
+    if isinstance(result, PendingTransition):
+        return result
+    game_state.display_mode = result
+    return None
+
+
+def apply_pending_transition(
+    transition: PendingTransition | None, game_state: GameState, asset_loader: AssetLoader
+) -> None:
+    """Carry out a world-level command an input handler queued.
+
+    EXIT quits the process. LOAD_SAVE / NEW_GAME / SAVE perform their I/O and reset the
+    screen to EXPLORING; RETURN_TO_TITLE rebuilds the title menu. clear_database() and
+    load_game() replace the GameState singleton, so re-fetch it via get_singleton().
+    """
+    if transition is None:
+        return
+    if transition == PendingTransition.EXIT:
         sys.exit()
-    elif mode == DisplayMode.LOADING_SAVE:
+    elif transition == PendingTransition.LOAD_SAVE:
         persistence.load_game()
         # A save predating these singletons carries none; seed them so input still
         # resolves and in-world gold changes still get flushed.
@@ -210,14 +235,14 @@ def apply_pending_transition(game_state: GameState, asset_loader: AssetLoader) -
         if try_get_singleton(MetaSaveState) is None:
             create_meta_save_state()
         get_singleton(GameState).display_mode = DisplayMode.EXPLORING
-    elif mode == DisplayMode.STARTING_NEW_GAME:
+    elif transition == PendingTransition.NEW_GAME:
         esper.clear_database()
         init_game_world(asset_loader)
         get_singleton(GameState).display_mode = DisplayMode.EXPLORING
-    elif mode == DisplayMode.RETURN_TO_TITLE:
+    elif transition == PendingTransition.RETURN_TO_TITLE:
         esper.clear_database()
         init_main_menu()
-    elif mode == DisplayMode.SAVING:
+    elif transition == PendingTransition.SAVE:
         persistence.save_game()
         log = try_get_singleton(MessageLog)
         if log:
@@ -316,28 +341,12 @@ def main():
 
                 old_mode = game_state.display_mode
                 debug_log(f'frame {frame}: dispatch {type(event).__name__}')
-                if isinstance(event, tcod.event.ControllerAxis):
-                    # Sticks/triggers resolve to a (possibly repeating) action here.
-                    if not (game_state.display_mode == DisplayMode.SETTINGS and try_capture_remap_axis(event)):
-                        keybindings = get_singleton(Settings).keybindings
-                        dispatch_action(controller.on_axis(event, frame_start, keybindings), game_state)
-                elif isinstance(event, tcod.event.ControllerButton):
-                    if event.pressed:
-                        note_controller_button(event.button)
-                    if event.button in DPAD_MOVES:
-                        # The d-pad drives movement directly so it can hold-to-repeat.
-                        dispatch_action(controller.on_button(event.button, event.pressed, frame_start), game_state)
-                    elif not (game_state.display_mode == DisplayMode.SETTINGS and try_capture_remap(event)):
-                        # resolve_button (not resolve_action) so the quick-cast modifier is honored.
-                        keybindings = get_singleton(Settings).keybindings
-                        dispatch_action(controller.resolve_button(event, keybindings), game_state)
-                else:
-                    dispatch_input(event, game_state)
+                transition = dispatch_input(event, game_state, controller, frame_start)
 
-                # Handle world transitions. clear_database() wipes entities and
+                # Carry out any queued world command. clear_database() wipes entities and
                 # components but leaves the (stateless) processors in place, so a
                 # load / new game may replace the GameState singleton.
-                apply_pending_transition(game_state, asset_loader)
+                apply_pending_transition(transition, game_state, asset_loader)
                 game_state = get_singleton(GameState)
 
                 # If the state changed, break the event loop to redraw immediately
@@ -347,8 +356,8 @@ def main():
             # A held d-pad / stick / trigger repeats like a held key, once it is due.
             repeat_action = controller.tick(frame_start)
             if repeat_action is not None:
-                dispatch_action(repeat_action, game_state)
-                apply_pending_transition(game_state, asset_loader)
+                transition = dispatch_action(repeat_action, game_state)
+                apply_pending_transition(transition, game_state, asset_loader)
                 game_state = get_singleton(GameState)
 
             # Precise timing

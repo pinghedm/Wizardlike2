@@ -1,7 +1,7 @@
 import esper
 import tcod.event
 
-from src.components import Modal, Position, RunStats, Stats
+from src.components import Modal, PlayerTag, Position, RunStats, Stats
 from src.constants import MAX_FLOORS
 from src.ecs_helpers import get_display_name, get_singleton
 from src.map_objects import Map, Tile
@@ -67,8 +67,9 @@ def test_player_death_shows_the_game_over_screen_and_enter_returns_to_title():
     runner.simulate_key(tcod.event.KeySym.LEFT)  # a stray key stays on the summary
     assert runner.display_mode == DisplayMode.GAME_OVER
 
-    runner.simulate_key(tcod.event.KeySym.RETURN)  # Confirm leaves toward the title menu
-    assert runner.display_mode == DisplayMode.RETURN_TO_TITLE
+    runner.simulate_key(tcod.event.KeySym.RETURN)  # Confirm carries out the return to the title menu
+    assert runner.display_mode == DisplayMode.MENU
+    assert not esper.get_components(PlayerTag)
 
 
 def test_enemy_death_removes_the_entity_and_logs_a_death_message():

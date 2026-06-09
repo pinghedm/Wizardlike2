@@ -1,4 +1,5 @@
-"""handle_menu_input's CONFIRM dispatch: each menu option -> its DisplayMode.
+"""handle_menu_input's CONFIRM dispatch: each menu option -> the screen (DisplayMode) or
+world command (PendingTransition) it resolves to.
 
 The option list depends on whether a run is in progress (is_game_active): the title
 menu before a player exists, the pause menu after. The CONTINUE/LOAD options are gated
@@ -17,22 +18,23 @@ from src.states import (
     TITLE_MENU_OPTIONS,
     DisplayMode,
     MenuOption,
+    PendingTransition,
 )
 
-# (game_active, option, has_save, expected_mode)
+# (game_active, option, has_save, expected_result)
 MENU_CONFIRM_CASES = [
     # Pause menu -- a run is in progress.
     (True, MenuOption.RESUME, False, DisplayMode.EXPLORING),
-    (True, MenuOption.SAVE, False, DisplayMode.SAVING),
+    (True, MenuOption.SAVE, False, PendingTransition.SAVE),
     (True, MenuOption.SETTINGS, False, DisplayMode.SETTINGS),
-    (True, MenuOption.QUIT, False, DisplayMode.EXITING),
-    (True, MenuOption.LOAD, True, DisplayMode.LOADING_SAVE),
+    (True, MenuOption.QUIT, False, PendingTransition.EXIT),
+    (True, MenuOption.LOAD, True, PendingTransition.LOAD_SAVE),
     (True, MenuOption.LOAD, False, DisplayMode.MENU),  # no save -> stays on the menu
     # Title menu -- no run yet.
-    (False, MenuOption.NEW_GAME, False, DisplayMode.STARTING_NEW_GAME),
-    (False, MenuOption.CONTINUE, True, DisplayMode.LOADING_SAVE),
+    (False, MenuOption.NEW_GAME, False, PendingTransition.NEW_GAME),
+    (False, MenuOption.CONTINUE, True, PendingTransition.LOAD_SAVE),
     (False, MenuOption.CONTINUE, False, DisplayMode.MENU),  # no save -> stays on the menu
-    (False, MenuOption.QUIT, False, DisplayMode.EXITING),
+    (False, MenuOption.QUIT, False, PendingTransition.EXIT),
 ]
 
 

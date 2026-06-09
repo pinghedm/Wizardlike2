@@ -18,6 +18,7 @@ from src.input_handlers.controller import (
     resolve_action,
     try_capture_remap,
     try_capture_remap_axis,
+    try_capture_remap_event,
 )
 from src.input_handlers.handlers import (
     handle_casting_input,
@@ -52,4 +53,5 @@ __all__ = [
     'resolve_action',
     'try_capture_remap',
     'try_capture_remap_axis',
+    'try_capture_remap_event',
 ]

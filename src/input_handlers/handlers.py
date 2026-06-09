@@ -50,7 +50,9 @@ from src.states import (
     CraftingView,
     DisplayMode,
     GameState,
+    HandlerResult,
     MenuOption,
+    PendingTransition,
     PostCastBehavior,
 )
 from src.systems import (
@@ -92,10 +94,10 @@ def handle_modal_input(action: InputAction | None):
         esper.delete_entity(ent)
 
 
-def handle_game_over_input(action: InputAction | None):
+def handle_game_over_input(action: InputAction | None) -> HandlerResult:
     """The run-summary screen: Confirm returns to the title menu, nothing else acts."""
     if action == InputAction.CONFIRM:
-        return DisplayMode.RETURN_TO_TITLE
+        return PendingTransition.RETURN_TO_TITLE
     return DisplayMode.GAME_OVER
 
 
@@ -245,7 +247,7 @@ def _cycle_post_cast(settings: Settings, action: InputAction | None):
     persistence.save_meta()
 
 
-def handle_menu_input(action: InputAction | None):
+def handle_menu_input(action: InputAction | None) -> HandlerResult:
     ui_state = get_singleton(UIState)
 
     # Title menu before a run starts, pause menu once a player exists.
@@ -261,18 +263,18 @@ def handle_menu_input(action: InputAction | None):
     elif action == InputAction.CONFIRM:
         selection = options[ui_state.main_menu_cursor]
         if selection == MenuOption.QUIT:
-            return DisplayMode.EXITING
+            return PendingTransition.EXIT
         elif selection == MenuOption.RESUME:
             return DisplayMode.EXPLORING
         elif selection == MenuOption.SAVE:
-            return DisplayMode.SAVING
+            return PendingTransition.SAVE
         elif selection == MenuOption.SETTINGS:
             return DisplayMode.SETTINGS
         elif selection in (MenuOption.CONTINUE, MenuOption.LOAD):
             if persistence.has_save():
-                return DisplayMode.LOADING_SAVE
+                return PendingTransition.LOAD_SAVE
         elif selection == MenuOption.NEW_GAME:
-            return DisplayMode.STARTING_NEW_GAME
+            return PendingTransition.NEW_GAME
 
     else:
         ui_state.main_menu_cursor = step_cursor(ui_state.main_menu_cursor, len(options), action)

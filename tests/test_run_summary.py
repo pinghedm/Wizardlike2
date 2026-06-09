@@ -13,7 +13,7 @@ from src.components import (
     UIState,
 )
 from src.ecs_helpers import get_singleton
-from src.states import DisplayMode, GameState
+from src.states import DisplayMode, GameState, PendingTransition
 from src.systems import cast_spell, deal_damage
 from tests.headless_runner import HeadlessRunner
 
@@ -96,9 +96,8 @@ def test_discovering_a_recipe_increments_spells_discovered():
 
 def test_return_to_title_clears_the_world_and_boots_the_menu():
     runner = HeadlessRunner(use_random_map=False)
-    runner.game_state.display_mode = DisplayMode.RETURN_TO_TITLE
 
-    main.apply_pending_transition(runner.game_state, runner.asset_loader)
+    main.apply_pending_transition(PendingTransition.RETURN_TO_TITLE, runner.game_state, runner.asset_loader)
 
     assert not esper.get_components(PlayerTag)
     assert get_singleton(GameState).display_mode == DisplayMode.MENU

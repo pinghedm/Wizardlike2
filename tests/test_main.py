@@ -12,7 +12,7 @@ from src.constants import SAVE_DIR, SCREEN_HEIGHT, SCREEN_WIDTH
 from src.data_loaders import AssetLoader
 from src.ecs_helpers import get_singleton
 from src.layout import Layout
-from src.states import DisplayMode, GameState
+from src.states import DisplayMode, GameState, PendingTransition
 from src.systems import (
     ActionSystem,
     AISystem,
@@ -92,9 +92,8 @@ def test_dispatch_input_routes_every_mode(mode):
 
 def test_apply_pending_transition_saving_writes_file_and_resets_mode():
     runner = HeadlessRunner(use_random_map=False)
-    runner.game_state.display_mode = DisplayMode.SAVING
 
-    main.apply_pending_transition(runner.game_state, runner.asset_loader)
+    main.apply_pending_transition(PendingTransition.SAVE, runner.game_state, runner.asset_loader)
 
     assert os.path.exists(persistence.SAVE_FILE)
     assert get_singleton(GameState).display_mode == DisplayMode.EXPLORING
@@ -108,8 +107,7 @@ def test_apply_pending_transition_loading_restores_state():
 
     # Mutate live state, then load it back via the transition.
     get_singleton(GameState).floor = 1
-    get_singleton(GameState).display_mode = DisplayMode.LOADING_SAVE
-    main.apply_pending_transition(get_singleton(GameState), runner.asset_loader)
+    main.apply_pending_transition(PendingTransition.LOAD_SAVE, get_singleton(GameState), runner.asset_loader)
 
     assert get_singleton(GameState).floor == 7
     assert get_singleton(GameState).display_mode == DisplayMode.EXPLORING
@@ -117,9 +115,8 @@ def test_apply_pending_transition_loading_restores_state():
 
 def test_apply_pending_transition_new_game_rebuilds_world():
     runner = HeadlessRunner(use_random_map=False)
-    runner.game_state.display_mode = DisplayMode.STARTING_NEW_GAME
 
-    main.apply_pending_transition(runner.game_state, runner.asset_loader)
+    main.apply_pending_transition(PendingTransition.NEW_GAME, runner.game_state, runner.asset_loader)
 
     from src.components import PlayerTag
     from src.map_objects import Map
@@ -131,7 +128,6 @@ def test_apply_pending_transition_new_game_rebuilds_world():
 
 def test_apply_pending_transition_exiting_quits():
     runner = HeadlessRunner(use_random_map=False)
-    runner.game_state.display_mode = DisplayMode.EXITING
 
     with pytest.raises(SystemExit):
-        main.apply_pending_transition(runner.game_state, runner.asset_loader)
+        main.apply_pending_transition(PendingTransition.EXIT, runner.game_state, runner.asset_loader)
