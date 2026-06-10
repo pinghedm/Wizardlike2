@@ -1,7 +1,8 @@
 import esper
 import tcod
 
-from src.components import Configuration, EffectType, FieldOfView, Point, SpellInventory, SpellType, Stats
+from src.components import Configuration, EffectType, FieldOfView, Point, SpellInventory, SpellType, Stats, UIState
+from src.input_handlers import available_spells
 from src.states import DisplayMode
 from tests.headless_runner import HeadlessRunner
 
@@ -43,6 +44,7 @@ def test_full_gameplay_loop():
     # 7. Cast
     runner.simulate_key(tcod.event.KeySym.s)
     assert runner.display_mode == DisplayMode.CASTING
+    esper.get_component(UIState)[0][1].casting_cursor = available_spells().index(SpellType('test_bolt'))
     runner.simulate_key(tcod.event.KeySym.RETURN)  # select the spell; locks onto the foe
     assert runner.display_mode == DisplayMode.TARGETING
 

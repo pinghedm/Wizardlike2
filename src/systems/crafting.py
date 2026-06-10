@@ -35,6 +35,20 @@ def get_spell_config(spell_id: str) -> SpellConfig | None:
     return configs.spells_by_id.get(spell_id)
 
 
+def refill_basic_spells():
+    """Top every basic spell back up to its per-floor charge capacity. Basic spells are the
+    wizard's default attacks: known from the start and replenished on entering each floor, so
+    a run always begins each level with a fallback even after crafted spells are spent."""
+    configs = try_get_singleton(Configuration)
+    player = get_player()
+    if configs is None or player is None:
+        return
+    spell_inv = esper.component_for_entity(player, SpellInventory)
+    for s_conf in configs.spells:
+        if s_conf.get('basic'):
+            spell_inv.spells[SpellType(s_conf['id'])] = s_conf.get('charges', 0)
+
+
 # Item types that are pickups but not crafting reagents (currency, etc.).
 NON_REAGENT_ITEMS = {ItemType.GOLD}
 

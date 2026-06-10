@@ -1,4 +1,14 @@
 spells:
+  - id: magic_missile
+    name: Magic Missile
+    description: An unerring dart of raw arcane force; a wizard starts each floor with a handful.
+    target: enemy
+    radius: 0
+    basic: true
+    charges: 10
+    effects:
+      - type: damage
+        power: 8
   - id: fireball
     name: Fireball
     description: A roaring ball of flame that bursts on impact.

@@ -166,7 +166,7 @@ def load_spells_config(asset_loader: AssetLoader) -> list[SpellConfig]:
             spell['target'] = TargetMode(spell['target'])
 
             processed_recipes: list[RecipeConfig] = []
-            for r_data in spell['recipes']:
+            for r_data in spell.get('recipes', []):
                 processed_recipes.append(
                     {
                         'ingredients': tuple(sorted(ItemType(id) for id in r_data['ingredients'])),

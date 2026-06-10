@@ -28,6 +28,7 @@ from src.main import (
 from src.map_objects import Map, Tile
 from src.procgen import spawn_enemy
 from src.states import DisplayMode, GameState
+from src.systems import refill_basic_spells
 from src.ui_systems import (
     EffectOverlaySystem,
     HUDSystem,
@@ -120,8 +121,9 @@ class HeadlessRunner:
         clean_map = Map(width, height, floor_tile)
         esper.create_entity(clean_map)
 
-        # 5. Create player at center
+        # 5. Create player at center, stocked with the floor's basic attacks
         self.player = create_player(x=width // 2, y=height // 2)
+        refill_basic_spells()
 
         # 6. Finally, add systems
         add_logic_systems()

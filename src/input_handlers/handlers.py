@@ -3,6 +3,7 @@ import esper
 from src import persistence
 from src.components import (
     QUICK_CAST_ACTIONS,
+    Configuration,
     Enemy,
     InputAction,
     Inventory,
@@ -383,12 +384,18 @@ def _handle_spellbook_input(action: InputAction | None, ui_state: UIState):
 
 
 def available_spells() -> list[SpellType]:
-    """The player's castable spells (those with charges), in the order they're listed
-    and quick-cast slots are numbered."""
+    """The player's castable spells (those with charges), in the order they're listed and
+    quick-cast slots are numbered. Basic spells anchor the low slots — they refill each floor,
+    so they're the reliable fallback — followed by the discovered spells, each name-sorted."""
     spell_inv = get_player_component(SpellInventory)
     if spell_inv is None:
         return []
-    return sorted((s for s in spell_inv.spells if spell_inv.spells[s] > 0), key=lambda s: s.name)
+    configs = try_get_singleton(Configuration)
+    basic_ids = {c['id'] for c in configs.spells if c.get('basic')} if configs else set[str]()
+    charged = [s for s, n in spell_inv.spells.items() if n > 0]
+    basics = sorted((s for s in charged if s.value in basic_ids), key=lambda s: s.name)
+    rest = sorted((s for s in charged if s.value not in basic_ids), key=lambda s: s.name)
+    return basics + rest
 
 
 def enter_targeting_for_slot(slot: int) -> DisplayMode:
@@ -441,17 +448,10 @@ def _step_target(targets: list[int], current: int | None, step: int) -> int | No
     return targets[(targets.index(current) + step) % len(targets)]
 
 
-def _has_castable_attack_spell() -> bool:
-    """Whether the player still has charges for any enemy-targeted spell — the kind the
-    picker exists to aim. When only self-casts (or nothing) remain, the picker is dead weight."""
-    configs = (get_spell_config(s.value) for s in available_spells())
-    return any(conf is not None and conf['target'] == TargetMode.ENEMY for conf in configs)
-
-
 def _resolve_after_cast(ret_ent: int, ui_state: UIState) -> DisplayMode:
-    """Apply the post-cast preference: stay readied while charges remain. When the spell runs
-    dry under STAY, fall back to the picker to ready another — unless no enemy-targeted spell
-    is left to ready, in which case drop to the map rather than open a useless picker."""
+    """Apply the post-cast preference. Under STAY, keep the reticle up while charges remain;
+    otherwise (the spell ran out, or RESELECT) drop to the picker to ready another, and EXPLORE
+    leaves to the map."""
     spell_id = ui_state.active_targeting_spell_id
     behavior = get_singleton(Settings).post_cast
     spell_inv = get_player_component(SpellInventory)
@@ -462,8 +462,6 @@ def _resolve_after_cast(ret_ent: int, ui_state: UIState) -> DisplayMode:
     esper.delete_entity(ret_ent)
     ui_state.active_targeting_spell_id = None
     if behavior == PostCastBehavior.EXPLORE:
-        return DisplayMode.EXPLORING
-    if behavior == PostCastBehavior.STAY and not _has_castable_attack_spell():
         return DisplayMode.EXPLORING
     return DisplayMode.CASTING
 

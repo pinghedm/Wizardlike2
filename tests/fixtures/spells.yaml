@@ -1,4 +1,14 @@
 spells:
+  - id: test_wand
+    name: Test Wand
+    description: A basic attack that refills each floor.
+    target: enemy
+    radius: 0
+    basic: true
+    charges: 2
+    effects:
+      - type: damage
+        power: 4
   - id: test_bolt
     name: Test Bolt
     description: A test bolt that zaps and slows its target.

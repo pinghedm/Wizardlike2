@@ -32,6 +32,7 @@ from src.constants import (
     UI_YELLOW,
 )
 from src.entities import create_game_state, create_ui_state
+from src.input_handlers import available_spells
 from src.states import (
     PAUSE_MENU_OPTIONS,
     TITLE_MENU_OPTIONS,
@@ -194,14 +195,14 @@ def test_casting_menu_lists_spell_with_metadata():
 
 
 def test_casting_menu_windows_long_list_without_overflow():
-    # The casting box fits 6 double-spaced rows; charging all 7 fixture spells forces it
-    # to scroll. With the cursor on the last entry, that entry stays visible, an earlier
-    # one scrolls off behind a '▲', and the footer is not pushed out of the box.
+    # The casting box fits 6 double-spaced rows; the basic attack plus seven charged fixture
+    # spells force it to scroll. With the cursor on the last entry, that entry stays visible,
+    # an earlier one scrolls off behind a '▲', and the footer is not pushed out of the box.
     runner = HeadlessRunner(use_random_map=False)
     spell_ids = ['test_bolt', 'test_blast', 'test_rare', 'test_shove', 'test_soak', 'test_zap', 'test_quench']
     for sid in spell_ids:
         runner.give_spell(sid, 1)
-    available = sorted((SpellType(s) for s in spell_ids), key=lambda s: s.name)
+    available = available_spells()
     _ui_state(runner).casting_cursor = len(available) - 1  # last spell
     runner.game_state.display_mode = DisplayMode.CASTING
 
@@ -212,8 +213,21 @@ def test_casting_menu_windows_long_list_without_overflow():
     assert 'Arrows: Select' in text  # footer intact, not overwritten by an overflowing row
 
 
-def test_casting_menu_empty_shows_message():
+def test_casting_menu_lists_the_basic_attack_when_nothing_is_discovered():
+    # Before any spell is crafted, the picker still lists the basic attack, stocked to its
+    # per-floor capacity.
     runner = HeadlessRunner(use_random_map=False)
+    runner.game_state.display_mode = DisplayMode.CASTING
+
+    assert 'TEST_WAND: 2 charges' in _full_text(runner)
+
+
+def test_casting_menu_empty_when_even_the_basic_is_spent():
+    # The basic refills each floor but can run dry within one; with nothing left to cast the
+    # picker says so rather than rendering an empty box.
+    runner = HeadlessRunner(use_random_map=False)
+    spell_inv = esper.component_for_entity(runner.player, SpellInventory)
+    spell_inv.spells[SpellType('test_wand')] = 0
     runner.game_state.display_mode = DisplayMode.CASTING
 
     assert 'No spells with charges!' in _full_text(runner)
@@ -225,7 +239,9 @@ def test_casting_menu_ignores_zero_charge_spells():
     spell_inv.spells[SpellType('test_bolt')] = 0
     runner.game_state.display_mode = DisplayMode.CASTING
 
-    assert 'No spells with charges!' in _full_text(runner)
+    text = _full_text(runner)
+    assert 'TEST_BOLT' not in text  # a depleted spell drops out of the picker
+    assert 'TEST_WAND' in text  # the basic attack remains, always castable
 
 
 # --- MenuSystem.render_settings_menu ----------------------------------------
@@ -384,6 +400,16 @@ def test_targeting_overlay_outlines_aoe_edge_not_interior():
     assert runner.get_console_bg(rx, ry + 2) == edge
     # ...but the interior (the target's own cell) is not, so the enemy stays visible.
     assert runner.get_console_bg(rx, ry) != edge
+
+
+def test_targeting_overlay_labels_the_aimed_spell_and_charges():
+    runner = HeadlessRunner(use_random_map=False)
+    runner.game_state.display_mode = DisplayMode.TARGETING
+    _ui_state(runner).active_targeting_spell_id = 'test_wand'
+    px, py = runner.player_pos
+    esper.create_entity(TargetingReticle(x=px + 1, y=py, radius=0))
+
+    assert 'Aiming: TEST_WAND (2 charges)' in _full_text(runner)
 
 
 def test_targeting_overlay_absent_without_reticle():

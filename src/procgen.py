@@ -41,6 +41,7 @@ from src.ecs_helpers import get_player, get_singleton, mark_fov_dirty, spawn_ite
 from src.map_objects import Map, Tile
 from src.shop import build_shop_offers
 from src.states import GameState
+from src.systems import refill_basic_spells
 
 
 def is_shop_floor(floor: int) -> bool:
@@ -95,6 +96,9 @@ def transition_to_next_floor():
         pos.x = player_start.x
         pos.y = player_start.y
         mark_fov_dirty(player)
+
+    # 7. Replenish the always-known basic attacks for the new floor.
+    refill_basic_spells()
 
 
 class RectangularRoom:

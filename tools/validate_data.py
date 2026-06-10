@@ -35,6 +35,8 @@ ALLOWED_SPELL_FIELDS = {
     'recipes',
     'shop',
     'rare',
+    'basic',
+    'charges',
 }
 
 VALID_TARGETS = {t.value for t in TargetMode}
@@ -291,6 +293,11 @@ def validate_data() -> bool:
                 print(f'ERROR: Spell "{sid}" rare must be a boolean.')
                 errors += 1
 
+            is_basic = spell.get('basic', False)
+            if 'basic' in spell and not isinstance(is_basic, bool):
+                print(f'ERROR: Spell "{sid}" basic must be a boolean.')
+                errors += 1
+
             if 'shop' in spell:
                 errors += validate_shop(spell['shop'], f'Spell "{sid}"')
 
@@ -312,6 +319,27 @@ def validate_data() -> bool:
 
             if 'modifiers' in spell:
                 errors += validate_modifiers(spell['modifiers'], spell.get('effects', []), f'Spell "{sid}"')
+
+            # A basic spell is known from the start and refills to `charges` each floor, so it
+            # carries a flat per-floor capacity instead of recipes; it's never crafted or sold.
+            if is_basic:
+                if 'charges' not in spell:
+                    print(f'ERROR: Basic spell "{sid}" must define its per-floor "charges".')
+                    errors += 1
+                elif not isinstance(spell['charges'], int) or spell['charges'] <= 0:
+                    print(f'ERROR: Basic spell "{sid}" charges must be a positive integer.')
+                    errors += 1
+                if 'recipes' in spell:
+                    print(f'ERROR: Basic spell "{sid}" must not define "recipes".')
+                    errors += 1
+                if 'shop' in spell:
+                    print(f'ERROR: Basic spell "{sid}" must not define a "shop" listing.')
+                    errors += 1
+                continue
+
+            if 'charges' in spell:
+                print(f'ERROR: Spell "{sid}" sets "charges" but is not basic (charges come from recipes).')
+                errors += 1
 
             recipes = spell.get('recipes', [])
             if not isinstance(recipes, list) or not recipes:

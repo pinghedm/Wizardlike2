@@ -58,6 +58,7 @@ from src.systems import (
     MetaSaveSystem,
     RenderSystem,
     StatusSystem,
+    refill_basic_spells,
 )
 from src.targeting import CycleTargetSystem
 from src.ui_systems import (
@@ -96,6 +97,7 @@ def init_game_world(asset_loader: AssetLoader):
 
     # ECS Entities
     player = create_player(x=player_start.x, y=player_start.y, meta=meta)
+    refill_basic_spells()  # stock the always-known basic attacks for floor 1
     return player
 
 

@@ -20,6 +20,7 @@ from src.systems.crafting import (
     get_spell_config,
     is_reagent,
     match_recipe,
+    refill_basic_spells,
 )
 from src.systems.movement import can_act, get_action_cooldown, move_entity
 from src.systems.processors import (
@@ -53,6 +54,7 @@ __all__ = [
     'can_act',
     'can_craft_known_spell',
     'cast_spell',
+    'refill_basic_spells',
     'craft_known_spell',
     'deal_damage',
     'discover_and_craft',

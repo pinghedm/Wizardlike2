@@ -21,6 +21,7 @@ from src.input_handlers.controller import (
     try_capture_remap_event,
 )
 from src.input_handlers.handlers import (
+    available_spells,
     handle_casting_input,
     handle_combining_input,
     handle_exploring_input,
@@ -40,6 +41,7 @@ __all__ = [
     'connected_controller_name',
     'connected_controllers',
     'controller_binding_label',
+    'available_spells',
     'handle_casting_input',
     'handle_combining_input',
     'handle_exploring_input',

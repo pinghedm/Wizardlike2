@@ -2,7 +2,8 @@ import esper
 import pytest
 import tcod.event
 
-from src.components import FieldOfView, Point, SpellInventory, SpellType, Stats, StatusEffects, StatusType
+from src.components import FieldOfView, Point, SpellInventory, SpellType, Stats, StatusEffects, StatusType, UIState
+from src.input_handlers import available_spells
 from src.states import DisplayMode
 from src.systems import cast_spell
 from tests.headless_runner import HeadlessRunner
@@ -24,14 +25,15 @@ def test_full_cast_cycle_applies_fixture_effects():
     runner.simulate_key(tcod.event.KeySym.s)  # EXPLORING -> CASTING
     assert runner.display_mode == DisplayMode.CASTING
 
+    esper.get_component(UIState)[0][1].casting_cursor = available_spells().index(SpellType('test_bolt'))
     runner.simulate_key(tcod.event.KeySym.RETURN)  # select test_bolt; locks the enemy -> TARGETING
     assert runner.display_mode == DisplayMode.TARGETING
 
     runner.simulate_key(tcod.event.KeySym.RETURN)  # cast at the locked enemy
 
-    # The last charge is spent and no other attacking spell remains, so rather than open an
-    # empty picker the player drops back to the map.
-    assert runner.display_mode == DisplayMode.EXPLORING
+    # The bolt's last charge is spent, so it falls back to the picker to ready another spell
+    # (the always-castable basic attack means the picker is never empty).
+    assert runner.display_mode == DisplayMode.CASTING
     assert esper.component_for_entity(runner.player, SpellInventory).spells[SpellType('test_bolt')] == 0
     assert esper.component_for_entity(enemy, Stats).hp == 30 - 12
     assert esper.component_for_entity(enemy, StatusEffects).active[StatusType.SLOW].duration == 40

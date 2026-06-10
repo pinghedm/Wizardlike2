@@ -23,6 +23,8 @@ class SpellConfig(TypedDict):
     recipes: list[RecipeConfig]
     shop: NotRequired[ShopConfig]
     rare: NotRequired[bool]
+    basic: NotRequired[bool]
+    charges: NotRequired[int]  # a basic spell's per-floor charge capacity
 
 
 class IngredientConfig(TypedDict):

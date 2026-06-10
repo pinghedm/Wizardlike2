@@ -26,7 +26,12 @@ from src.constants import (
     UI_YELLOW,
 )
 from src.ecs_helpers import get_singleton, try_get_singleton
-from src.input_handlers import QUICK_CAST_FACE_BUTTONS, connected_controller_name, controller_binding_label
+from src.input_handlers import (
+    QUICK_CAST_FACE_BUTTONS,
+    available_spells,
+    connected_controller_name,
+    controller_binding_label,
+)
 from src.layout import LayoutProcessor
 from src.states import (
     PAUSE_MENU_OPTIONS,
@@ -267,12 +272,9 @@ class MenuSystem(LayoutProcessor):
         height = 16  # one row of padding between the last (double-spaced) spell and the footer
         x, y = draw_centered_frame(self.console, width, height, title='Select Spell to Cast')
 
-        available_spells = sorted(
-            [s for s in player_spell_inv.spells if player_spell_inv.spells[s] > 0],
-            key=lambda x: x.name,
-        )
+        spells = available_spells()
 
-        if not available_spells:
+        if not spells:
             self.console.print(
                 x + width // 2 - 10,
                 y + height // 2,
@@ -282,15 +284,15 @@ class MenuSystem(LayoutProcessor):
         else:
             has_controller = connected_controller_name() is not None
             content_top = y + 2
-            cursor = ui_state.casting_cursor % len(available_spells)
+            cursor = ui_state.casting_cursor % len(spells)
             visible = (height - 3) // 2  # spell rows are double-spaced above the footer
-            start, end = scroll_window(len(available_spells), cursor, visible)
-            for row_i, stype in enumerate(available_spells[start:end]):
+            start, end = scroll_window(len(spells), cursor, visible)
+            for row_i, stype in enumerate(spells[start:end]):
                 i = start + row_i
                 color = UI_YELLOW if i == cursor else UI_WHITE
-                charges = player_spell_inv.spells[stype]
 
                 s_conf = get_spell_config(stype.value) or {}
+                charges = player_spell_inv.spells.get(stype, 0)
                 info = f' (Radius: {s_conf.get("radius", 0)})'
 
                 marker = '> ' if i == cursor else '  '
@@ -303,7 +305,7 @@ class MenuSystem(LayoutProcessor):
                 content_top + (end - start - 1) * 2,
                 start,
                 end,
-                len(available_spells),
+                len(spells),
                 UI_YELLOW,
             )
 
