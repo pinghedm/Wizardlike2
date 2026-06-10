@@ -29,8 +29,9 @@ def test_full_cast_cycle_applies_fixture_effects():
 
     runner.simulate_key(tcod.event.KeySym.RETURN)  # cast at the locked enemy
 
-    # With the last charge spent, post-cast falls back to the spell picker.
-    assert runner.display_mode == DisplayMode.CASTING
+    # The last charge is spent and no other attacking spell remains, so rather than open an
+    # empty picker the player drops back to the map.
+    assert runner.display_mode == DisplayMode.EXPLORING
     assert esper.component_for_entity(runner.player, SpellInventory).spells[SpellType('test_bolt')] == 0
     assert esper.component_for_entity(enemy, Stats).hp == 30 - 12
     assert esper.component_for_entity(enemy, StatusEffects).active[StatusType.SLOW].duration == 40

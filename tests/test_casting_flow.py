@@ -41,12 +41,13 @@ def _enter_targeting(runner: HeadlessRunner):
     assert runner.display_mode == DisplayMode.TARGETING
 
 
-# (behavior, starting_charges) -> mode after one cast
+# (behavior, starting_charges) -> mode after one cast (the bolt is the only spell, so when
+# it runs dry there are no attacking spells left to pick).
 POST_CAST_CASES = [
     # Stay readied while charges remain.
     ('stay_with_charges', PostCastBehavior.STAY, 3, DisplayMode.TARGETING),
-    # Stay, but the cast spent the last charge -> fall back to the picker.
-    ('stay_last_charge', PostCastBehavior.STAY, 1, DisplayMode.CASTING),
+    # Stay, but the cast spent the last charge and nothing else can attack -> out to the map.
+    ('stay_last_charge', PostCastBehavior.STAY, 1, DisplayMode.EXPLORING),
     ('reselect', PostCastBehavior.RESELECT, 3, DisplayMode.CASTING),
     ('explore', PostCastBehavior.EXPLORE, 3, DisplayMode.EXPLORING),
 ]
@@ -68,6 +69,36 @@ def test_post_cast_behavior_routes_after_cast(behavior, charges, expected_mode):
     assert runner.display_mode == expected_mode
     # The cast always spends exactly one charge, whatever happens next.
     assert runner.spell_charges(SPELL) == charges - 1
+
+
+def test_post_cast_stay_falls_to_picker_when_another_attack_spell_remains():
+    # Drain the aimed spell, but another enemy-targeted spell still has charges, so the
+    # picker is worth opening to ready it. _enter_targeting aims the name-sorted first spell,
+    # so 'test_blast' (< 'test_bolt') is the one we deplete.
+    runner = HeadlessRunner(use_random_map=False)
+    runner.give_spell('test_blast', 1)
+    runner.give_spell(SPELL, 2)
+    _settings().post_cast = PostCastBehavior.STAY
+
+    _enter_targeting(runner)
+    runner.simulate_key(tcod.event.KeySym.RETURN)
+
+    assert runner.display_mode == DisplayMode.CASTING
+    assert runner.spell_charges('test_blast') == 0
+
+
+def test_post_cast_stay_drops_to_map_when_only_self_cast_remains():
+    # Out of bolt; only a self-cast heal is left, which the targeting picker can't aim, so
+    # don't bounce into it.
+    runner = HeadlessRunner(use_random_map=False)
+    runner.give_spell(SPELL, 1)
+    runner.give_spell('test_heal', 2)
+    _settings().post_cast = PostCastBehavior.STAY
+
+    _enter_targeting(runner)
+    runner.simulate_key(tcod.event.KeySym.RETURN)
+
+    assert runner.display_mode == DisplayMode.EXPLORING
 
 
 def test_post_cast_stay_keeps_the_reticle_up():

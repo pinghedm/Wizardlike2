@@ -441,9 +441,17 @@ def _step_target(targets: list[int], current: int | None, step: int) -> int | No
     return targets[(targets.index(current) + step) % len(targets)]
 
 
+def _has_castable_attack_spell() -> bool:
+    """Whether the player still has charges for any enemy-targeted spell — the kind the
+    picker exists to aim. When only self-casts (or nothing) remain, the picker is dead weight."""
+    configs = (get_spell_config(s.value) for s in available_spells())
+    return any(conf is not None and conf['target'] == TargetMode.ENEMY for conf in configs)
+
+
 def _resolve_after_cast(ret_ent: int, ui_state: UIState) -> DisplayMode:
-    """Apply the post-cast preference: stay readied while charges remain, else back to the
-    picker (or out to the map)."""
+    """Apply the post-cast preference: stay readied while charges remain. When the spell runs
+    dry under STAY, fall back to the picker to ready another — unless no enemy-targeted spell
+    is left to ready, in which case drop to the map rather than open a useless picker."""
     spell_id = ui_state.active_targeting_spell_id
     behavior = get_singleton(Settings).post_cast
     spell_inv = get_player_component(SpellInventory)
@@ -454,6 +462,8 @@ def _resolve_after_cast(ret_ent: int, ui_state: UIState) -> DisplayMode:
     esper.delete_entity(ret_ent)
     ui_state.active_targeting_spell_id = None
     if behavior == PostCastBehavior.EXPLORE:
+        return DisplayMode.EXPLORING
+    if behavior == PostCastBehavior.STAY and not _has_castable_attack_spell():
         return DisplayMode.EXPLORING
     return DisplayMode.CASTING
 
