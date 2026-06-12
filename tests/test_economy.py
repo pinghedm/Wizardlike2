@@ -63,6 +63,16 @@ def test_death_system_drops_loot_at_enemy_tile(monkeypatch):
 # --- pickup -------------------------------------------------------------------
 
 
+def test_pickup_leaves_items_on_other_tiles():
+    runner = HeadlessRunner(use_random_map=False)
+    px, py = runner.player_pos
+    spawn_item_entity(GOLD, px + 2, py, count=1)  # two tiles off, not where we step
+
+    runner.simulate_key(tcod.event.KeySym.RIGHT)  # step to px+1; the scan skips the far pile
+
+    assert any(item.type == GOLD for _e, (_pos, item) in esper.get_components(Position, Item))
+
+
 def test_pickup_credits_the_stack_count():
     runner = HeadlessRunner(use_random_map=False)
     px, py = runner.player_pos

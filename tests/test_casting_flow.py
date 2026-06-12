@@ -4,8 +4,29 @@ import esper
 import pytest
 import tcod.event
 
-from src.components import FieldOfView, Point, Settings, SpellType, Stats, TargetingReticle, UIState
-from src.input_handlers import available_spells
+from src.components import (
+    Actor,
+    Effect,
+    EffectType,
+    FieldOfView,
+    InputAction,
+    Point,
+    Settings,
+    SpellInventory,
+    SpellType,
+    Stats,
+    StatusEffects,
+    StatusType,
+    TargetingReticle,
+    UIState,
+)
+from src.input_handlers import (
+    available_spells,
+    handle_casting_input,
+    handle_settings_input,
+    handle_targeting_input,
+)
+from src.input_handlers.handlers import _cycle_post_cast, _step_target
 from src.procgen import transition_to_next_floor
 from src.states import DisplayMode, PostCastBehavior
 from tests.headless_runner import HeadlessRunner
@@ -178,6 +199,82 @@ def test_settings_confirm_on_keybinding_row_arms_remap():
     runner.simulate_key(tcod.event.KeySym.RETURN)
 
     assert _ui().remapping_action == first_action
+
+
+@pytest.mark.parametrize(
+    ('action', 'expected'),
+    [
+        (InputAction.MOVE_LEFT, PostCastBehavior.EXPLORE),  # STAY -> previous, wrapping
+        (InputAction.CYCLE_TAB, PostCastBehavior.STAY),  # an unrelated action leaves it put
+    ],
+)
+def test_settings_toggle_left_and_noop(action, expected):
+    HeadlessRunner(use_random_map=False)
+    _settings().post_cast = PostCastBehavior.STAY
+    _cycle_post_cast(_settings(), action)
+    assert _settings().post_cast == expected
+
+
+def test_settings_arrow_moves_the_cursor_between_rows():
+    runner = HeadlessRunner(use_random_map=False)
+    runner.game_state.display_mode = DisplayMode.SETTINGS
+    _ui().settings_cursor = 0
+    handle_settings_input(InputAction.MOVE_DOWN)
+    assert _ui().settings_cursor == 1
+
+
+def test_settings_keybinding_row_ignores_unrelated_actions():
+    runner = HeadlessRunner(use_random_map=False)
+    runner.game_state.display_mode = DisplayMode.SETTINGS
+    _ui().settings_cursor = 1  # a keybinding row
+    assert handle_settings_input(InputAction.CYCLE_TAB) == DisplayMode.SETTINGS
+    assert _ui().remapping_action is None
+
+
+# --- picker / targeting guard paths -----------------------------------------
+
+
+@pytest.mark.parametrize(
+    ('targets', 'current', 'step', 'expected'),
+    [
+        ([], 5, 1, None),  # no targets -> None
+        ([7, 8], 99, 1, 7),  # the current target is gone -> first
+        ([7, 8, 9], 8, 1, 9),  # next
+        ([7, 8, 9], 9, 1, 7),  # next wraps
+        ([7, 8, 9], 8, -1, 7),  # previous
+    ],
+)
+def test_step_target(targets, current, step, expected):
+    assert _step_target(targets, current, step) == expected
+
+
+def test_casting_quick_cast_with_no_charged_spell_keeps_the_picker():
+    runner = HeadlessRunner(use_random_map=False)
+    esper.component_for_entity(runner.player, SpellInventory).spells.clear()  # spend everything, basic included
+    runner.game_state.display_mode = DisplayMode.CASTING
+    assert handle_casting_input(InputAction.QUICK_CAST_1) == DisplayMode.CASTING
+
+
+def test_casting_movement_stays_in_the_picker():
+    HeadlessRunner(use_random_map=False)
+    assert handle_casting_input(InputAction.MOVE_UP) == DisplayMode.CASTING
+
+
+def test_targeting_move_is_swallowed_while_slowed_on_cooldown():
+    runner = HeadlessRunner(use_random_map=False)
+    px, py = runner.player_pos
+    esper.create_entity(TargetingReticle(x=px, y=py, radius=0))
+    esper.component_for_entity(runner.player, StatusEffects).active[StatusType.SLOW] = Effect(type=EffectType.SLOW)
+    esper.component_for_entity(runner.player, Actor).cooldown = 5
+    assert handle_targeting_input(InputAction.MOVE_UP) == DisplayMode.TARGETING
+    assert runner.player_pos == Point(px, py)
+
+
+def test_targeting_ignores_unrelated_actions():
+    runner = HeadlessRunner(use_random_map=False)
+    px, py = runner.player_pos
+    esper.create_entity(TargetingReticle(x=px, y=py, radius=0))
+    assert handle_targeting_input(InputAction.OPEN_CRAFTING) == DisplayMode.TARGETING
 
 
 # --- cycle targeting --------------------------------------------------------

@@ -13,6 +13,7 @@ from src import persistence
 from src.components import InputAction, PlayerTag, UIState
 from src.entities import create_game_state, create_ui_state
 from src.input_handlers import handle_menu_input
+from src.input_handlers.handlers import step_cursor
 from src.states import (
     PAUSE_MENU_OPTIONS,
     TITLE_MENU_OPTIONS,
@@ -51,3 +52,27 @@ def test_menu_confirm_routes_each_option(game_active, option, has_save, expected
     esper.get_component(UIState)[0][1].main_menu_cursor = options.index(option)
 
     assert handle_menu_input(InputAction.CONFIRM) == expected
+
+
+def test_menu_movement_steps_the_cursor():
+    esper.clear_database()
+    create_game_state(floor=1)
+    create_ui_state()
+    ui_state = esper.get_component(UIState)[0][1]
+
+    assert handle_menu_input(InputAction.MOVE_DOWN) == DisplayMode.MENU
+    assert ui_state.main_menu_cursor == 1
+
+
+@pytest.mark.parametrize(
+    ('cursor', 'length', 'action', 'expected'),
+    [
+        (3, 0, InputAction.MOVE_UP, 0),  # empty list pins to 0
+        (0, 4, InputAction.MOVE_UP, 3),  # up wraps to the end
+        (3, 4, InputAction.MOVE_DOWN, 0),  # down wraps to the start
+        (2, 4, InputAction.CONFIRM, 2),  # a non-move action leaves the cursor put
+        (6, 4, None, 2),  # an out-of-range cursor is normalized into the list
+    ],
+)
+def test_step_cursor(cursor, length, action, expected):
+    assert step_cursor(cursor, length, action) == expected

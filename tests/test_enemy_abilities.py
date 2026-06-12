@@ -71,6 +71,15 @@ def test_ability_blocked_when_player_not_in_line_of_sight():
     assert not _can_use_ability(enemy, esper.component_for_entity(enemy, Position), Position(px, py), _ranged())
 
 
+def test_ability_in_range_fires_without_a_sight_model():
+    runner = HeadlessRunner(use_random_map=False)
+    px, py = runner.player_pos
+    enemy = runner.spawn_enemy(px + 2, py, {**runner.enemy_config(), 'ability': _ranged(rng=5)})
+    esper.remove_component(enemy, FieldOfView)  # no FOV -> range alone gates the shot
+
+    assert _can_use_ability(enemy, esper.component_for_entity(enemy, Position), Position(px, py), _ranged(rng=5))
+
+
 # --- AISystem integration: a ready, in-range, visible caster fires -------------
 
 

@@ -4,6 +4,7 @@ import tcod.event
 from src import persistence, shop
 from src.components import (
     Enemy,
+    InputAction,
     Inventory,
     ItemType,
     KnownRecipes,
@@ -16,7 +17,10 @@ from src.components import (
     Stats,
     UIState,
 )
-from src.procgen import generate_shop_floor, is_shop_floor, spawn_shopkeeper
+from src.constants import SHOP_FLOOR_INTERVAL
+from src.input_handlers import handle_shop_input
+from src.input_handlers.handlers import _adjacent_shopkeeper
+from src.procgen import generate_shop_floor, is_shop_floor, spawn_shopkeeper, transition_to_next_floor
 from src.shop import build_shop_offers, purchase_offer
 from src.states import DisplayMode
 from src.systems import craft_known_spell, match_recipe
@@ -138,6 +142,23 @@ def test_buying_an_unknown_spell_teaches_the_recipe_and_grants_charges():
     assert inv.items[GOLD] == 75
 
 
+def test_buying_a_known_spell_adds_charges_without_relearning():
+    runner = HeadlessRunner()
+    inv = esper.component_for_entity(runner.player, Inventory)
+    inv.items[GOLD] = 100
+    known = esper.component_for_entity(runner.player, KnownRecipes)
+    spell_inv = esper.component_for_entity(runner.player, SpellInventory)
+    stype = SpellType('test_bolt')
+    known.recipes[stype] = {RARE_COMBO}  # already learned (the recipe set is left untouched)
+    spell_inv.spells[stype] = 1
+
+    offer = ShopOffer(kind=ShopOfferKind.SPELL, price=25, label='Test Bolt', purchaseable=stype, amount=4)
+    assert purchase_offer(offer, quantity=1) is True
+
+    assert spell_inv.spells[stype] == 5  # 1 + 4 charges
+    assert known.recipes[stype] == {RARE_COMBO}  # recipe set unchanged
+
+
 def test_a_purchase_persists_gold_to_meta():
     runner = HeadlessRunner()
     inv = esper.component_for_entity(runner.player, Inventory)
@@ -173,6 +194,16 @@ def test_a_known_rare_spell_can_still_be_recrafted():
 # --- shop floor generation -----------------------------------------------------
 
 
+def test_transitioning_onto_a_shop_floor_generates_the_shop():
+    runner = HeadlessRunner()
+    runner.game_state.floor = SHOP_FLOOR_INTERVAL - 1  # the next floor down is a shop floor
+
+    transition_to_next_floor()
+
+    assert is_shop_floor(runner.game_state.floor)
+    assert len(esper.get_component(Shopkeeper)) == 1
+
+
 def test_shop_floor_has_a_shopkeeper_no_enemies_and_an_exit():
     runner = HeadlessRunner()
     runner.game_state.floor = 3
@@ -186,6 +217,23 @@ def test_shop_floor_has_a_shopkeeper_no_enemies_and_an_exit():
 
 
 # --- shop interaction ----------------------------------------------------------
+
+
+def test_adjacent_shopkeeper_is_false_when_out_of_range():
+    runner = HeadlessRunner()
+    px, py = runner.player_pos
+    esper.create_entity(Position(px + 5, py), Shopkeeper())  # present, but not within a tile
+    assert _adjacent_shopkeeper(Position(px, py)) is False
+
+
+def test_shop_ignores_unrelated_actions():
+    runner = HeadlessRunner()
+    px, py = runner.player_pos
+    esper.component_for_entity(runner.player, Inventory).items[GOLD] = 100
+    esper.create_entity(Position(px + 1, py), Shopkeeper(offers=[_ingredient_offer(price=5)]))
+    runner.game_state.display_mode = DisplayMode.SHOPPING
+
+    assert handle_shop_input(InputAction.CYCLE_TAB) == DisplayMode.SHOPPING
 
 
 def test_pressing_confirm_next_to_a_shopkeeper_opens_the_shop():

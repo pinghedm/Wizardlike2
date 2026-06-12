@@ -3,7 +3,14 @@ import esper
 from src.components import AI, Actor, FieldOfView, PatrolTag, Point, Position
 from src.map_objects import Map
 from src.procgen import RectangularRoom
-from src.systems.ai import _process_chase, _process_flee, _process_guard, _process_patrol
+from src.systems.ai import (
+    AISystem,
+    _process_chase,
+    _process_flee,
+    _process_guard,
+    _process_patrol,
+    _remember_player_if_seen,
+)
 from tests.headless_runner import HeadlessRunner
 
 
@@ -97,6 +104,28 @@ def test_flee_moves_the_enemy_away_from_the_player():
     assert after > before  # stepped farther from the player
 
 
+def test_flee_holds_when_it_has_never_seen_the_player():
+    runner = HeadlessRunner(use_random_map=False)
+    enemy = runner.spawn_enemy(3, 3, {**runner.enemy_config(), 'behavior': 'FLEE'})
+    _pin_target(enemy, None)  # no last-known position to flee from
+    pos = esper.component_for_entity(enemy, Position)
+
+    _process_flee(enemy, pos, {})
+
+    assert pos.point == Point(3, 3)  # nowhere to run, so it stays put
+
+
+def test_flee_holds_when_the_escape_tile_is_off_the_map():
+    runner = HeadlessRunner(use_random_map=False)
+    enemy = runner.spawn_enemy(0, 0, {**runner.enemy_config(), 'behavior': 'FLEE'})
+    _pin_target(enemy, Point(5, 5))  # player is down-right; the only retreat is off-map
+    pos = esper.component_for_entity(enemy, Position)
+
+    _process_flee(enemy, pos, {})
+
+    assert pos.point == Point(0, 0)  # cornered against the bounds
+
+
 # --- _process_guard ------------------------------------------------------------
 
 
@@ -110,3 +139,43 @@ def test_guard_holds_its_position():
     _process_guard(guard, pos, {})
 
     assert pos.point == start  # guards never move; their melee is handled by the AISystem
+
+
+# --- _remember_player_if_seen --------------------------------------------------
+
+
+def test_remembers_the_players_position_when_in_view():
+    runner = HeadlessRunner(use_random_map=False)
+    px, py = runner.player_pos
+    enemy = runner.spawn_enemy(px, py - 3)
+    fov = esper.component_for_entity(enemy, FieldOfView)
+    fov.visible_tiles = {Point(px, py)}  # the player is in sight this tick
+    fov.dirty = False
+    esper.component_for_entity(enemy, AI).last_known_player_position = None
+
+    _remember_player_if_seen(enemy)
+
+    assert esper.component_for_entity(enemy, AI).last_known_player_position == Point(px, py)
+
+
+# --- AISystem dispatch ---------------------------------------------------------
+
+
+def test_aisystem_dispatches_each_movement_behavior_by_tag():
+    runner = HeadlessRunner(use_random_map=False)
+    px, py = runner.player_pos
+    patrol = runner.spawn_enemy(5, 3, {**runner.enemy_config(), 'behavior': 'PATROL'}, rooms=_patrol_rooms())
+    chaser = runner.spawn_enemy(px, py - 5, runner.enemy_config())  # default CHASE
+    fleer = runner.spawn_enemy(px - 3, py, {**runner.enemy_config(), 'behavior': 'FLEE'})
+    _pin_target(chaser, Point(px, py))
+    _pin_target(fleer, Point(px, py))
+    patrol_pos = esper.component_for_entity(patrol, Position)
+    chaser_pos = esper.component_for_entity(chaser, Position)
+    fleer_pos = esper.component_for_entity(fleer, Position)
+    flee_before = max(abs(px - fleer_pos.x), abs(py - fleer_pos.y))
+
+    AISystem().process()  # collect targets, build one Dijkstra map each, dispatch by tag
+
+    assert (patrol_pos.x, patrol_pos.y) == (4, 3)  # PATROL stepped toward its waypoint
+    assert (chaser_pos.x, chaser_pos.y) == (px, py - 4)  # CHASE stepped toward the player
+    assert max(abs(px - fleer_pos.x), abs(py - fleer_pos.y)) > flee_before  # FLEE stepped away

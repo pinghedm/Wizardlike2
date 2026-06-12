@@ -1,10 +1,15 @@
 import esper
+import pytest
 import tcod.event
 
-from src.components import Inventory, ItemType, KnownRecipes, SpellInventory, SpellType, UIState
+from src.components import InputAction, Inventory, ItemType, KnownRecipes, RunStats, SpellInventory, SpellType, UIState
+from src.ecs_helpers import get_singleton
+from src.input_handlers.handlers import _combine_selection, _handle_experiment_input, _handle_spellbook_input
 from src.states import CraftingView, DisplayMode
-from src.systems import match_recipe
+from src.systems import discover_and_craft, match_recipe
 from tests.headless_runner import HeadlessRunner
+
+REAGENT = 'reagent_a'
 
 
 def make_ingredients_type(*items):
@@ -59,6 +64,19 @@ def test_left_removes_a_selected_reagent_from_the_mix():
     runner.simulate_key(tcod.event.KeySym.LEFT)  # remove one back
 
     assert ui_state.selected_for_crafting[ItemType('reagent_a')] == 1
+
+
+def test_recrafting_a_known_spell_adds_charges_without_recounting_the_discovery():
+    runner = HeadlessRunner(use_random_map=False)
+    runner.give_item('reagent_a', 4)  # enough for two test_blast crafts (reagent_a x2 each)
+    discovered_before = get_singleton(RunStats).spells_discovered
+
+    discover_and_craft(make_ingredients_type('reagent_a', 'reagent_a'))  # first time: a discovery
+    discover_and_craft(make_ingredients_type('reagent_a', 'reagent_a'))  # already known: just charges
+
+    spell_inv = esper.component_for_entity(runner.player, SpellInventory)
+    assert spell_inv.spells[SpellType('test_blast')] == 10  # 5 + 5 charges
+    assert get_singleton(RunStats).spells_discovered == discovered_before + 1  # counted once
 
 
 def test_combining_an_unknown_combo_fizzles_and_clears_the_mix():
@@ -118,3 +136,47 @@ def test_spellbook_craft_without_ingredients_does_nothing():
 
     assert esper.component_for_entity(runner.player, SpellInventory).spells.get(SpellType('test_bolt'), 0) == 0
     assert any('Not enough ingredients' in m for m in runner.get_log_messages())
+
+
+# --- experiment / spellbook edge paths ----------------------------------------
+
+
+@pytest.mark.parametrize('action', [InputAction.MOVE_LEFT, InputAction.MOVE_RIGHT])
+def test_experiment_select_is_a_noop_with_an_empty_inventory(action):
+    HeadlessRunner(use_random_map=False)  # fresh player holds no reagents
+    ui_state = get_singleton(UIState)
+    assert _handle_experiment_input(action, ui_state) == DisplayMode.COMBINING
+    assert ui_state.selected_for_crafting == {}
+
+
+def test_experiment_cannot_select_more_than_held():
+    runner = HeadlessRunner(use_random_map=False)
+    runner.give_item(REAGENT, 1)
+    ui_state = get_singleton(UIState)
+    ui_state.selected_for_crafting = {ItemType(REAGENT): 1}  # already at the held amount
+
+    _handle_experiment_input(InputAction.MOVE_RIGHT, ui_state)
+
+    assert ui_state.selected_for_crafting[ItemType(REAGENT)] == 1
+
+
+def test_experiment_cannot_deselect_below_zero():
+    runner = HeadlessRunner(use_random_map=False)
+    runner.give_item(REAGENT, 1)
+    ui_state = get_singleton(UIState)  # nothing selected yet
+
+    _handle_experiment_input(InputAction.MOVE_LEFT, ui_state)
+
+    assert ui_state.selected_for_crafting.get(ItemType(REAGENT), 0) == 0
+
+
+def test_combine_with_an_empty_mix_stays_combining():
+    HeadlessRunner(use_random_map=False)
+    ui_state = get_singleton(UIState)
+    ui_state.selected_for_crafting = {}
+    assert _combine_selection(ui_state) == DisplayMode.COMBINING
+
+
+def test_spellbook_confirm_with_no_known_recipes_stays_combining():
+    HeadlessRunner(use_random_map=False)  # fresh player knows nothing
+    assert _handle_spellbook_input(InputAction.CONFIRM, get_singleton(UIState)) == DisplayMode.COMBINING
