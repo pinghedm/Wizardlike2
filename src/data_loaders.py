@@ -26,7 +26,7 @@ from src.components import (
     TargetMode,
     TileConfig,
 )
-from src.constants import DATA_DIR, FONT_FILE, FONT_TILE_PX
+from src.constants import DATA_DIR, FONT_FILE, FONT_TILE_PX, TILE_SCALE
 from src.debug import debug_log
 
 
@@ -62,6 +62,10 @@ class SpriteDefinition:
     region: tuple[int, int, int, int] | None = None
     scale: float = 1.0
     codepoint: int | None = None
+    # The TILE_SCALE^2 sub-tile codepoints (row-major) when the sprite is also rasterized
+    # at block size, so the renderer can draw it filling a scaled tile. None for font
+    # glyphs and when TILE_SCALE == 1.
+    block_codepoints: list[int] | None = None
 
 
 def _fit_sprite_to_tile(tile_pixels: npt.NDArray[np.uint8], tw: int, th: int, scale: float) -> npt.NDArray[np.uint8]:
@@ -295,6 +299,7 @@ class AssetLoader:
         # 2. Map graphical sprites to new codepoints in the Private Use Area
         current_codepoint = 0xE000
         asset_to_codepoint = {}
+        block_for_key: dict[object, list[int]] = {}
 
         for sprite_id, definition in self._mapping.items():
             if definition.path is None:
@@ -308,6 +313,7 @@ class AssetLoader:
             )
             if key in asset_to_codepoint:
                 definition.codepoint = asset_to_codepoint[key]
+                definition.block_codepoints = block_for_key.get(key)
                 continue
 
             try:
@@ -328,6 +334,22 @@ class AssetLoader:
                 definition.codepoint = current_codepoint
                 asset_to_codepoint[key] = current_codepoint
                 current_codepoint += 1
+
+                # Also rasterize the sprite at block size and slice it into TILE_SCALE^2
+                # cell-sized sub-tiles, so it can be drawn filling a scaled tile crisply
+                # (rather than tiling the single small glyph). Skipped at 1x.
+                if TILE_SCALE > 1:
+                    block_tile = _fit_sprite_to_tile(tile_pixels, tw * TILE_SCALE, th * TILE_SCALE, definition.scale)
+                    grid: list[int] = []
+                    for row in range(TILE_SCALE):
+                        for col in range(TILE_SCALE):
+                            self.tileset[current_codepoint] = block_tile[
+                                row * th : (row + 1) * th, col * tw : (col + 1) * tw
+                            ]
+                            grid.append(current_codepoint)
+                            current_codepoint += 1
+                    definition.block_codepoints = grid
+                    block_for_key[key] = grid
             except Exception as exc:
                 # Fall back to the block glyph so one bad sprite doesn't abort the boot,
                 # but log which sprite failed and why (silent otherwise: it just renders
@@ -342,3 +364,9 @@ class AssetLoader:
         if sprite_id not in self._mapping:
             return ord('\u2588')
         return self._mapping[sprite_id].codepoint or ord('\u2588')
+
+    def get_block_codepoints(self, sprite_id: str) -> list[int] | None:
+        """The TILE_SCALE^2 sub-tile codepoints (row-major) for a block-sized sprite, or
+        None for font glyphs / 1x \u2014 in which case the renderer fills the block itself."""
+        definition = self._mapping.get(sprite_id)
+        return definition.block_codepoints if definition else None

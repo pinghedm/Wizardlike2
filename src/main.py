@@ -10,6 +10,7 @@ from src import persistence
 from src.components import InputAction, MessageLog, MetaSaveState, Modal, Settings
 from src.constants import (
     DISPLAY_SCALE,
+    FONT_TILE_PX,
     MAX_ITEMS_PER_ROOM,
     MAX_ROOMS,
     ROOM_MAX_SIZE,
@@ -270,8 +271,8 @@ def main():
     with tcod.context.new(
         columns=SCREEN_WIDTH,
         rows=SCREEN_HEIGHT,
-        width=SCREEN_WIDTH * 20,
-        height=SCREEN_HEIGHT * 20,
+        width=SCREEN_WIDTH * FONT_TILE_PX,
+        height=SCREEN_HEIGHT * FONT_TILE_PX,
         tileset=tileset,
         title='WizardLike',
         vsync=True,

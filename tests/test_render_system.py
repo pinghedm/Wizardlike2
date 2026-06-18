@@ -2,8 +2,9 @@
 
 The headless harness wires up the UI render processors but not RenderSystem, so
 this drives it directly. A 20x20 map in an 80x50 console keeps the camera clamped
-to (0, 0), so a map cell (x, y) draws at console cell (x, y) -- letting tests assert
-on specific cells. console arrays are indexed [y, x].
+to (0, 0); each map tile fills a TILE_SCALE block of cells, so a map cell (x, y) draws
+at the block whose top-left is map_to_screen(x, y). The helpers below map a tile to that
+block so tests can assert on it. console arrays are indexed [y, x].
 """
 
 import esper
@@ -37,12 +38,24 @@ def _draw(runner: HeadlessRunner, mode: DisplayMode = DisplayMode.EXPLORING):
     RenderSystem(runner.layout, runner.asset_loader).process()
 
 
+def _origin(runner: HeadlessRunner, x: int, y: int) -> tuple[int, int]:
+    """The console cell a map tile's block starts at (camera clamped to (0, 0) here)."""
+    return runner.layout.map_to_screen(map_x=x, map_y=y, cam_x=0, cam_y=0)
+
+
 def _fg(runner: HeadlessRunner, x: int, y: int) -> tuple[int, int, int]:
-    return tuple(int(c) for c in runner.console.fg[y, x])
+    sx, sy = _origin(runner, x, y)
+    return tuple(int(c) for c in runner.console.fg[sy, sx])
 
 
 def _bg(runner: HeadlessRunner, x: int, y: int) -> tuple[int, int, int]:
-    return tuple(int(c) for c in runner.console.bg[y, x])
+    sx, sy = _origin(runner, x, y)
+    return tuple(int(c) for c in runner.console.bg[sy, sx])
+
+
+def _ch(runner: HeadlessRunner, x: int, y: int) -> int:
+    sx, sy = _origin(runner, x, y)
+    return runner.console.ch[sy, sx]
 
 
 def test_render_draws_visible_tiles_and_skips_unseen():
@@ -52,11 +65,11 @@ def test_render_draws_visible_tiles_and_skips_unseen():
     _draw(runner)
 
     vx, vy = VISIBLE_FLOOR
-    assert runner.console.ch[vy, vx] != SPACE
+    assert _ch(runner, vx, vy) != SPACE
     assert _fg(runner, vx, vy) == _game_map().tiles[vx][vy].fg
 
     cx, cy = UNEXPLORED_CORNER
-    assert runner.console.ch[cy, cx] == SPACE
+    assert _ch(runner, cx, cy) == SPACE
 
 
 def test_render_dims_explored_but_unseen_tiles():
@@ -111,7 +124,7 @@ def test_render_leaves_unstatused_entity_untinted():
 
     # No status, so the glyph draws over the tile's own background, not a tint.
     epos = esper.component_for_entity(enemy, Position)
-    assert runner.console.ch[epos.y, epos.x] != SPACE
+    assert _ch(runner, epos.x, epos.y) != SPACE
     assert _bg(runner, epos.x, epos.y) == _game_map().tiles[epos.x][epos.y].bg
 
 
@@ -132,7 +145,7 @@ def test_render_noops_outside_render_modes(mode):
     _draw(runner, mode)
 
     px, py = runner.player_pos
-    assert runner.console.ch[py, px] == SPACE
+    assert _ch(runner, px, py) == SPACE
 
 
 def test_render_noops_without_a_map():
@@ -144,4 +157,4 @@ def test_render_noops_without_a_map():
     _draw(runner)
 
     px, py = runner.player_pos
-    assert runner.console.ch[py, px] == SPACE
+    assert _ch(runner, px, py) == SPACE

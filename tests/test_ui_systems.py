@@ -22,6 +22,7 @@ from src.components import (
     UIState,
 )
 from src.constants import (
+    TILE_SCALE,
     UI_BLACK,
     UI_GRAY,
     UI_GRAY_DARK,
@@ -381,11 +382,14 @@ def test_targeting_overlay_brackets_target_without_covering_it():
     esper.create_entity(TargetingReticle(x=rx, y=ry, radius=1))
 
     rows = runner.get_console_text()
-    # The target cell itself is left alone; bright brackets frame it instead.
-    assert rows[ry][rx] != 'X'
-    assert (rows[ry][rx - 1], rows[ry][rx + 1]) == ('[', ']')
-    assert runner.get_console_fg(rx - 1, ry) == UI_YELLOW
-    assert runner.get_console_fg(rx + 1, ry) == UI_YELLOW
+    tx, ty = runner.layout.map_to_screen(map_x=rx, map_y=ry, cam_x=0, cam_y=0)
+    mid_y = ty + TILE_SCALE // 2
+    left, right = tx - 1, tx + TILE_SCALE
+    # The target block itself is left alone; bright brackets frame it instead.
+    assert rows[mid_y][tx] not in ('[', ']')
+    assert (rows[mid_y][left], rows[mid_y][right]) == ('[', ']')
+    assert runner.get_console_fg(left, mid_y) == UI_YELLOW
+    assert runner.get_console_fg(right, mid_y) == UI_YELLOW
 
 
 def test_targeting_overlay_outlines_aoe_edge_not_interior():
@@ -396,10 +400,12 @@ def test_targeting_overlay_outlines_aoe_edge_not_interior():
     esper.create_entity(TargetingReticle(x=rx, y=ry, radius=2))
 
     edge = blend(UI_BLACK, UI_MAROON, 0.6)
-    # An in-range cell on the rim of the radius is shaded...
-    assert runner.get_console_bg(rx, ry + 2) == edge
-    # ...but the interior (the target's own cell) is not, so the enemy stays visible.
-    assert runner.get_console_bg(rx, ry) != edge
+    rim_x, rim_y = runner.layout.map_to_screen(map_x=rx, map_y=ry + 2, cam_x=0, cam_y=0)
+    int_x, int_y = runner.layout.map_to_screen(map_x=rx, map_y=ry, cam_x=0, cam_y=0)
+    # An in-range tile on the rim of the radius is shaded...
+    assert runner.get_console_bg(rim_x, rim_y) == edge
+    # ...but the interior (the target's own tile) is not, so the enemy stays visible.
+    assert runner.get_console_bg(int_x, int_y) != edge
 
 
 def test_targeting_overlay_labels_the_aimed_spell_and_charges():

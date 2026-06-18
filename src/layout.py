@@ -12,6 +12,8 @@ from dataclasses import dataclass
 import esper
 import tcod.console
 
+from src.constants import TILE_SCALE
+
 
 @dataclass(frozen=True)
 class Rect:
@@ -75,28 +77,36 @@ class Layout:
         """Menus and modals center over the whole screen."""
         return Rect(0, 0, self.console.width, self.console.height)
 
+    @property
+    def viewport_tiles(self) -> tuple[int, int]:
+        """How many map tiles fit across the viewport, given each tile is drawn as a
+        TILE_SCALE x TILE_SCALE block of console cells."""
+        view = self.map_viewport
+        return view.width // TILE_SCALE, view.height // TILE_SCALE
+
     def camera_offset(self, player_x: int, player_y: int, map_width: int, map_height: int) -> tuple[int, int]:
-        """The top-left map cell the viewport should show to keep the player
+        """The top-left map tile the viewport should show to keep the player
         centered, without ever scrolling past the map edges.
 
         Each axis is handled the same way: start at the player minus half the
-        viewport (which centers the player), then clamp into the range of valid
-        offsets, [0, map_size - viewport_size]. When the map is smaller than the
-        viewport that range is just [0, 0], so the map sits flush to the top-left.
+        visible tile span (which centers the player), then clamp into the range of
+        valid offsets, [0, map_size - tiles_visible]. When the map is smaller than the
+        view that range is just [0, 0], so the map sits flush to the top-left.
         """
-        view = self.map_viewport
-        max_x = max(0, map_width - view.width)
-        max_y = max(0, map_height - view.height)
-        cam_x = min(max(player_x - view.width // 2, 0), max_x)
-        cam_y = min(max(player_y - view.height // 2, 0), max_y)
+        tiles_x, tiles_y = self.viewport_tiles
+        max_x = max(0, map_width - tiles_x)
+        max_y = max(0, map_height - tiles_y)
+        cam_x = min(max(player_x - tiles_x // 2, 0), max_x)
+        cam_y = min(max(player_y - tiles_y // 2, 0), max_y)
         return cam_x, cam_y
 
     def map_to_screen(self, map_x: int, map_y: int, cam_x: int, cam_y: int) -> tuple[int, int]:
-        """Convert a map cell to its console cell for the given camera offset (from
-        `camera_offset`). The result may fall outside `map_viewport`; callers that
-        need to clip should test it with `map_viewport.contains`."""
+        """Convert a map tile to the top-left console cell of its TILE_SCALE-sized
+        block, for the given camera offset (from `camera_offset`). The result may fall
+        outside `map_viewport`; callers that need to clip should test it with
+        `map_viewport.contains`."""
         view = self.map_viewport
-        return view.x + map_x - cam_x, view.y + map_y - cam_y
+        return view.x + (map_x - cam_x) * TILE_SCALE, view.y + (map_y - cam_y) * TILE_SCALE
 
 
 class LayoutProcessor(esper.Processor):

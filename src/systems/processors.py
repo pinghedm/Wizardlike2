@@ -24,6 +24,7 @@ from src.components import (
 from src.constants import (
     RGB,
     STATUS_PULSE_INTERVAL,
+    TILE_SCALE,
     UI_BLACK,
     UI_YELLOW,
     to_rgb,
@@ -201,21 +202,21 @@ class RenderSystem(LayoutProcessor):
         focus_y = player_pos.y if player_pos else game_map.height // 2
         cam_x, cam_y = self.layout.camera_offset(focus_x, focus_y, game_map.width, game_map.height)
 
-        # 2. Render the map. Walk only the band of cells under the camera viewport (the
-        # full map is ~3.5x larger) and inline map_to_screen's transform with its origin
-        # hoisted out of the loop: at ~12k cells/frame the Rect its map_viewport property
-        # rebuilds per call otherwise dominates the frame (measured ~28ms -> <1ms here).
-        origin_x, origin_y = view.x - cam_x, view.y - cam_y
-        for x in range(cam_x, min(game_map.width, cam_x + view.width)):
-            for y in range(cam_y, min(game_map.height, cam_y + view.height)):
+        # 2. Render the map. Each tile fills a TILE_SCALE x TILE_SCALE block of cells, so
+        # the dungeon reads larger than the one-cell HUD. Walk only the tiles under the
+        # viewport and inline the block transform (origin hoisted out of the loop): at this
+        # cell count the Rect that map_viewport rebuilds per call otherwise dominates the
+        # frame (measured ~28ms -> <1ms here).
+        tiles_x, tiles_y = self.layout.viewport_tiles
+        origin_x, origin_y = view.x - cam_x * TILE_SCALE, view.y - cam_y * TILE_SCALE
+        for x in range(cam_x, min(game_map.width, cam_x + tiles_x)):
+            for y in range(cam_y, min(game_map.height, cam_y + tiles_y)):
                 is_visible = player_fov is not None and Point(x, y) in player_fov.visible_tiles
                 is_explored = game_map.explored[x, y]
                 if not is_visible and not is_explored:
                     continue
 
-                screen_x, screen_y = origin_x + x, origin_y + y
                 tile = game_map.tiles[x][y]
-                codepoint = self.asset_loader.get_codepoint(tile.sprite_id)
                 fg = tile.fg
                 bg = tile.bg
 
@@ -224,23 +225,35 @@ class RenderSystem(LayoutProcessor):
                     fg = to_rgb([int(c * 0.3) for c in fg])
                     bg = to_rgb([int(c * 0.3) for c in bg])
 
-                self.console.print(x=screen_x, y=screen_y, text=chr(codepoint), fg=fg, bg=bg)
+                self._draw_block(tile.sprite_id, origin_x + x * TILE_SCALE, origin_y + y * TILE_SCALE, fg=fg, bg=bg)
 
-        # 3. Render all entities with Position and Renderable components that are visible
+        # 3. Render all entities with Position and Renderable components that are visible,
+        # filling the same TILE_SCALE block so they read at the scaled tile size.
         for ent, (pos, rend) in esper.get_components(Position, Renderable):
             if player_fov is not None and pos.point not in player_fov.visible_tiles:
                 continue
 
-            screen_x, screen_y = self.layout.map_to_screen(map_x=pos.x, map_y=pos.y, cam_x=cam_x, cam_y=cam_y)
-            if not view.contains(screen_x, screen_y):
+            block_x, block_y = self.layout.map_to_screen(map_x=pos.x, map_y=pos.y, cam_x=cam_x, cam_y=cam_y)
+            if not view.contains(block_x, block_y):
                 continue
 
-            codepoint = self.asset_loader.get_codepoint(rend.sprite_id)
-            debug_log(f'render entity {ent} sprite={rend.sprite_id} cp={codepoint} at {(pos.x, pos.y)}')
+            debug_log(f'render entity {ent} sprite={rend.sprite_id} at {(pos.x, pos.y)}')
             # A statused entity keeps its glyph color over a tint of its active status.
             tint = self._status_tint(ent)
             bg = blend(UI_BLACK, tint, 0.5) if tint is not None else None
-            self.console.print(x=screen_x, y=screen_y, text=chr(codepoint), fg=rend.color, bg=bg)
+            self._draw_block(rend.sprite_id, block_x, block_y, fg=rend.color, bg=bg)
+
+    def _draw_block(self, sprite_id: str, x: int, y: int, fg: RGB, bg: RGB | None) -> None:
+        """Draw a sprite into its TILE_SCALE x TILE_SCALE block at console cell (x, y).
+        An image sprite rasterized at block size draws its sub-tiles one per cell; a font
+        glyph (no block form) just fills the block with the single glyph."""
+        block = self.asset_loader.get_block_codepoints(sprite_id)
+        if block is None:
+            codepoint = self.asset_loader.get_codepoint(sprite_id)
+            self.console.draw_rect(x, y, TILE_SCALE, TILE_SCALE, ch=codepoint, fg=fg, bg=bg)
+            return
+        for i, codepoint in enumerate(block):
+            self.console.print(x + i % TILE_SCALE, y + i // TILE_SCALE, chr(codepoint), fg=fg, bg=bg)
 
     def _status_tint(self, ent: int) -> RGB | None:
         """The tint of the entity's highest-priority active status, or None if it has none."""

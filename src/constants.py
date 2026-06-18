@@ -19,6 +19,11 @@ SCREEN_WIDTH = 80
 SCREEN_HEIGHT = 50
 TICKS_PER_SECOND = 30
 
+# Console cells per map tile, per axis. At 2 each dungeon tile is drawn as a 2x2
+# block (4 cells), so the world reads larger and closer-up while the HUD and menus —
+# which draw one cell each — keep their normal size. 1 is the old 1-cell-per-tile view.
+TILE_SCALE = 2
+
 # Dungeon room generation. Rooms are placed by rejection sampling, so MAX_ROOMS is
 # an attempt count rather than a guarantee; a higher count packs the large map with
 # rooms instead of long stretches of corridor.

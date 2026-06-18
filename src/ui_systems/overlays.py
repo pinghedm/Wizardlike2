@@ -16,6 +16,7 @@ from src.components import (
     UIState,
 )
 from src.constants import (
+    TILE_SCALE,
     UI_MAROON,
     UI_NAVY,
     UI_YELLOW,
@@ -31,10 +32,16 @@ from src.ui_helpers import blend
 
 def _iter_viewport_cells(view: Rect, cam_x: int, cam_y: int) -> Iterator[tuple[int, int, int, int]]:
     """Yield (screen_x, screen_y, map_x, map_y) for every cell of the map viewport,
-    pairing each on-screen cell with the map cell the camera maps it to."""
+    pairing each on-screen cell with the map tile the camera maps it to. Each tile spans
+    a TILE_SCALE block of cells, so adjacent cells share a map tile."""
     for screen_y in range(view.y, view.y + view.height):
         for screen_x in range(view.x, view.x + view.width):
-            yield screen_x, screen_y, screen_x - view.x + cam_x, screen_y - view.y + cam_y
+            yield (
+                screen_x,
+                screen_y,
+                (screen_x - view.x) // TILE_SCALE + cam_x,
+                (screen_y - view.y) // TILE_SCALE + cam_y,
+            )
 
 
 class TargetingOverlaySystem(LayoutProcessor):
@@ -78,12 +85,13 @@ class TargetingOverlaySystem(LayoutProcessor):
                     base = to_rgb(self.console.rgb[screen_y, screen_x]['bg'])
                     self.console.rgb[screen_y, screen_x]['bg'] = blend(base, UI_MAROON, 0.6)
 
-        # Frame the locked cell with bright brackets instead of covering it, so the reticle
-        # reads clearly over the target's glyph and any status tint, never hiding the enemy.
-        for dx, bracket in ((-1, '['), (1, ']')):
-            bx, by = self.layout.map_to_screen(map_x=reticle.x + dx, map_y=reticle.y, cam_x=cam_x, cam_y=cam_y)
-            if view.contains(bx, by):
-                self.console.print(bx, by, bracket, fg=UI_YELLOW)
+        # Frame the locked tile's block with bright brackets instead of covering it, so the
+        # reticle reads clearly over the target's glyph and any status tint, never hiding it.
+        tx, ty = self.layout.map_to_screen(map_x=reticle.x, map_y=reticle.y, cam_x=cam_x, cam_y=cam_y)
+        mid_y = ty + TILE_SCALE // 2
+        for bx, bracket in ((tx - 1, '['), (tx + TILE_SCALE, ']')):
+            if view.contains(bx, mid_y):
+                self.console.print(bx, mid_y, bracket, fg=UI_YELLOW)
 
         # Name the spell being aimed, its remaining charges, and the controls.
         spell_id = get_singleton(UIState).active_targeting_spell_id
@@ -149,7 +157,8 @@ class EffectOverlaySystem(LayoutProcessor):
                 continue
             cell_x = round(proj.start.x + (proj.target.x - proj.start.x) * proj.progress)
             cell_y = round(proj.start.y + (proj.target.y - proj.start.y) * proj.progress)
-            screen_x, screen_y = self.layout.map_to_screen(map_x=cell_x, map_y=cell_y, cam_x=cam[0], cam_y=cam[1])
+            block_x, block_y = self.layout.map_to_screen(map_x=cell_x, map_y=cell_y, cam_x=cam[0], cam_y=cam[1])
+            screen_x, screen_y = block_x + TILE_SCALE // 2, block_y + TILE_SCALE // 2
             if view.contains(screen_x, screen_y):
                 self.console.print(screen_x, screen_y, proj.glyph, fg=proj.color)
 
@@ -162,9 +171,10 @@ class EffectOverlaySystem(LayoutProcessor):
                 particle.x += particle.vx
                 particle.y += particle.vy
             if cam is not None:
-                screen_x, screen_y = self.layout.map_to_screen(
+                block_x, block_y = self.layout.map_to_screen(
                     map_x=round(particle.x), map_y=round(particle.y), cam_x=cam[0], cam_y=cam[1]
                 )
+                screen_x, screen_y = block_x + TILE_SCALE // 2, block_y + TILE_SCALE // 2
                 if view.contains(screen_x, screen_y):
                     ratio = particle.ticks / particle.max_ticks
                     fg = to_rgb([int(c * ratio) for c in particle.color])
