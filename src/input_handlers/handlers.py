@@ -530,6 +530,15 @@ def handle_targeting_input(action: InputAction | None):
         if not can_act(player):
             return DisplayMode.TARGETING
         move_entity(player, dx, dy)  # the lock re-evaluates next tick
+        _pick_up_items(player)
+        # Stepping onto the exit descends (victory screen, or the descend modal), which leaves
+        # targeting; otherwise keep aiming. _try_descend signals a descent via GAME_OVER or a
+        # freshly opened Modal — a plain EXPLORING means we're not on an exit.
+        result = _try_descend(get_singleton(GameState))
+        if result is DisplayMode.GAME_OVER or esper.get_component(Modal):
+            esper.delete_entity(ret_ent)
+            ui_state.active_targeting_spell_id = None
+            return result
         return DisplayMode.TARGETING
 
     if action == InputAction.CONFIRM:

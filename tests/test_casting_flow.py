@@ -1,5 +1,7 @@
 """Post-cast behavior, quick-cast bindings, and cycle targeting, via the dispatch path."""
 
+from dataclasses import replace
+
 import esper
 import pytest
 import tcod.event
@@ -10,6 +12,9 @@ from src.components import (
     EffectType,
     FieldOfView,
     InputAction,
+    Inventory,
+    ItemType,
+    Modal,
     Point,
     Settings,
     SpellInventory,
@@ -20,6 +25,7 @@ from src.components import (
     TargetingReticle,
     UIState,
 )
+from src.ecs_helpers import spawn_item_entity
 from src.input_handlers import (
     available_spells,
     handle_casting_input,
@@ -27,12 +33,14 @@ from src.input_handlers import (
     handle_targeting_input,
 )
 from src.input_handlers.handlers import _cycle_post_cast, _step_target
+from src.map_objects import Map
 from src.procgen import transition_to_next_floor
 from src.states import DisplayMode, PostCastBehavior
 from tests.headless_runner import HeadlessRunner
 
 SPELL = 'test_bolt'
 BASIC = 'test_wand'  # the always-castable basic attack in the fixtures
+GOLD = ItemType('gold')
 
 
 def _slot_key(spell_id: str) -> tcod.event.KeySym:
@@ -275,6 +283,30 @@ def test_targeting_ignores_unrelated_actions():
     px, py = runner.player_pos
     esper.create_entity(TargetingReticle(x=px, y=py, radius=0))
     assert handle_targeting_input(InputAction.OPEN_CRAFTING) == DisplayMode.TARGETING
+
+
+def test_targeting_move_picks_up_items():
+    runner = HeadlessRunner(use_random_map=False)
+    px, py = runner.player_pos
+    esper.create_entity(TargetingReticle(x=px, y=py, radius=0))
+    spawn_item_entity(GOLD, px + 1, py, count=5)
+
+    assert handle_targeting_input(InputAction.MOVE_RIGHT) == DisplayMode.TARGETING  # still aiming
+    assert esper.component_for_entity(runner.player, Inventory).items.get(GOLD, 0) == 5
+
+
+def test_targeting_move_onto_the_exit_descends():
+    runner = HeadlessRunner(use_random_map=False)
+    px, py = runner.player_pos
+    game_map = esper.get_component(Map)[0][1]
+    game_map.set_tile(px + 1, py, replace(game_map.tiles[px + 1][py], is_exit=True))
+    esper.create_entity(TargetingReticle(x=px, y=py, radius=0))
+
+    result = handle_targeting_input(InputAction.MOVE_RIGHT)
+
+    assert result == DisplayMode.EXPLORING  # left targeting
+    assert runner.player_pos == Point(px + 1, py)  # stepped onto the exit
+    assert esper.get_component(Modal)  # the descend prompt opened
 
 
 # --- cycle targeting --------------------------------------------------------
