@@ -11,6 +11,7 @@ select = [
     "W",   # pycodestyle warnings
     "UP",  # pyupgrade
     "B",   # flake8-bugbear
+    # "PL",  # pylint
 ]
 ignore = []
 fixable = ["ALL"]

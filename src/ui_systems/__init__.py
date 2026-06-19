@@ -8,12 +8,15 @@ message modals).
 
 from src.ui_systems.hud import HUDSystem, ModalSystem
 from src.ui_systems.menus import MenuSystem
+from src.ui_systems.minimap import MapViewSystem, MinimapSystem
 from src.ui_systems.overlays import EffectOverlaySystem, TargetingOverlaySystem
 
 __all__ = [
     'EffectOverlaySystem',
     'HUDSystem',
+    'MapViewSystem',
     'MenuSystem',
+    'MinimapSystem',
     'ModalSystem',
     'TargetingOverlaySystem',
 ]

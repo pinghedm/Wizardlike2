@@ -74,6 +74,7 @@ class InputAction(enum.Enum):
     MOVE_RIGHT = enum.auto()
     OPEN_CRAFTING = enum.auto()
     OPEN_CASTING = enum.auto()
+    OPEN_MAP = enum.auto()  # open/close the full-screen map overview
     OPEN_MENU = enum.auto()  # open the pause menu (exploring); also backs out of a submenu
     CONFIRM = enum.auto()
     CANCEL = enum.auto()  # back out of a submenu; a no-op on the map (never opens the menu)
@@ -119,6 +120,7 @@ DEFAULT_KEYBOARD_BINDINGS: dict[InputAction, tcod.event.KeySym] = {
     InputAction.MOVE_RIGHT: tcod.event.KeySym.RIGHT,
     InputAction.OPEN_CRAFTING: tcod.event.KeySym.C,
     InputAction.OPEN_CASTING: tcod.event.KeySym.S,
+    InputAction.OPEN_MAP: tcod.event.KeySym.M,
     InputAction.OPEN_MENU: tcod.event.KeySym.ESCAPE,
     InputAction.CONFIRM: tcod.event.KeySym.RETURN,
     InputAction.CYCLE_TAB: tcod.event.KeySym.TAB,

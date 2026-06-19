@@ -96,3 +96,19 @@ def test_camera_clamps_to_bottom_right_corner():
 def test_camera_stays_put_when_map_fits_viewport(player_x, player_y):
     layout = _layout(80, 50)
     assert layout.camera_offset(player_x, player_y, 20, 20) == (0, 0)
+
+
+# --- minimap_rect -----------------------------------------------------------
+
+
+@pytest.mark.parametrize('width, height', [(80, 50), (100, 60), (40, 30)])
+def test_minimap_hugs_the_top_right_inside_the_viewport(width, height):
+    layout = _layout(width, height)
+    view = layout.map_viewport
+
+    mm = layout.minimap_rect(140, 90)
+
+    assert mm.y == view.y  # pinned to the top
+    assert mm.x + mm.width == view.x + view.width  # flush to the right edge
+    assert view.contains(mm.x, mm.y)
+    assert view.contains(mm.x + mm.width - 1, mm.y + mm.height - 1)  # fits within the viewport

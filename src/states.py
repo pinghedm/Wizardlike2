@@ -14,6 +14,7 @@ class DisplayMode(enum.Enum):
     SHOPPING = enum.auto()
     SETTINGS = enum.auto()
     GAME_OVER = enum.auto()
+    MAP_VIEW = enum.auto()  # full-screen overview of discovered walls
 
 
 class PendingTransition(enum.Enum):

@@ -84,6 +84,21 @@ class Layout:
         view = self.map_viewport
         return view.width // TILE_SCALE, view.height // TILE_SCALE
 
+    # Minimap panel width as a fraction of the viewport, clamped to this cell range.
+    MINIMAP_MIN_W = 14
+    MINIMAP_MAX_W = 28
+
+    def minimap_rect(self, map_width: int, map_height: int) -> Rect:
+        """The minimap panel, carved from the top-right of the map viewport. Its width is
+        a fraction of the viewport (clamped); its interior height tracks the map's aspect
+        ratio so the downscaled level isn't stretched. The 1-cell frame accounts for the
+        +2/-2 between the outer panel and its interior."""
+        view = self.map_viewport
+        width = min(self.MINIMAP_MAX_W, max(self.MINIMAP_MIN_W, view.width // 4))
+        interior_h = max(1, round((width - 2) * map_height / map_width))
+        height = interior_h + 2
+        return Rect(view.x + view.width - width, view.y, width, height)
+
     def camera_offset(self, player_x: int, player_y: int, map_width: int, map_height: int) -> tuple[int, int]:
         """The top-left map tile the viewport should show to keep the player
         centered, without ever scrolling past the map edges.

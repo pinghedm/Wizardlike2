@@ -100,6 +100,13 @@ def handle_game_over_input(action: InputAction | None) -> HandlerResult:
     return DisplayMode.GAME_OVER
 
 
+def handle_map_view_input(action: InputAction | None) -> HandlerResult:
+    """The full-screen map: the map key, Cancel, or Menu closes it back to exploring."""
+    if action in (InputAction.OPEN_MAP, InputAction.CANCEL, InputAction.OPEN_MENU):
+        return DisplayMode.EXPLORING
+    return DisplayMode.MAP_VIEW
+
+
 def _adjacent_shopkeeper(player_pos: Position) -> bool:
     """True if a shopkeeper is within one tile of the player (including their tile)."""
     for _ent, (pos, _sk) in esper.get_components(Position, Shopkeeper):
@@ -124,6 +131,8 @@ def handle_exploring_input(action: InputAction | None):
         return DisplayMode.COMBINING
     elif action == InputAction.OPEN_CASTING:
         return DisplayMode.CASTING
+    elif action == InputAction.OPEN_MAP:
+        return DisplayMode.MAP_VIEW
     elif action == InputAction.CONFIRM and _adjacent_shopkeeper(player_pos):
         return DisplayMode.SHOPPING
     elif action == InputAction.SCROLL_UP:

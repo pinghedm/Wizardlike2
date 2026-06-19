@@ -39,6 +39,7 @@ from src.input_handlers import (
     handle_combining_input,
     handle_exploring_input,
     handle_game_over_input,
+    handle_map_view_input,
     handle_menu_input,
     handle_modal_input,
     handle_settings_input,
@@ -65,7 +66,9 @@ from src.targeting import CycleTargetSystem
 from src.ui_systems import (
     EffectOverlaySystem,
     HUDSystem,
+    MapViewSystem,
     MenuSystem,
+    MinimapSystem,
     ModalSystem,
     TargetingOverlaySystem,
 )
@@ -118,8 +121,10 @@ def add_render_systems(layout: Layout, asset_loader: AssetLoader):
     esper.add_processor(RenderSystem(layout, asset_loader))
     esper.add_processor(TargetingOverlaySystem(layout))
     esper.add_processor(EffectOverlaySystem(layout))
+    esper.add_processor(MinimapSystem(layout))
     esper.add_processor(MenuSystem(layout))
     esper.add_processor(HUDSystem(layout))
+    esper.add_processor(MapViewSystem(layout))
     esper.add_processor(ModalSystem(layout))
 
 
@@ -207,6 +212,8 @@ def dispatch_action(action: InputAction | None, game_state: GameState) -> Pendin
         result = handle_settings_input(action)
     elif mode == DisplayMode.GAME_OVER:
         result = handle_game_over_input(action)
+    elif mode == DisplayMode.MAP_VIEW:
+        result = handle_map_view_input(action)
     else:
         return None
 
