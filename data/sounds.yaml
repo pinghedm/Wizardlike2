@@ -1,0 +1,164 @@
+# Sound effects, one entry per SoundId. Each is either a synthesized blip or a WAV file.
+#
+# Synth fields:
+#   waveform  one of: sine | square | triangle | saw | noise
+#   freq      base frequency in Hz (ignored for noise; use 0)
+#   duration  length in seconds
+#   freq_end  optional target frequency for a pitch sweep over the duration
+#   decay     exponential envelope rate (higher = snappier)
+#   volume    0..1, the sound's own loudness before the SFX volume setting
+#
+# To use a recording instead of synthesis, give a `file:` (path relative to the data dir)
+# in place of the synth fields.
+
+sounds:
+  cast_attack:
+    waveform: square
+    freq: 220
+    freq_end: 660
+    duration: 0.18
+    decay: 8
+    volume: 0.45
+  cast_heal:
+    waveform: triangle
+    freq: 440
+    freq_end: 880
+    duration: 0.25
+    decay: 5
+    volume: 0.45
+  cast_buff:
+    waveform: sine
+    freq: 330
+    freq_end: 550
+    duration: 0.2
+    decay: 6
+    volume: 0.45
+  cast_debuff:
+    waveform: square
+    freq: 330
+    freq_end: 165
+    duration: 0.2
+    decay: 7
+    volume: 0.4
+  impact:
+    waveform: noise
+    freq: 0
+    duration: 0.12
+    decay: 14
+    volume: 0.4
+  hit:
+    waveform: square
+    freq: 160
+    freq_end: 90
+    duration: 0.1
+    decay: 16
+    volume: 0.5
+  status:
+    waveform: triangle
+    freq: 520
+    duration: 0.12
+    decay: 10
+    volume: 0.35
+  poison_tick:
+    waveform: square
+    freq: 200
+    freq_end: 150
+    duration: 0.08
+    decay: 18
+    volume: 0.3
+  regen_tick:
+    waveform: sine
+    freq: 600
+    freq_end: 780
+    duration: 0.12
+    decay: 8
+    volume: 0.3
+  knockback:
+    waveform: noise
+    freq: 0
+    duration: 0.1
+    decay: 12
+    volume: 0.4
+  death:
+    waveform: square
+    freq: 300
+    freq_end: 70
+    duration: 0.35
+    decay: 4
+    volume: 0.5
+  reaction:
+    waveform: triangle
+    freq: 700
+    freq_end: 1040
+    duration: 0.15
+    decay: 7
+    volume: 0.4
+  craft:
+    waveform: sine
+    freq: 523
+    freq_end: 784
+    duration: 0.2
+    decay: 5
+    volume: 0.45
+  discovery:
+    waveform: sine
+    freq: 660
+    freq_end: 990
+    duration: 0.35
+    decay: 3
+    volume: 0.5
+  fizzle:
+    waveform: saw
+    freq: 300
+    freq_end: 120
+    duration: 0.25
+    decay: 6
+    volume: 0.4
+  pickup:
+    waveform: square
+    freq: 600
+    freq_end: 840
+    duration: 0.08
+    decay: 12
+    volume: 0.4
+  gold:
+    waveform: sine
+    freq: 880
+    freq_end: 1320
+    duration: 0.12
+    decay: 8
+    volume: 0.4
+  descend:
+    waveform: sine
+    freq: 440
+    freq_end: 170
+    duration: 0.5
+    decay: 3
+    volume: 0.5
+  purchase:
+    waveform: triangle
+    freq: 700
+    freq_end: 1050
+    duration: 0.15
+    decay: 7
+    volume: 0.4
+  menu_move:
+    waveform: square
+    freq: 420
+    duration: 0.04
+    decay: 22
+    volume: 0.25
+  menu_confirm:
+    waveform: square
+    freq: 520
+    freq_end: 780
+    duration: 0.08
+    decay: 14
+    volume: 0.35
+  menu_cancel:
+    waveform: square
+    freq: 400
+    freq_end: 240
+    duration: 0.08
+    decay: 14
+    volume: 0.35

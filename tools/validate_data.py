@@ -3,6 +3,7 @@ from pathlib import Path
 
 import yaml
 
+from src.audio import MusicTrack, SoundId, Waveform
 from src.components import EffectType, StatusType, TargetMode
 
 VALID_EFFECT_INFO = {
@@ -64,6 +65,91 @@ ALLOWED_ENEMY_FIELDS = {
 }
 
 ALLOWED_DROP_FIELDS = {'type', 'min', 'max', 'chance'}
+
+VALID_WAVEFORMS = {w.name.lower() for w in Waveform}
+ALLOWED_SOUND_SYNTH_FIELDS = {'waveform', 'freq', 'duration', 'freq_end', 'decay', 'volume'}
+
+
+def validate_sound(name: str, sound) -> int:
+    """One sounds.yaml entry: a WAV file reference or a fully specified synth recipe."""
+    errors = 0
+    if not isinstance(sound, dict):
+        print(f'ERROR: Sound "{name}" must be a mapping.')
+        return 1
+
+    if 'file' in sound:
+        for key in sorted(set(sound) - {'file'}):
+            print(f'ERROR: Sound "{name}" mixes "file" with synth field "{key}".')
+            errors += 1
+        if not isinstance(sound['file'], str):
+            print(f'ERROR: Sound "{name}" file must be a string path.')
+            errors += 1
+        return errors
+
+    for key in sorted(set(sound) - ALLOWED_SOUND_SYNTH_FIELDS):
+        print(f'ERROR: Sound "{name}" has unexpected field "{key}".')
+        errors += 1
+    if sound.get('waveform') not in VALID_WAVEFORMS:
+        print(f'ERROR: Sound "{name}" waveform must be one of {sorted(VALID_WAVEFORMS)}.')
+        errors += 1
+    for field in ('freq', 'duration'):
+        if field not in sound:
+            print(f'ERROR: Sound "{name}" missing "{field}".')
+            errors += 1
+    for field in ('freq', 'duration', 'freq_end', 'decay', 'volume'):
+        if field in sound and not isinstance(sound[field], (int, float)):
+            print(f'ERROR: Sound "{name}" {field} must be a number.')
+            errors += 1
+    return errors
+
+
+def validate_sounds_file(data_dir) -> int:
+    """Validate sounds.yaml: every SoundId is defined exactly once, with a valid recipe."""
+    sounds_file = data_dir / 'sounds.yaml'
+    if not sounds_file.exists():
+        print(f'Note: {sounds_file} not found, skipping sound validation.')
+        return 0
+    print(f'Validating {sounds_file}...')
+    with open(sounds_file) as f:
+        sounds = yaml.safe_load(f).get('sounds', {})
+
+    errors = 0
+    expected = {s.value for s in SoundId}
+    for name in sorted(set(sounds) - expected):
+        print(f'ERROR: Sound "{name}" is not a known SoundId.')
+        errors += 1
+    for name in sorted(expected - set(sounds)):
+        print(f'ERROR: Sound "{name}" is missing from sounds.yaml.')
+        errors += 1
+    for name, sound in sounds.items():
+        if name in expected:
+            errors += validate_sound(name, sound)
+    return errors
+
+
+def validate_music_file(data_dir) -> int:
+    """Validate music.yaml: every MusicTrack maps to a string path, no unknown tracks."""
+    music_file = data_dir / 'music.yaml'
+    if not music_file.exists():
+        print(f'Note: {music_file} not found, skipping music validation.')
+        return 0
+    print(f'Validating {music_file}...')
+    with open(music_file) as f:
+        tracks = yaml.safe_load(f).get('music', {})
+
+    errors = 0
+    expected = {t.value for t in MusicTrack}
+    for name in sorted(set(tracks) - expected):
+        print(f'ERROR: Music track "{name}" is not a known MusicTrack.')
+        errors += 1
+    for name in sorted(expected - set(tracks)):
+        print(f'ERROR: Music track "{name}" is missing from music.yaml.')
+        errors += 1
+    for name, path in tracks.items():
+        if name in expected and not isinstance(path, str):
+            print(f'ERROR: Music track "{name}" must map to a string path.')
+            errors += 1
+    return errors
 
 
 def validate_effects(effects, context_label: str) -> int:
@@ -473,6 +559,10 @@ def validate_data() -> bool:
 
             if 'drops' in enemy:
                 errors += validate_drops(enemy['drops'], ing_ids, f'Enemy "{eid}"')
+
+    # 5. Validate audio config
+    errors += validate_sounds_file(data_dir)
+    errors += validate_music_file(data_dir)
 
     if errors == 0:
         print('SUCCESS: All data files are valid.')

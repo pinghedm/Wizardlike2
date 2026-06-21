@@ -7,7 +7,9 @@
 attrs==26.1.0
     # via tcod
 cffi==2.0.0
-    # via tcod
+    # via
+    #   sounddevice
+    #   tcod
 esper==3.7
     # via -r requirements.in
 numpy==2.4.4
@@ -17,6 +19,8 @@ pillow==12.2.0
 pycparser==3.0
     # via cffi
 pyyaml==6.0.3
+    # via -r requirements.in
+sounddevice==0.5.5
     # via -r requirements.in
 tcod==21.2.1
     # via -r requirements.in

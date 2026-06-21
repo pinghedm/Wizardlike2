@@ -72,6 +72,9 @@ def create_settings():
     settings.keybindings.bindings.update(meta['keybindings'].bindings)
     settings.keybindings.controller.update(meta['keybindings'].controller)
     settings.post_cast = meta['post_cast']
+    settings.music_volume = meta['music_volume']
+    settings.sfx_volume = meta['sfx_volume']
+    settings.muted = meta['muted']
     return esper.create_entity(settings)
 
 

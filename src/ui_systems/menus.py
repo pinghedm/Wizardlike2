@@ -40,6 +40,7 @@ from src.states import (
     DisplayMode,
     GameState,
     MenuOption,
+    SettingsPref,
 )
 from src.systems import (
     can_craft_known_spell,
@@ -378,31 +379,40 @@ class MenuSystem(LayoutProcessor):
         has_controller = controller_name is not None
 
         width = 70
-        # +2 rows for the post-cast toggle and the blank line under it.
-        height = len(actions) + (10 if has_controller else 8)
+        # +1 row per preference toggle, plus the blank line under the block.
+        height = len(actions) + len(SettingsPref) + (9 if has_controller else 7)
         x, y = draw_centered_frame(self.console, width, height, title='Settings')
 
         self.console.print(x + 2, y + 1, f'Controller: {controller_name or "none detected"}', fg=UI_SKY)
         if has_controller:
             self.console.print(x + 2, y + 2, f'Last input: {ui_state.last_controller_input or "-"}', fg=UI_GRAY)
 
-        # Row 0 of the selectable list: the post-cast behavior toggle.
-        toggle_row = y + (4 if has_controller else 3)
-        toggle_selected = ui_state.settings_cursor == 0
-        toggle_color = UI_YELLOW if toggle_selected else UI_WHITE
-        marker = '> ' if toggle_selected else '  '
-        self.console.print(x + self.SETTINGS_ACTION_COL, toggle_row, f'{marker}After casting', fg=toggle_color)
-        self.console.print(x + self.SETTINGS_KEY_COL, toggle_row, f'< {settings.post_cast.name} >', fg=toggle_color)
+        # The selectable list opens with the adjustable preference toggles (cursor rows
+        # 0..len(SettingsPref)-1), each shown as `< value >`.
+        prefs = [
+            ('After casting', settings.post_cast.name),
+            ('Music volume', f'{round(settings.music_volume * 100)}%'),
+            ('Sound volume', f'{round(settings.sfx_volume * 100)}%'),
+            ('Muted', 'ON' if settings.muted else 'OFF'),
+        ]
+        first_pref_row = y + (4 if has_controller else 3)
+        for i, (label, value) in enumerate(prefs):
+            selected = ui_state.settings_cursor == i
+            color = UI_YELLOW if selected else UI_WHITE
+            marker = '> ' if selected else '  '
+            pref_row = first_pref_row + i
+            self.console.print(x + self.SETTINGS_ACTION_COL, pref_row, f'{marker}{label}', fg=color)
+            self.console.print(x + self.SETTINGS_KEY_COL, pref_row, f'< {value} >', fg=color)
 
-        header_row = toggle_row + 2
+        header_row = first_pref_row + len(prefs) + 1
         self.console.print(x + self.SETTINGS_ACTION_COL, header_row, 'Action', fg=UI_CYAN_DARK)
         self.console.print(x + self.SETTINGS_KEY_COL, header_row, 'Keyboard', fg=UI_CYAN_DARK)
         if has_controller:
             self.console.print(x + self.SETTINGS_CONTROLLER_COL, header_row, 'Controller', fg=UI_CYAN_DARK)
 
         for i, action in enumerate(actions):
-            # Keybindings occupy cursor rows 1.. (row 0 is the toggle above).
-            selected = ui_state.settings_cursor == i + 1
+            # Keybindings occupy the cursor rows after the preference toggles above.
+            selected = ui_state.settings_cursor == i + len(SettingsPref)
             color = UI_YELLOW if selected else UI_WHITE
             row = header_row + 1 + i
 

@@ -4,6 +4,7 @@ from dataclasses import replace
 import esper
 
 from src import persistence
+from src.audio import SoundId, cast_sound, play_sfx
 from src.components import (
     Configuration,
     DamageModifier,
@@ -21,7 +22,7 @@ from src.components import (
     Stats,
     StatusEffects,
 )
-from src.constants import UI_GRAY_MID, UI_SKY
+from src.constants import UI_SKY
 from src.ecs_helpers import actor_name, get_player, get_singleton, try_get_singleton
 from src.systems.combat import apply_effect
 from src.systems.visuals import trigger_projectile
@@ -116,6 +117,7 @@ def craft_known_spell(stype: SpellType) -> int | None:
     for itype, count in Counter(combo).items():
         inventory.items[itype] -= count
     spell_inv.spells[stype] = spell_inv.spells.get(stype, 0) + charges
+    play_sfx(SoundId.CRAFT)
     return charges
 
 
@@ -141,6 +143,9 @@ def discover_and_craft(selection: tuple[ItemType, ...]) -> tuple[SpellType, int]
         run_stats = try_get_singleton(RunStats)
         if run_stats:
             run_stats.spells_discovered += 1
+        play_sfx(SoundId.DISCOVERY)
+    else:
+        play_sfx(SoundId.CRAFT)
     recipes.recipes[stype].add(selection)
     persistence.save_meta()
 
@@ -166,6 +171,7 @@ def _apply_reaction_multiplier(target_ent: int, modifiers: list[DamageModifier],
             continue
         mult *= mod.damage_mult
         del active[mod.vs_status]
+        play_sfx(SoundId.REACTION)
         verb = 'is vulnerable' if mod.damage_mult > 1 else 'resists'
         log.add_simple_message(f'{name} {verb} while {mod.vs_status.name}!', color=UI_SKY)
     return mult
@@ -208,6 +214,7 @@ def cast_spell(spell_id: str, target_x: int, target_y: int):
             effect_type=effects[0].type,
             burst_radius=radius,
         )
+        play_sfx(cast_sound(effects[0].type))
 
     # Find all entities in impact zone using Euclidean distance
     targets: list[int] = []
@@ -219,10 +226,6 @@ def cast_spell(spell_id: str, target_x: int, target_y: int):
         dy = pos.y - target_y
         if dx**2 + dy**2 <= radius**2:
             targets.append(ent)
-
-    if not targets:
-        log.add_simple_message('The spell hits nothing.', color=UI_GRAY_MID)
-        return
 
     # Knockback shoves targets directly away from the caster. Reaction modifiers scale
     # the spell's damage per target based on the statuses that target already carries.

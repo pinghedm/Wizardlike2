@@ -72,6 +72,7 @@ Open the pause menu (**Escape** / **Start**) and choose **Settings** to:
 - Change the **After casting** behavior — _Stay_ (keep aiming the same spell, the default),
   _Reselect_ (return to the spell picker), or _Explore_ (return to the map). Highlight the row
   and press **Left/Right** to cycle it.
+- Adjust **Music volume** / **Sound volume** (Left/Right, in 10% steps) and toggle **Muted**.
 - **Remap** keyboard keys and controller buttons: highlight an action, press **Enter**, then
   press the new key or button.
 
@@ -90,11 +91,34 @@ All game data is defined in the `data/` directory.
 
 - `ingredients.yaml`: Add new reagents or change their visual properties.
 - `spells.yaml`: Add new spell recipes and define their potency (charges).
+- `sounds.yaml`: Tune the synthesized sound effects (see [Audio](#audio)).
+- `music.yaml`: Map each background-music track to a WAV file.
 
 _Always run the data validator after modifying these files:_
 
 ```bash
 python -m tools.validate_data
+```
+
+## Audio
+
+Sound and music play through [PortAudio](https://www.portaudio.com/) (the `sounddevice`
+dependency), because the SDL bundled with `tcod` ships without a working audio driver. If no
+output device is available the game runs silently — set `WIZARDLIKE_DEBUG=1` to see why.
+
+- **Sound effects** are synthesized at startup from `data/sounds.yaml` — each `SoundId` is a
+  small waveform recipe (`waveform`/`freq`/`freq_end`/`duration`/`decay`/`volume`), so they
+  need no asset files. Tweak the numbers to retune a sound. (An entry may instead give a
+  `file:` to play a WAV.)
+- **Music** loops from WAV files referenced by `data/music.yaml` (`menu` / `dungeon` / `shop`),
+  found under `data/audio/`. Files are optional — a missing one just leaves that track silent.
+
+Music files must be **PCM WAV** (8/16/32-bit integer; float WAVs are not supported). The
+engine resamples and downmixes automatically, so rate and channel count don't matter. Convert
+an MP3 with [ffmpeg](https://ffmpeg.org/):
+
+```bash
+ffmpeg -i song.mp3 -acodec pcm_s16le data/audio/dungeon.wav
 ```
 
 ## Development

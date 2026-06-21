@@ -1,6 +1,7 @@
 import esper
 
 from src import persistence
+from src.audio import SoundId, play_sfx
 from src.components import (
     QUICK_CAST_ACTIONS,
     Configuration,
@@ -52,6 +53,7 @@ from src.states import (
     MenuOption,
     PendingTransition,
     PostCastBehavior,
+    SettingsPref,
 )
 from src.systems import (
     can_act,
@@ -183,11 +185,14 @@ def _pick_up_items(player: int):
             log.add_simple_message(f'Picked up {item.count} {item.type.name}!', color=UI_GRAY)
             esper.delete_entity(ent)
             if item.type == ItemType.GOLD:
+                play_sfx(SoundId.GOLD)
                 if run_stats:
                     run_stats.gold_collected += item.count
                 persistence.mark_meta_dirty()
-            elif run_stats:
-                run_stats.ingredients_collected[item.type] += item.count
+            else:
+                play_sfx(SoundId.PICKUP)
+                if run_stats:
+                    run_stats.ingredients_collected[item.type] += item.count
 
 
 def _try_descend(game_state: GameState) -> DisplayMode:
@@ -221,34 +226,52 @@ def handle_settings_input(action: InputAction | None):
     ui_state = get_singleton(UIState)
     settings = get_singleton(Settings)
     actions = list(settings.keybindings.bindings.keys())
-    # Row 0 is the post-cast toggle; rows 1.. are the rebindable keybindings.
-    total_rows = 1 + len(actions)
+    # The preference toggles occupy the leading cursor rows; the rebindable keybindings follow.
+    total_rows = len(SettingsPref) + len(actions)
     ui_state.settings_cursor %= total_rows
 
     if action in (InputAction.CANCEL, InputAction.OPEN_MENU):
         return DisplayMode.MENU
     if action in (InputAction.MOVE_UP, InputAction.MOVE_DOWN):
         ui_state.settings_cursor = step_cursor(ui_state.settings_cursor, total_rows, action)
-    elif ui_state.settings_cursor == 0:
-        _cycle_post_cast(settings, action)
+    elif ui_state.settings_cursor < len(SettingsPref):
+        _adjust_preference(settings, SettingsPref(ui_state.settings_cursor), action)
     elif action == InputAction.CONFIRM:
         # Arm the remap; try_capture_remap binds the next raw keypress / button.
-        ui_state.remapping_action = actions[ui_state.settings_cursor - 1]
+        ui_state.remapping_action = actions[ui_state.settings_cursor - len(SettingsPref)]
 
     return DisplayMode.SETTINGS
 
 
-def _cycle_post_cast(settings: Settings, action: InputAction | None):
-    """Step the post-cast preference: right/confirm advances, left goes back; persist it."""
-    options = list(PostCastBehavior)
-    i = options.index(settings.post_cast)
+# Left/right (or confirm) nudges a preference; the delta is the direction.
+def _pref_delta(action: InputAction | None) -> int:
     if action in (InputAction.MOVE_RIGHT, InputAction.CONFIRM):
-        settings.post_cast = options[(i + 1) % len(options)]
-    elif action == InputAction.MOVE_LEFT:
-        settings.post_cast = options[(i - 1) % len(options)]
-    else:
+        return 1
+    if action == InputAction.MOVE_LEFT:
+        return -1
+    return 0
+
+
+def _adjust_preference(settings: Settings, pref: SettingsPref, action: InputAction | None):
+    """Step the selected preference and persist it: post-cast cycles, volumes move in 10%
+    steps, and mute toggles. Confirm/right advances, left goes back."""
+    delta = _pref_delta(action)
+    if delta == 0:
         return
+    if pref == SettingsPref.POST_CAST:
+        options = list(PostCastBehavior)
+        settings.post_cast = options[(options.index(settings.post_cast) + delta) % len(options)]
+    elif pref == SettingsPref.MUSIC_VOLUME:
+        settings.music_volume = _clamp_volume(settings.music_volume + 0.1 * delta)
+    elif pref == SettingsPref.SFX_VOLUME:
+        settings.sfx_volume = _clamp_volume(settings.sfx_volume + 0.1 * delta)
+    elif pref == SettingsPref.MUTED:
+        settings.muted = not settings.muted
     persistence.save_meta()
+
+
+def _clamp_volume(value: float) -> float:
+    return round(min(1.0, max(0.0, value)), 2)
 
 
 def handle_menu_input(action: InputAction | None) -> HandlerResult:
@@ -348,6 +371,7 @@ def _combine_selection(ui_state: UIState) -> DisplayMode:
     ui_state.selected_for_crafting = {}
 
     if result is None:
+        play_sfx(SoundId.FIZZLE)
         log.add_simple_message('The combination fizzles...', color=UI_RED)
         return DisplayMode.COMBINING
 
@@ -584,6 +608,7 @@ def handle_shop_input(action: InputAction | None):
         log = get_singleton(MessageLog)
         quantity = ui_state.shop_quantity
         if purchase_offer(offer, quantity):
+            play_sfx(SoundId.PURCHASE)
             log.add_simple_message(f'Bought {quantity}x {offer.label}.', color=UI_SKY)
         else:
             log.add_simple_message('Not enough gold.', color=UI_SALMON)

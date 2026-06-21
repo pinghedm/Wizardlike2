@@ -45,6 +45,9 @@ class _RawKeybindings(TypedDict, total=False):
 class _RawSettings(TypedDict, total=False):
     post_cast: str
     keybindings: _RawKeybindings
+    music_volume: float
+    sfx_volume: float
+    muted: bool
 
 
 class _RawMeta(TypedDict, total=False):
@@ -60,6 +63,9 @@ class MetaData(TypedDict):
     gold: int
     keybindings: Keybindings
     post_cast: PostCastBehavior
+    music_volume: float
+    sfx_volume: float
+    muted: bool
 
 
 def ensure_save_dir():
@@ -159,6 +165,9 @@ def save_meta():
         data['settings'] = {
             'post_cast': settings.post_cast.value,
             'keybindings': _serialize_keybindings(settings.keybindings),
+            'music_volume': settings.music_volume,
+            'sfx_volume': settings.sfx_volume,
+            'muted': settings.muted,
         }
     with open(META_FILE, 'w') as f:
         json.dump(data, f, indent=2)
@@ -183,6 +192,9 @@ def load_meta() -> MetaData:
         'gold': data.get('gold', 0),
         'keybindings': _deserialize_keybindings(settings.get('keybindings', {})),
         'post_cast': PostCastBehavior(settings.get('post_cast', PostCastBehavior.STAY.value)),
+        'music_volume': settings.get('music_volume', 1.0),
+        'sfx_volume': settings.get('sfx_volume', 1.0),
+        'muted': settings.get('muted', False),
     }
 
 
@@ -196,9 +208,18 @@ def save_game():
     resumes exactly where the player left off. (A side effect is that the saved
     game embeds the Configuration it was created with, which is acceptable for a
     local single-player suspend-save and preserves any remapped keybindings.)
+
+    RuntimeSingletons (e.g. the audio engine) are the exception: they wrap unpicklable
+    runtime handles and are services rather than game state, so any component flagged
+    DO_NOT_PICKLE is filtered out here (its owner re-attaches it after a clear_database()).
     """
     ensure_save_dir()
-    snapshot: list[tuple[object, ...]] = [esper.components_for_entity(ent) for ent in esper.get_entities()]
+    snapshot: list[tuple[object, ...]] = []
+    for ent in esper.get_entities():
+        entity_components: tuple[object, ...] = esper.components_for_entity(ent)
+        components = tuple(c for c in entity_components if not getattr(c, 'DO_NOT_PICKLE', False))
+        if components:
+            snapshot.append(components)
     with open(SAVE_FILE, 'wb') as f:
         pickle.dump(snapshot, f)
 

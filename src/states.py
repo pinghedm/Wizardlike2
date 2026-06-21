@@ -60,6 +60,16 @@ class PostCastBehavior(enum.StrEnum):
     EXPLORE = 'explore'  # back to the map
 
 
+class SettingsPref(enum.IntEnum):
+    """The adjustable preference rows at the top of the settings menu, above the rebindable
+    keybindings. The settings cursor selects one of these by index, then the keybinding rows."""
+
+    POST_CAST = 0
+    MUSIC_VOLUME = 1
+    SFX_VOLUME = 2
+    MUTED = 3
+
+
 class MenuOption(enum.StrEnum):
     NEW_GAME = 'New Game'
     CONTINUE = 'Continue'

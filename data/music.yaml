@@ -1,0 +1,7 @@
+# Looping background music, one entry per MusicTrack. Each value is a WAV file path relative
+# to the data dir. Files are optional — a missing one just leaves that track silent.
+
+music:
+  menu: sounds/Music/menu.wav
+  dungeon: sounds/Music/dungeon.wav
+  shop: sounds/Music/shop.wav

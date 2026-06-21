@@ -32,10 +32,10 @@ from src.input_handlers import (
     handle_settings_input,
     handle_targeting_input,
 )
-from src.input_handlers.handlers import _cycle_post_cast, _step_target
+from src.input_handlers.handlers import _adjust_preference, _step_target
 from src.map_objects import Map
 from src.procgen import transition_to_next_floor
-from src.states import DisplayMode, PostCastBehavior
+from src.states import DisplayMode, PostCastBehavior, SettingsPref
 from tests.headless_runner import HeadlessRunner
 
 SPELL = 'test_bolt'
@@ -201,7 +201,7 @@ def test_settings_toggle_cycles_and_persists_post_cast():
 def test_settings_confirm_on_keybinding_row_arms_remap():
     runner = HeadlessRunner(use_random_map=False)
     runner.game_state.display_mode = DisplayMode.SETTINGS
-    _ui().settings_cursor = 1  # first keybinding row (row 0 is the toggle)
+    _ui().settings_cursor = len(SettingsPref)  # first keybinding row (preference toggles precede it)
     first_action = next(iter(_settings().keybindings.bindings))
 
     runner.simulate_key(tcod.event.KeySym.RETURN)
@@ -219,7 +219,7 @@ def test_settings_confirm_on_keybinding_row_arms_remap():
 def test_settings_toggle_left_and_noop(action, expected):
     HeadlessRunner(use_random_map=False)
     _settings().post_cast = PostCastBehavior.STAY
-    _cycle_post_cast(_settings(), action)
+    _adjust_preference(_settings(), SettingsPref.POST_CAST, action)
     assert _settings().post_cast == expected
 
 

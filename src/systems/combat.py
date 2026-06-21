@@ -3,6 +3,7 @@ from dataclasses import dataclass, replace
 
 import esper
 
+from src.audio import SoundId, play_sfx
 from src.components import (
     Effect,
     EffectType,
@@ -96,6 +97,7 @@ def _apply_hp_damage(target_ent: int, amount: int) -> int:
     stats.hp -= mitigated
     record_damage_dealt(target_ent, mitigated)
     trigger_screen_flash(ent=target_ent, color=UI_RED)
+    play_sfx(SoundId.HIT)
     return mitigated
 
 
@@ -130,10 +132,12 @@ def apply_status_pulse(ent: int, status_type: StatusType, power: int, log: Messa
         stats.hp -= power
         record_damage_dealt(ent, power)
         trigger_screen_flash(ent=ent, color=UI_GREEN)
+        play_sfx(SoundId.POISON_TICK)
         if log:
             log.add_simple_message(f'{name} took {power} poison damage!', color=UI_GREEN_MID)
     elif status_type == StatusType.REGEN:
         stats.hp = min(stats.max_hp, stats.hp + power)
+        play_sfx(SoundId.REGEN_TICK)
         if log:
             log.add_simple_message(f'{name} regained {power} HP.', color=UI_GREEN_BRIGHT)
 
@@ -184,6 +188,7 @@ def apply_effect(
     elif effect.type == EffectType.KNOCKBACK:
         if origin is not None:
             apply_knockback(target_ent, origin, effect.power)
+        play_sfx(SoundId.KNOCKBACK)
         log.add_simple_message(f'{target_name} is knocked back!', color=UI_GRAY_LIGHT)
 
     elif effect.type in STATUS_APPLY:
@@ -191,4 +196,5 @@ def apply_effect(
         status.active[application.status] = replace(effect)
         if application.damage_over_time:
             trigger_screen_flash(ent=target_ent, color=EFFECT_COLORS[effect.type])
+        play_sfx(SoundId.STATUS)
         log.add_simple_message(application.message.format(name=target_name), color=application.color)

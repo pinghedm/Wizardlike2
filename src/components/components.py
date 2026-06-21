@@ -145,6 +145,9 @@ class Settings:
 
     keybindings: Keybindings = field(default_factory=Keybindings)
     post_cast: PostCastBehavior = PostCastBehavior.STAY
+    music_volume: float = 1.0
+    sfx_volume: float = 1.0
+    muted: bool = False
 
 
 @dataclass

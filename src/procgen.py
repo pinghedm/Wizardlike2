@@ -2,6 +2,7 @@ import random
 
 import esper
 
+from src.audio import SoundId, play_sfx
 from src.components import (
     AI,
     Actor,
@@ -65,6 +66,7 @@ def transition_to_next_floor():
     # 1. Increment Floor
     game_state = get_singleton(GameState)
     game_state.floor += 1
+    play_sfx(SoundId.DESCEND)
 
     # 2. Calculate floor-dependent parameters. Deeper floors are bigger and richer: one
     # more room attempt every 2 floors, and the per-room item cap rises by 1 every 5 floors.

@@ -6,6 +6,7 @@ import tcod.map
 from tcod import libtcodpy
 
 from src import persistence
+from src.audio import SoundId, play_sfx
 from src.components import (
     Actor,
     EffectType,
@@ -77,6 +78,7 @@ class DeathSystem(esper.Processor):
                     debug_log(f'DeathSystem: deleting {ent} ({get_display_name(ent)})')
                     if log:
                         log.add_simple_message(f'The {get_display_name(ent)} dies!', color=UI_YELLOW)
+                    play_sfx(SoundId.DEATH)
                     run_stats = try_get_singleton(RunStats)
                     if run_stats:
                         run_stats.enemies_defeated += 1

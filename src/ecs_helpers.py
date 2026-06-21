@@ -5,6 +5,8 @@ both `systems` and `procgen.py` can use them without an import cycle (procgen al
 imports from systems). Depends only on `esper` + `components`.
 """
 
+from abc import ABC, abstractmethod
+
 import esper
 
 from src.components import (
@@ -20,6 +22,25 @@ from src.components import (
     StatusType,
 )
 from src.constants import UI_WHITE, to_rgb
+
+
+class RuntimeSingleton(ABC):
+    """Interface for ECS singletons that wrap unpicklable runtime state (an audio device, a
+    window handle, ...) rather than game state.
+
+    Such a service is reached through the world like any other singleton, but it can't ride
+    along in a save: `persistence.save_game` skips any component carrying `DO_NOT_PICKLE`, and
+    because `clear_database()` (on new game / load / return-to-title) drops it, whoever owns
+    the instance calls `reload_after_clear()` to re-register it with the fresh world. The
+    re-registration mechanism is the implementer's, so subclasses override it.
+    """
+
+    DO_NOT_PICKLE = True
+
+    @abstractmethod
+    def reload_after_clear(self) -> None:
+        """Re-register this service with the world after a clear_database()."""
+        ...
 
 
 def get_singleton[T](component_type: type[T]) -> T:

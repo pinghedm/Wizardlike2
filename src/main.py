@@ -6,7 +6,8 @@ import esper
 import tcod
 import tcod.sdl.joystick
 
-from src import persistence
+from src import audio, persistence
+from src.audio import AudioEngine, MusicTrack, SoundId
 from src.components import InputAction, MessageLog, MetaSaveState, Modal, Settings
 from src.constants import (
     DISPLAY_SCALE,
@@ -19,7 +20,7 @@ from src.constants import (
     SCREEN_WIDTH,
     TICKS_PER_SECOND,
 )
-from src.data_loaders import AssetLoader, get_game_configs
+from src.data_loaders import AssetLoader, get_game_configs, load_music_config, load_sounds_config
 from src.debug import debug_log
 from src.ecs_helpers import get_singleton, try_get_singleton
 from src.entities import (
@@ -154,6 +155,27 @@ def update_pause_state(game_state: GameState):
     game_state.time_paused = (game_state.display_mode not in _REAL_TIME_MODES) or has_modal
 
 
+def _track_for_mode(mode: DisplayMode) -> MusicTrack:
+    if mode in (DisplayMode.MENU, DisplayMode.GAME_OVER):
+        return MusicTrack.MENU
+    if mode == DisplayMode.SHOPPING:
+        return MusicTrack.SHOP
+    return MusicTrack.DUNGEON
+
+
+def update_audio(audio_engine: AudioEngine | None, game_state: GameState):
+    """Per-frame audio upkeep: re-attach the engine after a clear_database(), sync its volumes
+    to the live Settings, and select the looping track for the current screen. No-op when audio
+    is disabled (engine absent)."""
+    if audio_engine is None:
+        return
+    audio_engine.reload_after_clear()
+    settings = try_get_singleton(Settings)
+    if settings is not None:
+        audio_engine.apply_settings(settings.music_volume, settings.sfx_volume, settings.muted)
+    audio_engine.play_music(_track_for_mode(game_state.display_mode))
+
+
 def dispatch_input(
     event: tcod.event.Event, game_state: GameState, controller: ControllerInput, now: float
 ) -> PendingTransition | None:
@@ -180,6 +202,40 @@ def dispatch_input(
     return dispatch_action(action, game_state)
 
 
+# Screens that are pure menus/overlays: their cursor navigation and back-out click, and a
+# bare confirm clicks too — except where confirm already yields a domain sound (a craft in
+# COMBINING, a purchase in SHOPPING), which would otherwise layer two sounds.
+_MENU_MODES = (
+    DisplayMode.MENU,
+    DisplayMode.COMBINING,
+    DisplayMode.CASTING,
+    DisplayMode.SHOPPING,
+    DisplayMode.SETTINGS,
+    DisplayMode.GAME_OVER,
+    DisplayMode.MAP_VIEW,
+)
+_DOMAIN_CONFIRM_MODES = (DisplayMode.COMBINING, DisplayMode.SHOPPING)
+_NAV_ACTIONS = (
+    InputAction.MOVE_UP,
+    InputAction.MOVE_DOWN,
+    InputAction.MOVE_LEFT,
+    InputAction.MOVE_RIGHT,
+)
+
+
+def _play_ui_cue(action: InputAction, mode: DisplayMode, modal_open: bool):
+    """Click for menu navigation / confirm / cancel, while a modal is up or on a menu screen.
+    Real-time modes (exploring, targeting) are excluded so movement keys stay silent."""
+    if not (modal_open or mode in _MENU_MODES):
+        return
+    if action in _NAV_ACTIONS:
+        audio.play_sfx(SoundId.MENU_MOVE)
+    elif action == InputAction.CONFIRM and mode not in _DOMAIN_CONFIRM_MODES:
+        audio.play_sfx(SoundId.MENU_CONFIRM)
+    elif action in (InputAction.CANCEL, InputAction.OPEN_MENU):
+        audio.play_sfx(SoundId.MENU_CANCEL)
+
+
 def dispatch_action(action: InputAction | None, game_state: GameState) -> PendingTransition | None:
     """Route a resolved input action to the active mode's handler.
 
@@ -191,7 +247,9 @@ def dispatch_action(action: InputAction | None, game_state: GameState) -> Pendin
     if action is None:
         return None
 
-    if esper.get_component(Modal):
+    modal_open = bool(esper.get_component(Modal))
+    _play_ui_cue(action, game_state.display_mode, modal_open)
+    if modal_open:
         handle_modal_input(action)
         return None
 
@@ -295,6 +353,19 @@ def main():
         # Boot into the title screen (New Game / Continue / Quit).
         init_main_menu()
 
+        # Open the audio device and start the menu music. main() holds the engine so it
+        # survives the clear_database() on new game / load (update_audio re-attaches it);
+        # shutdown closes the device on exit. Stays silent if no device is available.
+        settings = get_singleton(Settings)
+        audio_engine = audio.init_audio(
+            sound_specs=load_sounds_config(),
+            music_files=load_music_config(),
+            music_volume=settings.music_volume,
+            sfx_volume=settings.sfx_volume,
+            muted=settings.muted,
+        )
+        atexit.register(audio.shutdown)
+
         # Enable gamepad input. Connected controllers are held in a list so SDL
         # keeps them open and keeps delivering their button events; the list is
         # refreshed when one is plugged in or removed.
@@ -329,6 +400,9 @@ def main():
 
             # Update time_paused based on mode or modals
             update_pause_state(game_state)
+
+            # Keep audio attached, volumes synced, and the right track looping for this screen.
+            update_audio(audio_engine, game_state)
 
             root_console.clear()
 

@@ -10,6 +10,7 @@ import tcod
 import yaml
 from PIL import Image
 
+from src.audio import MusicFiles, MusicTrack, SoundFile, SoundId, SoundSpecs, SynthSpec, Waveform
 from src.components import (
     DamageModifier,
     Effect,
@@ -230,6 +231,66 @@ def load_tiles_config(asset_loader: AssetLoader) -> list[TileConfig]:
             return data
     except FileNotFoundError:
         return []
+
+
+class _RawSound(TypedDict, total=False):
+    waveform: str
+    freq: float
+    duration: float
+    freq_end: float
+    decay: float
+    volume: float
+    file: str
+
+
+def _parse_sound(raw: _RawSound) -> SynthSpec | SoundFile:
+    """A single sounds.yaml entry: a WAV file reference or a synth recipe. Reads tolerantly
+    (validate_data enforces that synth entries supply waveform/freq/duration)."""
+    file = raw.get('file')
+    if file is not None:
+        return SoundFile(path=file)
+    return SynthSpec(
+        waveform=Waveform[raw.get('waveform', 'sine').upper()],
+        freq=raw.get('freq', 0.0),
+        duration=raw.get('duration', 0.0),
+        freq_end=raw.get('freq_end'),
+        decay=raw.get('decay', 6.0),
+        volume=raw.get('volume', 0.5),
+    )
+
+
+def load_sounds_config() -> SoundSpecs:
+    """Parse data/sounds.yaml into the synth/file recipe for each SoundId. Entries whose key
+    isn't a known SoundId are skipped (validate_data flags those); a missing file yields {}."""
+    try:
+        with open(f'{DATA_DIR}/sounds.yaml') as f:
+            data: dict[str, _RawSound] = yaml.safe_load(f)['sounds']
+    except FileNotFoundError:
+        return {}
+    specs: SoundSpecs = {}
+    for key, raw in data.items():
+        try:
+            specs[SoundId(key)] = _parse_sound(raw)
+        except ValueError:
+            debug_log(f'sounds.yaml: unknown sound id {key!r}, skipping')
+    return specs
+
+
+def load_music_config() -> MusicFiles:
+    """Parse data/music.yaml into the WAV path for each MusicTrack. Unknown track keys are
+    skipped; a missing file yields {} (all tracks silent)."""
+    try:
+        with open(f'{DATA_DIR}/music.yaml') as f:
+            data: dict[str, str] = yaml.safe_load(f)['music']
+    except FileNotFoundError:
+        return {}
+    tracks: MusicFiles = {}
+    for key, path in data.items():
+        try:
+            tracks[MusicTrack(key)] = path
+        except ValueError:
+            debug_log(f'music.yaml: unknown track {key!r}, skipping')
+    return tracks
 
 
 @lru_cache(maxsize=1)

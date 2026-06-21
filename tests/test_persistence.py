@@ -59,11 +59,29 @@ def test_meta_round_trips_settings():
     assert loaded.controller[InputAction.SCROLL_UP] == ControllerAxis.TRIGGERLEFT
 
 
+def test_meta_round_trips_audio_volumes():
+    HeadlessRunner(use_random_map=False)
+    settings = esper.get_component(Settings)[0][1]
+    settings.music_volume = 0.3
+    settings.sfx_volume = 0.7
+    settings.muted = True
+
+    persistence.save_meta()
+    loaded = persistence.load_meta()
+
+    assert loaded['music_volume'] == 0.3
+    assert loaded['sfx_volume'] == 0.7
+    assert loaded['muted'] is True
+
+
 def test_load_meta_defaults_when_file_absent():
     meta = persistence.load_meta()
     assert meta['recipes'] == {}
     assert meta['gold'] == 0
     assert meta['post_cast'] == PostCastBehavior.STAY
+    assert meta['music_volume'] == 1.0
+    assert meta['sfx_volume'] == 1.0
+    assert meta['muted'] is False
     # No saved overrides: the empty maps layer over the in-code defaults at create time.
     assert meta['keybindings'].bindings == {}
     assert meta['keybindings'].controller == {}

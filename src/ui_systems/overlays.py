@@ -4,6 +4,7 @@ from collections.abc import Iterator
 import esper
 import numpy as np
 
+from src.audio import SoundId, play_sfx
 from src.components import (
     CastVisual,
     Particle,
@@ -151,6 +152,7 @@ class EffectOverlaySystem(LayoutProcessor):
                     # Arrival: hand off to the impact burst and a particle spray.
                     trigger_cast_visual(center=proj.target, radius=proj.burst_radius, color=proj.color)
                     spawn_particle_burst(center=proj.target, color=proj.color, count=Particle.BURST_COUNT)
+                    play_sfx(SoundId.IMPACT)
                     esper.delete_entity(ent, immediate=True)
                     continue
             if cam is None:
