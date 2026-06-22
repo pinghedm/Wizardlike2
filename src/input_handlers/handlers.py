@@ -3,6 +3,7 @@ import esper
 from src import persistence
 from src.audio import SoundId, play_sfx
 from src.components import (
+    NPC,
     QUICK_CAST_ACTIONS,
     Configuration,
     Enemy,
@@ -90,6 +91,9 @@ def handle_modal_input(action: InputAction | None):
     modals = esper.get_component(Modal)
     if modals:
         ent, modal = modals[0]
+        if modal.page + 1 < len(modal.pages):
+            modal.page += 1
+            return
         if modal.on_close:
             modal.on_close()
         esper.delete_entity(ent)
@@ -117,6 +121,14 @@ def _adjacent_shopkeeper(player_pos: Position) -> bool:
     return False
 
 
+def _adjacent_npc(player_pos: Position) -> NPC | None:
+    """The NPC within one tile of the player (including their tile), if any."""
+    for _ent, (pos, npc) in esper.get_components(Position, NPC):
+        if max(abs(pos.x - player_pos.x), abs(pos.y - player_pos.y)) <= 1:
+            return npc
+    return None
+
+
 def handle_exploring_input(action: InputAction | None):
     game_state = get_singleton(GameState)
 
@@ -135,8 +147,12 @@ def handle_exploring_input(action: InputAction | None):
         return DisplayMode.CASTING
     elif action == InputAction.OPEN_MAP:
         return DisplayMode.MAP_VIEW
-    elif action == InputAction.CONFIRM and _adjacent_shopkeeper(player_pos):
-        return DisplayMode.SHOPPING
+    elif action == InputAction.CONFIRM:
+        if _adjacent_shopkeeper(player_pos):
+            return DisplayMode.SHOPPING
+        npc = _adjacent_npc(player_pos)
+        if npc is not None:
+            esper.create_entity(Modal(pages=npc.dialogue, title=npc.name))
     elif action == InputAction.SCROLL_UP:
         get_singleton(MessageLog).scroll_index += 1
     elif action == InputAction.SCROLL_DOWN:
@@ -215,7 +231,7 @@ def _try_descend(game_state: GameState) -> DisplayMode:
 
     esper.create_entity(
         Modal(
-            message='You descend deeper into the dungeon... (Press Enter)',
+            pages=['You descend deeper into the dungeon...'],
             on_close=transition_to_next_floor,
         )
     )

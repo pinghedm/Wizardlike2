@@ -364,11 +364,21 @@ def test_message_log_scroll_shows_newest_by_default():
 
 def test_modal_renders_message_and_prompt():
     runner = HeadlessRunner(use_random_map=False)
-    esper.create_entity(Modal(message='Hello modal'))
+    esper.create_entity(Modal(pages=['Hello modal']))
 
     text = _full_text(runner)
     assert 'Hello modal' in text
-    assert 'Press any key to close' in text
+    assert 'Press Enter to close' in text
+
+
+def test_modal_renders_current_page_and_more_prompt():
+    runner = HeadlessRunner(use_random_map=False)
+    esper.create_entity(Modal(pages=['Alpha page', 'Beta page'], page=0))
+
+    text = _full_text(runner)
+    assert 'Alpha page' in text
+    assert 'Beta page' not in text  # only the current page is shown
+    assert 'More' in text  # a later page exists, so it invites the player to continue
 
 
 # --- TargetingOverlaySystem -------------------------------------------------

@@ -1,0 +1,40 @@
+npcs:
+  - id: old_wizard
+    name: Old Wizard
+    floor: 1
+    color: [180, 140, 255]
+    sprite:
+      path: data/spritesheets/People.png
+      type: REGION
+      region: [0, 20, 10, 10]
+      scale: 1.0
+    dialogue:
+      - "Welcome, apprentice. The dungeon shifts beneath us with every descent."
+      - "Gather what reagents you can - you'll need them in the depths below."
+
+  - id: lost_adventurer
+    name: Lost Adventurer
+    floor: 2
+    color: [120, 200, 160]
+    sprite:
+      path: data/spritesheets/People.png
+      type: REGION
+      region: [30, 20, 10, 10]
+      scale: 1.0
+    dialogue:
+      - "You're still alive? Good. So few make it this far."
+      - "I came down chasing a rumor of treasure. Now I just want a way out."
+      - "If you find the stairs, don't wait for me."
+
+  - id: stone_sentinel
+    name: Stone Sentinel
+    floor: 4
+    color: [200, 200, 210]
+    sprite:
+      path: data/spritesheets/People.png
+      type: REGION
+      region: [60, 20, 10, 10]
+      scale: 1.0
+    dialogue:
+      - "HALT. None pass without proving their craft."
+      - "Combine your reagents. Wield your spells. Then descend."

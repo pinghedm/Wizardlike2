@@ -21,6 +21,7 @@ from src.components import (
     IngredientConfig,
     ItemType,
     LootDrop,
+    NPCConfig,
     RecipeConfig,
     SpellConfig,
     StatusType,
@@ -222,6 +223,18 @@ def load_enemies_config(asset_loader: AssetLoader) -> dict[str, EnemyConfig]:
         return {}
 
 
+def load_npcs_config(asset_loader: AssetLoader) -> list[NPCConfig]:
+    """Load the curated story NPCs and register each one's sprite."""
+    try:
+        with open(f'{DATA_DIR}/npcs.yaml') as f:
+            npcs = yaml.safe_load(f)['npcs']
+            for npc in npcs:
+                asset_loader.register_from_config(npc['id'], npc, '@')
+            return npcs
+    except FileNotFoundError:
+        return []
+
+
 def load_tiles_config(asset_loader: AssetLoader) -> list[TileConfig]:
     try:
         with open(f'{DATA_DIR}/tiles.yaml') as f:
@@ -305,6 +318,7 @@ def get_game_configs(asset_loader: AssetLoader) -> GameConfigs:
         'spells': load_spells_config(asset_loader),
         'tiles': load_tiles_config(asset_loader),
         'enemies': load_enemies_config(asset_loader),
+        'npcs': load_npcs_config(asset_loader),
     }
 
 

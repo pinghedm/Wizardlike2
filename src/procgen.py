@@ -5,6 +5,7 @@ import esper
 from src.audio import SoundId, play_sfx
 from src.components import (
     AI,
+    NPC,
     Actor,
     ChaseTag,
     Configuration,
@@ -17,6 +18,7 @@ from src.components import (
     ItemType,
     Loot,
     MessageLog,
+    NPCConfig,
     PatrolTag,
     Point,
     Position,
@@ -73,8 +75,8 @@ def transition_to_next_floor():
     max_rooms = MAX_ROOMS + (game_state.floor // 2)
     max_items = MAX_ITEMS_PER_ROOM + (game_state.floor // 5)
 
-    # 3. Clear existing non-persistent entities (Items/Enemies/Shopkeeper).
-    _delete_all(Item, Enemy, Shopkeeper)
+    # 3. Clear existing non-persistent entities (Items/Enemies/Shopkeeper/NPCs).
+    _delete_all(Item, Enemy, Shopkeeper, NPC)
 
     # 4. Generate the new floor (a shop floor on every third level).
     if is_shop_floor(game_state.floor):
@@ -199,6 +201,30 @@ def spawn_enemy(
     if drops:
         components.append(Loot(drops=drops))
     return esper.create_entity(*components)
+
+
+def spawn_npc(npc_cfg: NPCConfig, x: int, y: int) -> int:
+    """Create a non-hostile story NPC at (x, y). Press Confirm while adjacent to read it."""
+    return esper.create_entity(
+        Position(x, y),
+        Renderable(sprite_id=npc_cfg['id'], color=to_rgb(npc_cfg.get('color') or UI_WHITE)),
+        NPC(name=npc_cfg['name'], dialogue=npc_cfg['dialogue']),
+    )
+
+
+def _spawn_floor_npcs(rooms: list[RectangularRoom], floor: int):
+    """Place each curated NPC whose `floor` matches in a random non-start room."""
+    configs = esper.get_component(Configuration)[0][1]
+    candidate_rooms = rooms[1:]
+    if not candidate_rooms:
+        return
+    for npc_cfg in configs.npcs:
+        if npc_cfg['floor'] != floor:
+            continue
+        room = random.choice(candidate_rooms)
+        x = random.randint(room.x1 + 1, room.x2 - 1)
+        y = random.randint(room.y1 + 1, room.y2 - 1)
+        spawn_npc(npc_cfg, x, y)
 
 
 def spawn_shopkeeper(x: int, y: int) -> int:
@@ -373,6 +399,8 @@ def generate_dungeon(
 
     for i, room in enumerate(rooms):
         room.spawn_entities(rooms, spawn_enemies=(i > 0))
+
+    _spawn_floor_npcs(rooms, floor_number)
 
     exit_room = _select_exit_room(rooms) or (rooms[-1] if rooms else None)
     if exit_room is not None:

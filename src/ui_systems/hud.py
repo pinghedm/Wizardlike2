@@ -28,22 +28,24 @@ class ModalSystem(LayoutProcessor):
     def process(self):
         for _ent, modal in esper.get_component(Modal):
             # Center the modal based on its own dimensions
-            x, y = draw_centered_frame(self.console, modal.width, modal.height, title='Message')
+            x, y = draw_centered_frame(self.console, modal.width, modal.height, title=modal.title)
 
-            # Message
+            # Current page of text
             self.console.print(
                 x=x + 2,
                 y=y + 2,
                 width=modal.width - 4,
                 height=modal.height - 4,
-                text=modal.message,
+                text=modal.pages[modal.page],
                 fg=UI_WHITE,
             )
 
+            more = modal.page + 1 < len(modal.pages)
+            footer = '(More - Press Enter)' if more else 'Press Enter to close'
             self.console.print(
-                x + modal.width // 2 - 10,
+                x + modal.width // 2 - len(footer) // 2,
                 y + modal.height - 2,
-                'Press any key to close',
+                footer,
                 fg=UI_GRAY,
             )
 

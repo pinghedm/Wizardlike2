@@ -5,6 +5,7 @@ import yaml
 
 from src.audio import MusicTrack, SoundId, Waveform
 from src.components import EffectType, StatusType, TargetMode
+from src.constants import MAX_FLOORS
 
 VALID_EFFECT_INFO = {
     EffectType.DAMAGE: ['power'],
@@ -65,6 +66,8 @@ ALLOWED_ENEMY_FIELDS = {
 }
 
 ALLOWED_DROP_FIELDS = {'type', 'min', 'max', 'chance'}
+
+ALLOWED_NPC_FIELDS = {'id', 'name', 'floor', 'dialogue', 'sprite', 'color'}
 
 VALID_WAVEFORMS = {w.name.lower() for w in Waveform}
 ALLOWED_SOUND_SYNTH_FIELDS = {'waveform', 'freq', 'duration', 'freq_end', 'decay', 'volume'}
@@ -560,7 +563,57 @@ def validate_data() -> bool:
             if 'drops' in enemy:
                 errors += validate_drops(enemy['drops'], ing_ids, f'Enemy "{eid}"')
 
-    # 5. Validate audio config
+    # 5. Validate NPCs
+    npcs_file = data_dir / 'npcs.yaml'
+    if not npcs_file.exists():
+        print(f'Note: {npcs_file} not found, skipping NPC validation.')
+    else:
+        print(f'Validating {npcs_file}...')
+        try:
+            with open(npcs_file) as f:
+                npcs_data = yaml.safe_load(f)
+        except Exception as e:
+            print(f'ERROR: Failed to parse npcs.yaml: {e}')
+            return False
+
+        npc_ids = set()
+        for i, npc in enumerate(npcs_data.get('npcs', [])):
+            if 'id' not in npc:
+                print(f'ERROR: NPC #{i} missing "id".')
+                errors += 1
+                continue
+            nid = npc['id']
+            if nid in npc_ids:
+                print(f'ERROR: Duplicate NPC ID: "{nid}"')
+                errors += 1
+            npc_ids.add(nid)
+
+            for field in ('name', 'floor', 'dialogue', 'sprite'):
+                if field not in npc:
+                    print(f'ERROR: NPC "{nid}" missing "{field}".')
+                    errors += 1
+
+            for field in sorted(set(npc) - ALLOWED_NPC_FIELDS):
+                print(f'ERROR: NPC "{nid}" has unexpected field "{field}".')
+                errors += 1
+
+            if 'floor' in npc and (not isinstance(npc['floor'], int) or not 1 <= npc['floor'] <= MAX_FLOORS):
+                print(f'ERROR: NPC "{nid}" floor must be an integer in [1, {MAX_FLOORS}].')
+                errors += 1
+
+            if 'dialogue' in npc:
+                dialogue = npc['dialogue']
+                if not isinstance(dialogue, list) or not dialogue or not all(isinstance(p, str) for p in dialogue):
+                    print(f'ERROR: NPC "{nid}" dialogue must be a non-empty list of strings.')
+                    errors += 1
+
+            if 'color' in npc:
+                color = npc['color']
+                if not isinstance(color, list) or len(color) != 3 or not all(isinstance(c, int) for c in color):
+                    print(f'ERROR: NPC "{nid}" color must be a list of 3 integers.')
+                    errors += 1
+
+    # 6. Validate audio config
     errors += validate_sounds_file(data_dir)
     errors += validate_music_file(data_dir)
 

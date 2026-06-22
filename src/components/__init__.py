@@ -9,6 +9,7 @@ callers import them as `from src.components import X`.
 
 from src.components.components import (
     AI,
+    NPC,
     Actor,
     CastVisual,
     ChaseTag,
@@ -51,6 +52,7 @@ from src.components.configs import (
     EnemyConfig,
     GameConfigs,
     IngredientConfig,
+    NPCConfig,
     RecipeConfig,
     ShopConfig,
     SpellConfig,
@@ -105,6 +107,8 @@ __all__ = [
     'MessageSegment',
     'MetaSaveState',
     'Modal',
+    'NPC',
+    'NPCConfig',
     'Particle',
     'PatrolTag',
     'PlayerTag',

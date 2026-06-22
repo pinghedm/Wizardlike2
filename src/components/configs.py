@@ -64,6 +64,14 @@ class EnemyConfig(TypedDict):
     drops: NotRequired[list[LootDrop]]
 
 
+class NPCConfig(TypedDict):
+    id: str
+    name: str
+    floor: int
+    dialogue: list[str]
+    color: NotRequired[list[int]]
+
+
 class GameConfigs(TypedDict):
     """The bundle of parsed config returned by `get_game_configs`, used to build the
     `Configuration` singleton."""
@@ -72,3 +80,4 @@ class GameConfigs(TypedDict):
     spells: list[SpellConfig]
     tiles: list[TileConfig]
     enemies: dict[str, EnemyConfig]
+    npcs: list[NPCConfig]

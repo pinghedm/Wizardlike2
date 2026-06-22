@@ -5,7 +5,7 @@ from typing import ClassVar, NamedTuple
 
 import tcod
 
-from src.components.configs import EnemyConfig, IngredientConfig, SpellConfig, TileConfig
+from src.components.configs import EnemyConfig, IngredientConfig, NPCConfig, SpellConfig, TileConfig
 from src.components.enums import (
     DEFAULT_CONTROLLER_BINDINGS,
     DEFAULT_KEYBOARD_BINDINGS,
@@ -119,6 +119,7 @@ class Configuration:
     spells: list[SpellConfig]
     tiles: list[TileConfig]
     enemies: dict[str, EnemyConfig]
+    npcs: list[NPCConfig]
 
     # Index into `spells` by id, built once so lookups don't linear-scan.
     spells_by_id: dict[str, SpellConfig] = field(init=False)
@@ -219,10 +220,15 @@ class MessageLog:
 
 @dataclass
 class Modal:
-    message: str
+    """A centered, time-pausing text box. `pages` are shown one at a time; each Confirm
+    advances `page`, and Confirm on the last page runs `on_close` and dismisses the modal."""
+
+    pages: list[str]
+    title: str = 'Message'
     width: int = 40
     height: int = 10
     on_close: Callable[[], None] | None = None
+    page: int = 0
 
 
 @dataclass
@@ -386,6 +392,15 @@ class Shopkeeper:
     stock rolled when this shop floor was generated."""
 
     offers: list[ShopOffer] = field(default_factory=list[ShopOffer])
+
+
+@dataclass
+class NPC:
+    """A non-hostile character; press Confirm while adjacent to read their dialogue,
+    one page at a time."""
+
+    name: str
+    dialogue: list[str] = field(default_factory=list[str])
 
 
 @dataclass
