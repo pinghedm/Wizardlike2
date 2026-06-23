@@ -22,9 +22,10 @@ from src.components import (
     Stats,
     StatusEffects,
 )
-from src.constants import UI_SKY
+from src.constants import UI_PERIWINKLE, UI_SKY
 from src.ecs_helpers import actor_name, get_player, get_singleton, try_get_singleton
 from src.systems.combat import apply_effect
+from src.systems.progression import grant_spell_mastery, spell_charge_bonus, spell_power_mult
 from src.systems.visuals import trigger_projectile
 
 
@@ -47,7 +48,8 @@ def refill_basic_spells():
     spell_inv = esper.component_for_entity(player, SpellInventory)
     for s_conf in configs.spells:
         if s_conf.get('basic'):
-            spell_inv.spells[SpellType(s_conf['id'])] = s_conf.get('charges', 0)
+            stype = SpellType(s_conf['id'])
+            spell_inv.spells[stype] = s_conf.get('charges', 0) + spell_charge_bonus(stype)
 
 
 # Item types that are pickups but not crafting reagents (currency, etc.).
@@ -112,7 +114,7 @@ def craft_known_spell(stype: SpellType) -> int | None:
     match = match_recipe(combo, hide_rare=False)
     if match is None:
         return None
-    charges = match[1]
+    charges = match[1] + spell_charge_bonus(stype)
 
     for itype, count in Counter(combo).items():
         inventory.items[itype] -= count
@@ -149,6 +151,7 @@ def discover_and_craft(selection: tuple[ItemType, ...]) -> tuple[SpellType, int]
     recipes.recipes[stype].add(selection)
     persistence.save_meta()
 
+    charges += spell_charge_bonus(stype)
     spell_inv.spells[stype] = spell_inv.spells.get(stype, 0) + charges
     for itype, count in Counter(selection).items():
         inventory.items[itype] -= count
@@ -201,6 +204,10 @@ def cast_spell(spell_id: str, target_x: int, target_y: int):
 
     log.add_simple_message(f'You cast {s_conf["name"]}!', color=UI_SKY)
 
+    ranked_up = grant_spell_mastery(stype)
+    if ranked_up is not None:
+        log.add_simple_message(f'Your mastery of {s_conf["name"]} deepens — rank {ranked_up}!', color=UI_PERIWINKLE)
+
     radius = s_conf.get('radius', 0)
     caster_origin = esper.component_for_entity(player, Position).point
 
@@ -227,12 +234,14 @@ def cast_spell(spell_id: str, target_x: int, target_y: int):
         if dx**2 + dy**2 <= radius**2:
             targets.append(ent)
 
-    # Knockback shoves targets directly away from the caster. Reaction modifiers scale
-    # the spell's damage per target based on the statuses that target already carries.
+    # Mastery scales every effect's power; reaction modifiers further scale damage per target
+    # based on the statuses that target already carries. Knockback shoves targets away.
+    mastery_mult = spell_power_mult(stype)
     for target in targets:
-        mult = _apply_reaction_multiplier(target, s_conf.get('modifiers', []), log)
+        react_mult = _apply_reaction_multiplier(target, s_conf.get('modifiers', []), log)
         for effect in s_conf['effects']:
-            resolved = effect
-            if mult != 1.0 and effect.type in (EffectType.DAMAGE, EffectType.DRAIN):
-                resolved = replace(effect, power=max(0, round(effect.power * mult)))
+            power_mult = mastery_mult
+            if effect.type in (EffectType.DAMAGE, EffectType.DRAIN):
+                power_mult *= react_mult
+            resolved = effect if power_mult == 1.0 else replace(effect, power=max(0, round(effect.power * power_mult)))
             apply_effect(target, resolved, origin=caster_origin, caster_ent=player)

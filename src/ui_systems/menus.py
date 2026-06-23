@@ -20,6 +20,7 @@ from src.constants import (
     UI_CYAN_DARK,
     UI_GRAY,
     UI_GRAY_DARK,
+    UI_PERIWINKLE,
     UI_RED,
     UI_SKY,
     UI_WHITE,
@@ -47,6 +48,7 @@ from src.systems import (
     get_spell_config,
     is_game_active,
     is_reagent,
+    spell_rank,
 )
 from src.ui_helpers import (
     draw_centered_frame,
@@ -241,7 +243,13 @@ class MenuSystem(LayoutProcessor):
         self.console.print(dx, row, f'Radius {s_conf.get("radius", 0)}', fg=UI_WHITE)
         row += 1
         self.console.print(dx, row, format_spell_effects(s_conf.get('effects', [])), fg=UI_WHITE)
-        row += 2
+        row += 1
+
+        mastery_cfg = s_conf.get('mastery')
+        if mastery_cfg:
+            self.console.print(dx, row, f'Mastery {spell_rank(stype)}/{mastery_cfg["max_rank"]}', fg=UI_PERIWINKLE)
+            row += 1
+        row += 1
 
         self.console.print(dx, row, 'Recipes:', fg=UI_CYAN_DARK)
         row += 1

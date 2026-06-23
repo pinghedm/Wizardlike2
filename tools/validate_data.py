@@ -39,11 +39,14 @@ ALLOWED_SPELL_FIELDS = {
     'rare',
     'basic',
     'charges',
+    'mastery',
 }
 
 VALID_TARGETS = {t.value for t in TargetMode}
 
 ALLOWED_MODIFIER_FIELDS = {'vs_status', 'damage_mult'}
+
+ALLOWED_MASTERY_FIELDS = {'casts_per_rank', 'max_rank', 'charge_bonus_per_rank', 'power_per_rank'}
 
 ALLOWED_INGREDIENT_FIELDS = {'id', 'name', 'char', 'sprite', 'color', 'price'}
 
@@ -57,6 +60,7 @@ ALLOWED_ENEMY_FIELDS = {
     'hp',
     'damage',
     'speed',
+    'xp',
     'behavior',
     'floors',
     'ability',
@@ -235,6 +239,31 @@ def validate_modifiers(modifiers, effects, context_label: str) -> int:
     return errors
 
 
+def validate_spell_mastery(mastery, context_label: str) -> int:
+    """Validate a spell's `mastery` block. Returns the number of errors found."""
+    if not isinstance(mastery, dict):
+        print(f'ERROR: {context_label} mastery must be a mapping.')
+        return 1
+    errors = 0
+    for key in sorted(set(mastery) - ALLOWED_MASTERY_FIELDS):
+        print(f'ERROR: {context_label} mastery has unexpected field "{key}".')
+        errors += 1
+    for field in ('casts_per_rank', 'max_rank'):
+        value = mastery.get(field)
+        if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+            print(f'ERROR: {context_label} mastery "{field}" must be a positive integer.')
+            errors += 1
+    bonus = mastery.get('charge_bonus_per_rank')
+    if not isinstance(bonus, int) or isinstance(bonus, bool) or bonus < 0:
+        print(f'ERROR: {context_label} mastery "charge_bonus_per_rank" must be a non-negative integer.')
+        errors += 1
+    power = mastery.get('power_per_rank')
+    if not isinstance(power, (int, float)) or isinstance(power, bool) or power < 0:
+        print(f'ERROR: {context_label} mastery "power_per_rank" must be a non-negative number.')
+        errors += 1
+    return errors
+
+
 def validate_shop(shop, context_label: str) -> int:
     """Validate a spell's `shop` listing. Returns the number of errors found."""
     if not isinstance(shop, dict):
@@ -409,6 +438,9 @@ def validate_data() -> bool:
             if 'modifiers' in spell:
                 errors += validate_modifiers(spell['modifiers'], spell.get('effects', []), f'Spell "{sid}"')
 
+            if 'mastery' in spell:
+                errors += validate_spell_mastery(spell['mastery'], f'Spell "{sid}"')
+
             # A basic spell is known from the start and refills to `charges` each floor, so it
             # carries a flat per-floor capacity instead of recipes; it's never crafted or sold.
             if is_basic:
@@ -520,11 +552,15 @@ def validate_data() -> bool:
                 errors += 1
             enemy_ids.add(eid)
 
-            required_fields = ['sprite', 'hp', 'damage', 'speed', 'behavior', 'floors', 'color']
+            required_fields = ['sprite', 'hp', 'damage', 'speed', 'xp', 'behavior', 'floors', 'color']
             for field in required_fields:
                 if field not in enemy:
                     print(f'ERROR: Enemy "{eid}" missing "{field}".')
                     errors += 1
+
+            if 'xp' in enemy and (not isinstance(enemy['xp'], int) or enemy['xp'] < 0):
+                print(f'ERROR: Enemy "{eid}" xp must be a non-negative integer.')
+                errors += 1
 
             unexpected = set(enemy) - ALLOWED_ENEMY_FIELDS
             for field in sorted(unexpected):

@@ -3,6 +3,7 @@ import esper
 from src.components import (
     Actor,
     Configuration,
+    Experience,
     FieldOfView,
     GameConfigs,
     Inventory,
@@ -16,6 +17,7 @@ from src.components import (
     RunStats,
     Settings,
     SpellInventory,
+    SpellMastery,
     Stats,
     StatusEffects,
     UIState,
@@ -92,15 +94,21 @@ def create_player(x: int, y: int, meta: MetaData | None = None):
     if meta and meta['gold']:
         inventory.items[ItemType.GOLD] = meta['gold']
 
+    spell_mastery = SpellMastery()
+    if meta:
+        spell_mastery.casts = meta['mastery']
+
     return esper.create_entity(
         Position(x, y),
         Actor(speed=0),
         FieldOfView(radius=8),
         Renderable(sprite_id=sprite_id, color=(255, 255, 255)),
         Stats(hp=100, max_hp=100),
+        Experience(),
         inventory,
         known_recipes,
         SpellInventory(),
+        spell_mastery,
         StatusEffects(),
         PlayerTag(),
     )

@@ -12,6 +12,17 @@ class RecipeConfig(TypedDict):
     charges: int
 
 
+class SpellMasteryConfig(TypedDict):
+    """Per-spell mastery tuning. Casting the spell accrues mastery; each rank (up to
+    `max_rank`, costing progressively more casts) grants bonus charges on refill/craft and
+    scales the spell's effect power."""
+
+    casts_per_rank: int  # casts for rank 1; each later rank costs progressively more
+    max_rank: int
+    charge_bonus_per_rank: int
+    power_per_rank: float
+
+
 class SpellConfig(TypedDict):
     id: str
     name: str
@@ -25,6 +36,7 @@ class SpellConfig(TypedDict):
     rare: NotRequired[bool]
     basic: NotRequired[bool]
     charges: NotRequired[int]  # a basic spell's per-floor charge capacity
+    mastery: NotRequired[SpellMasteryConfig]
 
 
 class IngredientConfig(TypedDict):
@@ -57,6 +69,7 @@ class EnemyConfig(TypedDict):
     hp: int
     damage: int
     speed: int
+    xp: int
     behavior: str
     floors: list[int]
     blocks_movement: NotRequired[bool]

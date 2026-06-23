@@ -9,6 +9,11 @@ spells:
     effects:
       - type: damage
         power: 4
+    mastery:
+      casts_per_rank: 2
+      max_rank: 3
+      charge_bonus_per_rank: 1
+      power_per_rank: 0.5
   - id: test_bolt
     name: Test Bolt
     description: A test bolt that zaps and slows its target.
@@ -25,6 +30,11 @@ spells:
     shop:
       price: 25
       charges: 4
+    mastery:
+      casts_per_rank: 2
+      max_rank: 2
+      charge_bonus_per_rank: 2
+      power_per_rank: 0.25
   - id: test_blast
     name: Test Blast
     description: A test blast that damages a small area.

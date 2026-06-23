@@ -10,6 +10,7 @@ from src.audio import SoundId, play_sfx
 from src.components import (
     Actor,
     EffectType,
+    Enemy,
     FieldOfView,
     Loot,
     MessageLog,
@@ -44,6 +45,7 @@ from src.layout import LayoutProcessor
 from src.map_objects import Map
 from src.states import WORLD_VIEW_MODES, DisplayMode, GameState
 from src.systems.combat import apply_status_pulse, roll_loot
+from src.systems.progression import grant_xp
 from src.systems.visuals import EFFECT_COLORS
 from src.ui_helpers import blend
 
@@ -82,6 +84,9 @@ class DeathSystem(esper.Processor):
                     run_stats = try_get_singleton(RunStats)
                     if run_stats:
                         run_stats.enemies_defeated += 1
+                    enemy = esper.try_component(ent, Enemy)
+                    if enemy is not None:
+                        grant_xp(enemy.xp_reward)
                     self._drop_loot(ent)
                     esper.delete_entity(ent)
 

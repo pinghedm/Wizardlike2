@@ -107,6 +107,13 @@ sounds:
     duration: 0.35
     decay: 3
     volume: 0.5
+  level_up:
+    waveform: triangle
+    freq: 523
+    freq_end: 1046
+    duration: 0.5
+    decay: 2
+    volume: 0.55
   fizzle:
     waveform: saw
     freq: 300

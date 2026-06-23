@@ -5,6 +5,7 @@ enemies:
     hp: 30
     damage: 10
     speed: 100
+    xp: 10
     behavior: CHASE
     floors: [1, 99]
   - id: test_guardian
@@ -13,6 +14,7 @@ enemies:
     hp: 50
     damage: 12
     speed: 100
+    xp: 40
     behavior: GUARD
     blocks_movement: true
     guardian: true
@@ -23,6 +25,7 @@ enemies:
     hp: 20
     damage: 4
     speed: 100
+    xp: 8
     behavior: FLEE
     floors: [1, 99]
     ability:
@@ -38,6 +41,7 @@ enemies:
     hp: 10
     damage: 3
     speed: 100
+    xp: 5
     behavior: CHASE
     floors: [1, 99]
     drops:

@@ -299,8 +299,9 @@ def test_hp_bar_full_is_all_red():
     stats.hp, stats.max_hp = 100, 100
 
     assert 'HP: 100/100' in _full_text(runner)
-    # Bar starts just past the text: HP_BAR_X(2) + len(text)(11) + 1 = 14.
-    assert runner.get_console_fg(14, 46) == UI_RED
+    # The bar is right-aligned in the 34-wide stats column: 34 - 2 margin - 16 width = x16.
+    # The taller (7-row) HUD puts the HP row at console height 50 - 7 + 1 = 44.
+    assert runner.get_console_fg(16, 44) == UI_RED
 
 
 def test_hp_bar_partial_splits_filled_and_empty():
@@ -310,9 +311,10 @@ def test_hp_bar_partial_splits_filled_and_empty():
 
     text = _full_text(runner)
     assert 'HP: 10/100' in text
-    start_x = 2 + len('HP: 10/100') + 1  # = 13
-    assert runner.get_console_fg(start_x, 46) == UI_RED
-    assert runner.get_console_fg(start_x + 5, 46) == UI_RED_DARK
+    start_x = 16  # right-aligned bar: 34 - 2 margin - 16 width
+    # ratio 0.1 over a 16-wide bar -> 1 filled cell, so the rest is the dark track.
+    assert runner.get_console_fg(start_x, 44) == UI_RED
+    assert runner.get_console_fg(start_x + 5, 44) == UI_RED_DARK
 
 
 def test_hp_bar_zero_is_all_empty():
@@ -322,8 +324,8 @@ def test_hp_bar_zero_is_all_empty():
 
     text = _full_text(runner)
     assert 'HP: 0/100' in text
-    start_x = 2 + len('HP: 0/100') + 1  # = 12
-    assert runner.get_console_fg(start_x, 46) == UI_RED_DARK
+    start_x = 16  # right-aligned bar: 34 - 2 margin - 16 width
+    assert runner.get_console_fg(start_x, 44) == UI_RED_DARK
 
 
 def test_floor_info_reflects_game_state():

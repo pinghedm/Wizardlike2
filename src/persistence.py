@@ -16,6 +16,7 @@ from src.components import (
     KnownRecipes,
     MetaSaveState,
     Settings,
+    SpellMastery,
     SpellType,
 )
 from src.constants import SAVE_DIR
@@ -52,6 +53,7 @@ class _RawSettings(TypedDict, total=False):
 
 class _RawMeta(TypedDict, total=False):
     grimoire: dict[str, list[list[str]]]
+    mastery: dict[str, int]
     gold: int
     settings: _RawSettings
 
@@ -60,6 +62,7 @@ class MetaData(TypedDict):
     """Cross-run progression and preferences loaded from / saved to meta.json."""
 
     recipes: Grimoire
+    mastery: dict[SpellType, int]
     gold: int
     keybindings: Keybindings
     post_cast: PostCastBehavior
@@ -155,10 +158,13 @@ def save_meta():
     ensure_save_dir()
     data = _read_meta_file()
     recipes = try_get_singleton(KnownRecipes)
+    mastery = try_get_singleton(SpellMastery)
     inventory = try_get_singleton(Inventory)
     settings = try_get_singleton(Settings)
     if recipes is not None:
         data['grimoire'] = _serialize_recipes(recipes.recipes)
+    if mastery is not None:
+        data['mastery'] = {stype.value: casts for stype, casts in mastery.casts.items()}
     if inventory is not None:
         data['gold'] = inventory.items.get(ItemType.GOLD, 0)
     if settings is not None:
@@ -189,6 +195,7 @@ def load_meta() -> MetaData:
     settings: _RawSettings = data.get('settings', {})
     return {
         'recipes': _deserialize_recipes(data.get('grimoire', {})),
+        'mastery': {SpellType(k): v for k, v in data.get('mastery', {}).items()},
         'gold': data.get('gold', 0),
         'keybindings': _deserialize_keybindings(settings.get('keybindings', {})),
         'post_cast': PostCastBehavior(settings.get('post_cast', PostCastBehavior.STAY.value)),

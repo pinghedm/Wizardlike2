@@ -186,6 +186,24 @@ class Stats:
 
 
 @dataclass
+class Experience:
+    """Player progression. XP accrues from casting spells and slaying enemies; crossing a
+    level threshold raises max HP and heals to full. `xp` counts toward the next level only
+    (it resets on level-up); the threshold grows with `level`. Created fresh per run."""
+
+    LEVEL_XP: ClassVar[int] = 100  # XP to advance one level, times the current level
+    HP_PER_LEVEL: ClassVar[int] = 20  # max HP gained on level-up
+
+    xp: int = 0
+    level: int = 1
+
+    @property
+    def next_level_xp(self) -> int:
+        """XP required to advance from the current level to the next."""
+        return self.level * self.LEVEL_XP
+
+
+@dataclass
 class Inventory:
     items: dict[ItemType, int] = field(default_factory=dict[ItemType, int])
 
@@ -202,6 +220,15 @@ class KnownRecipes:
 class SpellInventory:
     # Tracks remaining uses of each spell
     spells: dict[SpellType, int] = field(default_factory=dict[SpellType, int])
+
+
+@dataclass
+class SpellMastery:
+    """Per-spell mastery, grown by casting and persisted across runs (like the grimoire).
+    Holds only the accumulated cast count per spell; the rank it maps to and the bonuses it
+    confers come from each spell's own `mastery` config (see SpellMasteryConfig)."""
+
+    casts: dict[SpellType, int] = field(default_factory=dict[SpellType, int])
 
 
 @dataclass
@@ -275,6 +302,7 @@ class Enemy:
     bump_damage: int = 5
     blocks_movement: bool = False
     ability: EnemyAbility | None = None
+    xp_reward: int = 0
 
 
 @dataclass

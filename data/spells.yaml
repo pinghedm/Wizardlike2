@@ -9,6 +9,11 @@ spells:
     effects:
       - type: damage
         power: 8
+    mastery:
+      casts_per_rank: 4
+      max_rank: 5
+      charge_bonus_per_rank: 2
+      power_per_rank: 0.1
   - id: fireball
     name: Fireball
     description: A roaring ball of flame that bursts on impact.
@@ -30,6 +35,11 @@ spells:
     shop:
       price: 40
       charges: 3
+    mastery:
+      casts_per_rank: 5
+      max_rank: 5
+      charge_bonus_per_rank: 1
+      power_per_rank: 0.12
   - id: ice_lance
     name: Ice Lance
     description: A spear of ice that pierces and chills its target.
@@ -43,6 +53,11 @@ spells:
     recipes:
       - ingredients: [ice_shard, ice_shard]
         charges: 5
+    mastery:
+      casts_per_rank: 5
+      max_rank: 5
+      charge_bonus_per_rank: 1
+      power_per_rank: 0.1
   - id: rejuvenation
     name: Rejuvenation
     description: Mends your wounds with a surge of restorative magic.
@@ -57,6 +72,11 @@ spells:
     shop:
       price: 30
       charges: 2
+    mastery:
+      casts_per_rank: 5
+      max_rank: 5
+      charge_bonus_per_rank: 1
+      power_per_rank: 0.15
   - id: steam_blast
     name: Steam Blast
     description: A scalding burst of steam that scorches a small area.
@@ -70,6 +90,11 @@ spells:
         charges: 4
       - ingredients: [fire_crystal, ice_shard, mystic_herb]
         charges: 10
+    mastery:
+      casts_per_rank: 5
+      max_rank: 5
+      charge_bonus_per_rank: 1
+      power_per_rank: 0.1
   - id: blight
     name: Blight
     description: A toxic hex that festers, poisoning the target over time.
@@ -84,6 +109,11 @@ spells:
     recipes:
       - ingredients: [ice_shard, mystic_herb]
         charges: 4
+    mastery:
+      casts_per_rank: 5
+      max_rank: 5
+      charge_bonus_per_rank: 1
+      power_per_rank: 0.12
   - id: renewal
     name: Renewal
     description: A lingering blessing that regenerates your health.
@@ -96,6 +126,11 @@ spells:
     recipes:
       - ingredients: [mystic_herb, mystic_herb, mystic_herb]
         charges: 3
+    mastery:
+      casts_per_rank: 5
+      max_rank: 5
+      charge_bonus_per_rank: 1
+      power_per_rank: 0.15
   - id: quicken
     name: Quicken
     description: Hastens your movements, letting you act more often.
@@ -107,6 +142,11 @@ spells:
     recipes:
       - ingredients: [fire_crystal, mystic_herb]
         charges: 3
+    mastery:
+      casts_per_rank: 5
+      max_rank: 5
+      charge_bonus_per_rank: 1
+      power_per_rank: 0.0
   - id: meteor
     name: Meteor
     description: Calls down a devastating meteor, scorching a wide area.
@@ -122,6 +162,11 @@ spells:
     shop:
       price: 120
       charges: 1
+    mastery:
+      casts_per_rank: 6
+      max_rank: 3
+      charge_bonus_per_rank: 1
+      power_per_rank: 0.15
   - id: concussion
     name: Concussion
     description: A close blast that batters the target and hurls it backward.
@@ -135,6 +180,11 @@ spells:
     recipes:
       - ingredients: [fire_crystal, gale_feather]
         charges: 4
+    mastery:
+      casts_per_rank: 5
+      max_rank: 5
+      charge_bonus_per_rank: 1
+      power_per_rank: 0.1
   - id: cryo_lock
     name: Cryo-Lock
     description: Flash-freezes a foe, locking it in place for a few moments.
@@ -148,6 +198,11 @@ spells:
     recipes:
       - ingredients: [ice_shard, earth_stone]
         charges: 3
+    mastery:
+      casts_per_rank: 5
+      max_rank: 5
+      charge_bonus_per_rank: 1
+      power_per_rank: 0.1
   - id: aegis
     name: Aegis
     description: Wraps you in a ward that blunts incoming blows.
@@ -160,6 +215,11 @@ spells:
     recipes:
       - ingredients: [earth_stone, mystic_herb]
         charges: 3
+    mastery:
+      casts_per_rank: 5
+      max_rank: 5
+      charge_bonus_per_rank: 1
+      power_per_rank: 0.15
   - id: siphon
     name: Siphon
     description: Leeches an enemy's vitality, healing you for part of the harm.
@@ -172,6 +232,11 @@ spells:
     recipes:
       - ingredients: [storm_shard, mystic_herb]
         charges: 3
+    mastery:
+      casts_per_rank: 5
+      max_rank: 5
+      charge_bonus_per_rank: 1
+      power_per_rank: 0.12
   - id: douse
     name: Douse
     description: A bracing splash that leaves the target soaked.
@@ -185,6 +250,11 @@ spells:
     recipes:
       - ingredients: [gale_feather, ice_shard]
         charges: 4
+    mastery:
+      casts_per_rank: 5
+      max_rank: 5
+      charge_bonus_per_rank: 1
+      power_per_rank: 0.1
   - id: lightning_bolt
     name: Lightning Bolt
     description: A searing bolt that overloads soaked foes.
@@ -199,3 +269,8 @@ spells:
     recipes:
       - ingredients: [storm_shard, storm_shard]
         charges: 4
+    mastery:
+      casts_per_rank: 5
+      max_rank: 5
+      charge_bonus_per_rank: 1
+      power_per_rank: 0.12

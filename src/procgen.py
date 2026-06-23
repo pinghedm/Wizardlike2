@@ -192,6 +192,7 @@ def spawn_enemy(
             bump_damage=enemy_cfg['damage'] // 2,
             blocks_movement=enemy_cfg.get('blocks_movement', False),
             ability=enemy_cfg.get('ability'),
+            xp_reward=enemy_cfg['xp'],
         ),
         Stats(hp=enemy_cfg['hp'], max_hp=enemy_cfg['hp']),
         StatusEffects(),

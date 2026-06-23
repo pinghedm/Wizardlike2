@@ -1,6 +1,7 @@
 import esper
 
 from src.components import (
+    Experience,
     Inventory,
     ItemType,
     Message,
@@ -10,8 +11,11 @@ from src.components import (
     StatusType,
 )
 from src.constants import (
+    RGB,
     UI_BLACK,
     UI_GRAY,
+    UI_GRAY_DARK,
+    UI_PERIWINKLE,
     UI_RED,
     UI_RED_DARK,
     UI_SKY,
@@ -51,7 +55,9 @@ class ModalSystem(LayoutProcessor):
 
 
 class HUDSystem(LayoutProcessor):
-    HP_BAR_WIDTH = 20
+    # Stat bars share a width and right-align to the same column, so HP and XP line up.
+    BAR_WIDTH = 16
+    BAR_RIGHT_MARGIN = 2
     # Width of the stats column on the left of the HUD bar; the log fills the rest.
     HUD_STATS_WIDTH = 34
 
@@ -63,28 +69,34 @@ class HUDSystem(LayoutProcessor):
         # The HUD bar splits into a stats column and a message log.
         stats_zone, log_zone = self.layout.hud.split_left(self.HUD_STATS_WIDTH)
         self.render_hp_bar(stats_zone)
+        self.render_xp_bar(stats_zone)
         self.render_shield(stats_zone)
         self.render_floor_info(stats_zone, game_state.floor)
         self.render_gold(stats_zone)
         self.render_message_log(log_zone)
 
+    def _draw_stat_bar(self, zone: Rect, row: int, label: str, ratio: float, fill: RGB, track: RGB):
+        """Draw a labeled bar on `row` of the stats column: label at the left, the bar
+        right-aligned so every bar shares the same right edge."""
+        y = zone.y + row
+        self.console.print(zone.x + 2, y, label, fg=UI_WHITE)
+        bar_x = zone.x + zone.width - self.BAR_RIGHT_MARGIN - self.BAR_WIDTH
+        self.console.draw_rect(bar_x, y, self.BAR_WIDTH, 1, ch=ord('█'), fg=track)
+        filled_width = int(ratio * self.BAR_WIDTH)
+        if filled_width > 0:
+            self.console.draw_rect(bar_x, y, filled_width, 1, ch=ord('█'), fg=fill)
+
     def render_hp_bar(self, zone: Rect):
         stats = get_player_component(Stats)
         if stats is None:
             return
+        self._draw_stat_bar(zone, 1, f'HP: {stats.hp}/{stats.max_hp}', stats.hp / stats.max_hp, UI_RED, UI_RED_DARK)
 
-        hp_label_start_x, hp_label_y = zone.x + 2, zone.y + 1
-
-        hp_text = f'HP: {stats.hp}/{stats.max_hp}'
-        self.console.print(hp_label_start_x, hp_label_y, hp_text, fg=UI_WHITE)
-
-        hp_bar_start_x = hp_label_start_x + len(hp_text) + 1
-        ratio = stats.hp / stats.max_hp
-        filled_width = int(ratio * self.HP_BAR_WIDTH)
-
-        self.console.draw_rect(hp_bar_start_x, hp_label_y, self.HP_BAR_WIDTH, 1, ch=ord('█'), fg=UI_RED_DARK)
-        if filled_width > 0:
-            self.console.draw_rect(hp_bar_start_x, hp_label_y, filled_width, 1, ch=ord('█'), fg=UI_RED)
+    def render_xp_bar(self, zone: Rect):
+        exp = get_player_component(Experience)
+        if exp is None:
+            return
+        self._draw_stat_bar(zone, 3, f'Lv {exp.level}', exp.xp / exp.next_level_xp, UI_PERIWINKLE, UI_GRAY_DARK)
 
     def render_shield(self, zone: Rect):
         """Show the player's active shield (its remaining damage reduction per hit)."""
@@ -94,14 +106,14 @@ class HUDSystem(LayoutProcessor):
             self.console.print(zone.x + 2, zone.y + 2, f'Shield: {shield.power}', fg=UI_SKY)
 
     def render_floor_info(self, zone: Rect, floor: int):
-        self.console.print(zone.x + 2, zone.y + 3, f'Floor: {floor}', fg=UI_WHITE)
+        self.console.print(zone.x + 2, zone.y + 5, f'Floor: {floor}', fg=UI_WHITE)
 
     def render_gold(self, zone: Rect):
         inv = try_get_singleton(Inventory)
         if not inv:
             return
         gold = inv.items.get(ItemType.GOLD, 0)
-        self.console.print(zone.x + 14, zone.y + 3, f'Gold: {gold}', fg=UI_YELLOW)
+        self.console.print(zone.x + 14, zone.y + 5, f'Gold: {gold}', fg=UI_YELLOW)
 
     def render_message_log(self, zone: Rect):
         log = try_get_singleton(MessageLog)

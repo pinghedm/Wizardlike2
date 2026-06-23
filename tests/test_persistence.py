@@ -16,10 +16,12 @@ from src.components import (
     Position,
     Settings,
     SpellInventory,
+    SpellMastery,
     SpellType,
     Stats,
 )
 from src.ecs_helpers import get_singleton, spawn_item_entity
+from src.entities import create_player
 from src.map_objects import Map
 from src.states import DisplayMode, GameState, PostCastBehavior
 from tests.headless_runner import HeadlessRunner
@@ -40,6 +42,26 @@ def test_meta_round_trips_grimoire_and_gold():
 
     assert loaded['recipes'] == recipes
     assert loaded['gold'] == 17
+
+
+def test_meta_round_trips_spell_mastery():
+    runner = HeadlessRunner(use_random_map=False)
+    casts = {SpellType('test_wand'): 7, SpellType('test_bolt'): 3}
+    esper.component_for_entity(runner.player, SpellMastery).casts = casts
+
+    persistence.save_meta()
+
+    assert persistence.load_meta()['mastery'] == casts
+
+
+def test_a_new_run_inherits_persisted_mastery():
+    runner = HeadlessRunner(use_random_map=False)
+    esper.component_for_entity(runner.player, SpellMastery).casts = {SpellType('test_wand'): 9}
+    persistence.save_meta()
+
+    reborn = create_player(x=1, y=1, meta=persistence.load_meta())
+
+    assert esper.component_for_entity(reborn, SpellMastery).casts == {SpellType('test_wand'): 9}
 
 
 def test_meta_round_trips_settings():

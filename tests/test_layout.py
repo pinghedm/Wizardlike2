@@ -77,9 +77,9 @@ def test_hud_height_clamps_to_a_tiny_console():
 
 
 def test_camera_centers_player_in_a_large_map():
-    layout = _layout(80, 50)  # viewport 80x45 -> 40x22 tiles (each a 2x2 block)
-    # player minus half the visible tiles: (100-20, 100-11)
-    assert layout.camera_offset(100, 100, 200, 200) == (80, 89)
+    layout = _layout(80, 50)  # viewport 80x43 -> 40x21 tiles (each a 2x2 block)
+    # player minus half the visible tiles: (100-20, 100-10)
+    assert layout.camera_offset(100, 100, 200, 200) == (80, 90)
 
 
 def test_camera_clamps_to_top_left_corner():
@@ -88,8 +88,8 @@ def test_camera_clamps_to_top_left_corner():
 
 
 def test_camera_clamps_to_bottom_right_corner():
-    layout = _layout(80, 50)  # 40x22 visible tiles; max offsets (160, 178)
-    assert layout.camera_offset(199, 199, 200, 200) == (160, 178)
+    layout = _layout(80, 50)  # 40x21 visible tiles; max offsets (160, 179)
+    assert layout.camera_offset(199, 199, 200, 200) == (160, 179)
 
 
 @pytest.mark.parametrize('player_x, player_y', [(0, 0), (10, 10), (19, 19)])

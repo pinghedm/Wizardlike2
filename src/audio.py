@@ -53,6 +53,7 @@ class SoundId(enum.StrEnum):
     REACTION = 'reaction'
     CRAFT = 'craft'
     DISCOVERY = 'discovery'
+    LEVEL_UP = 'level_up'
     FIZZLE = 'fizzle'
     PICKUP = 'pickup'
     GOLD = 'gold'

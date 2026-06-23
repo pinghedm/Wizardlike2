@@ -9,6 +9,7 @@ enemies:
     hp: 30
     damage: 10
     speed: 30
+    xp: 12
     behavior: CHASE
     floors: [1, 5]
     drops:
@@ -24,6 +25,7 @@ enemies:
     hp: 60
     damage: 5
     speed: 40
+    xp: 18
     behavior: PATROL
     floors: [1, 10]
     drops:
@@ -38,6 +40,7 @@ enemies:
     hp: 20
     damage: 15
     speed: 50
+    xp: 10
     behavior: FLEE
     floors: [3, 10]
   - id: wisp
@@ -50,6 +53,7 @@ enemies:
     hp: 18
     damage: 4
     speed: 40
+    xp: 8
     behavior: FLEE
     floors: [2, 10]
     ability:
@@ -70,6 +74,7 @@ enemies:
     hp: 50
     damage: 12
     speed: 40
+    xp: 40
     behavior: GUARD
     blocks_movement: true
     guardian: true
@@ -84,6 +89,7 @@ enemies:
     hp: 25
     damage: 6
     speed: 45
+    xp: 14
     behavior: CHASE
     floors: [4, 10]
     ability:

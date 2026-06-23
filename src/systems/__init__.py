@@ -31,6 +31,13 @@ from src.systems.processors import (
     RenderSystem,
     StatusSystem,
 )
+from src.systems.progression import (
+    grant_spell_mastery,
+    grant_xp,
+    spell_charge_bonus,
+    spell_power_mult,
+    spell_rank,
+)
 from src.systems.utils import is_game_active
 from src.systems.visuals import (
     EFFECT_COLORS,
@@ -60,12 +67,17 @@ __all__ = [
     'discover_and_craft',
     'get_action_cooldown',
     'get_spell_config',
+    'grant_spell_mastery',
+    'grant_xp',
     'is_game_active',
     'is_reagent',
     'match_recipe',
     'move_entity',
     'roll_loot',
     'spawn_particle_burst',
+    'spell_charge_bonus',
+    'spell_power_mult',
+    'spell_rank',
     'trigger_cast_visual',
     'trigger_screen_flash',
 ]

@@ -49,7 +49,7 @@ class Layout:
     """The live console and the UI panels derived from its current size."""
 
     # Rows reserved for the bottom HUD bar; the map viewport fills the rest.
-    HUD_HEIGHT = 5
+    HUD_HEIGHT = 7
 
     console: tcod.console.Console
 

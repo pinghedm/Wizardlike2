@@ -1,12 +1,17 @@
 import esper
 import tcod.event
 
-from src.components import Modal, PlayerTag, Position, RunStats, Stats
+from src.components import Enemy, Experience, Modal, PlayerTag, Position, RunStats, Stats
 from src.constants import MAX_FLOORS
 from src.ecs_helpers import get_display_name, get_singleton
 from src.map_objects import Map, Tile
 from src.states import DisplayMode
+from src.systems import cast_spell, grant_xp
 from tests.headless_runner import HeadlessRunner
+
+
+def _player_experience(runner) -> Experience:
+    return esper.component_for_entity(runner.player, Experience)
 
 
 def _make_exit_above_player(runner):
@@ -96,3 +101,81 @@ def test_reaching_final_floor_exit_wins_instead_of_descending():
     assert runner.display_mode == DisplayMode.GAME_OVER
     assert get_singleton(RunStats).won is True
     assert not esper.get_component(Modal)  # no descend modal on the final floor
+
+
+# --- XP & leveling ----------------------------------------------------------
+
+
+def test_slaying_an_enemy_grants_its_xp_reward():
+    runner = HeadlessRunner(use_random_map=False)
+    px, py = runner.player_pos
+    enemy = runner.spawn_enemy(px + 1, py)
+    reward = esper.component_for_entity(enemy, Enemy).xp_reward
+    assert reward > 0  # the fixture enemy must actually be worth something
+
+    esper.component_for_entity(enemy, Stats).hp = 0
+    runner.tick(1)  # DeathSystem credits the kill
+
+    exp = _player_experience(runner)
+    assert exp.xp == reward
+    assert exp.level == 1  # one weak kill isn't enough to level
+
+
+def test_reaching_the_threshold_levels_up_and_raises_max_hp():
+    runner = HeadlessRunner(use_random_map=False)
+    exp = _player_experience(runner)
+    stats = esper.component_for_entity(runner.player, Stats)
+    base_max_hp = stats.max_hp
+
+    grant_xp(exp.next_level_xp)
+
+    assert exp.level == 2
+    assert exp.xp == 0  # the threshold is spent on the level
+    assert stats.max_hp == base_max_hp + Experience.HP_PER_LEVEL
+
+
+def test_leveling_up_heals_to_full():
+    runner = HeadlessRunner(use_random_map=False)
+    exp = _player_experience(runner)
+    stats = esper.component_for_entity(runner.player, Stats)
+    stats.hp = 1
+
+    grant_xp(exp.next_level_xp)
+
+    assert stats.hp == stats.max_hp
+
+
+def test_excess_xp_carries_into_the_new_level():
+    runner = HeadlessRunner(use_random_map=False)
+    exp = _player_experience(runner)
+    overflow = 7
+
+    grant_xp(exp.next_level_xp + overflow)
+
+    assert exp.level == 2
+    assert exp.xp == overflow
+
+
+def test_level_up_threshold_grows_with_level():
+    runner = HeadlessRunner(use_random_map=False)
+    exp = _player_experience(runner)
+
+    grant_xp(exp.next_level_xp)  # -> level 2; the next level now costs more
+    assert exp.level == 2
+
+    grant_xp(Experience.LEVEL_XP)  # a level-1-sized chunk no longer suffices
+    assert exp.level == 2
+    assert exp.xp == Experience.LEVEL_XP
+
+    grant_xp(Experience.LEVEL_XP)  # topping it up to the larger threshold levels again
+    assert exp.level == 3
+
+
+def test_casting_does_not_grant_xp():
+    runner = HeadlessRunner(use_random_map=False)
+    runner.give_spell('test_wand', 3)
+    px, py = runner.player_pos
+
+    cast_spell('test_wand', px + 2, py)
+
+    assert _player_experience(runner).xp == 0
