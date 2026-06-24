@@ -13,11 +13,13 @@ from src.components import (
     Configuration,
     Effect,
     FieldOfView,
+    Guardian,
     Item,
     ItemType,
     PlayerTag,
     Position,
     Renderable,
+    Stats,
     StatusEffects,
     StatusType,
 )
@@ -78,6 +80,14 @@ def get_player_component[T](component_type: type[T]) -> T | None:
 def is_player(entity: int) -> bool:
     """Whether `entity` is the player (carries the PlayerTag)."""
     return esper.has_component(entity, PlayerTag)
+
+
+def exit_is_sealed() -> bool:
+    """Whether the floor's exit stairs are still sealed by living gate guardians — descent is
+    barred until they're cleared. Counts only living guardians (hp > 0), so a guardian slain
+    this tick, still lingering until DeathSystem's deferred delete is purged, doesn't keep the
+    stairs sealed. Floors without guardians (the shop, a guardian-less depth) are never sealed."""
+    return any(stats.hp > 0 for _ent, (_guardian, stats) in esper.get_components(Guardian, Stats))
 
 
 def get_status(entity: int, status_type: StatusType) -> Effect | None:

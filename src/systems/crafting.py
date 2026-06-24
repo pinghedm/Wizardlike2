@@ -25,6 +25,7 @@ from src.components import (
 from src.constants import UI_PERIWINKLE, UI_SKY
 from src.ecs_helpers import actor_name, get_player, get_singleton, try_get_singleton
 from src.systems.combat import apply_effect
+from src.systems.momentum import build_momentum, momentum_damage_mult
 from src.systems.progression import grant_spell_mastery, spell_charge_bonus, spell_power_mult
 from src.systems.visuals import trigger_projectile
 
@@ -234,14 +235,18 @@ def cast_spell(spell_id: str, target_x: int, target_y: int):
         if dx**2 + dy**2 <= radius**2:
             targets.append(ent)
 
-    # Mastery scales every effect's power; reaction modifiers further scale damage per target
-    # based on the statuses that target already carries. Knockback shoves targets away.
+    # Mastery scales every effect's power; momentum and reaction modifiers further scale
+    # damage per target (momentum read before this cast feeds the combo). Knockback shoves
+    # targets away.
     mastery_mult = spell_power_mult(stype)
+    momentum_mult = momentum_damage_mult(stype)
     for target in targets:
         react_mult = _apply_reaction_multiplier(target, s_conf.get('modifiers', []), log)
         for effect in s_conf['effects']:
             power_mult = mastery_mult
             if effect.type in (EffectType.DAMAGE, EffectType.DRAIN):
-                power_mult *= react_mult
+                power_mult *= react_mult * momentum_mult
             resolved = effect if power_mult == 1.0 else replace(effect, power=max(0, round(effect.power * power_mult)))
             apply_effect(target, resolved, origin=caster_origin, caster_ent=player)
+
+    build_momentum()  # this cast feeds the combo for the next action

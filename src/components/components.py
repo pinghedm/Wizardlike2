@@ -232,6 +232,26 @@ class SpellMastery:
 
 
 @dataclass
+class Momentum:
+    """Arcane momentum (combo). Casting and slaying build stacks; the meter bleeds a stack
+    after a lull and fully resets when the player is struck. The meter itself — and the kill
+    loot bonus — are the player's; how much a stack amplifies a given spell's damage is
+    per-spell (see SpellConfig.momentum_damage_per_stack). Transient per run."""
+
+    MAX_STACKS: ClassVar[int] = 10
+    DECAY_TICKS: ClassVar[int] = 75  # ticks of inactivity before a stack bleeds off
+    STACKS_PER_BONUS_DROP: ClassVar[int] = 4  # stacks per extra loot roll on a kill
+
+    stacks: int = 0
+    decay_ticks: int = 0
+
+    @property
+    def bonus_drops(self) -> int:
+        """Extra loot rolls a kill earns at the current stack count."""
+        return self.stacks // self.STACKS_PER_BONUS_DROP
+
+
+@dataclass
 class MessageLog:
     # A list of messages, where each message is a list of (text, color) segments
     messages: list[Message] = field(default_factory=list[Message])
@@ -399,6 +419,14 @@ class Particle:
 
 
 class PlayerTag:
+    pass
+
+
+@dataclass
+class Guardian:
+    """Tag for a gate guardian: a foe sealing the floor's exit stairs. While any guardian
+    lives the stairs can't be descended, so clearing them is the floor's climax."""
+
     pass
 
 

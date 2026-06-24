@@ -18,6 +18,10 @@ class Tile:
 
 
 class Map:
+    # How far to dim the exit tile's color while its guardians still seal it; it lights to
+    # full brightness once they're cleared, signaling the way down is open.
+    SEALED_EXIT_DIM = 0.35
+
     def __init__(self, width: int, height: int, default_tile: Tile):
         self.width = width
         self.height = height
@@ -26,6 +30,9 @@ class Map:
         # Derived arrays are seeded from the fill tile and kept in sync via set_tile.
         self.transparent = np.full((width, height), default_tile.transparent, dtype=bool, order='F')
         self.walkable = np.full((width, height), default_tile.walkable, dtype=bool, order='F')
+        # The exit tile's location, recorded as it's placed so the minimap can mark it
+        # without scanning the grid each frame.
+        self.exit_pos: tuple[int, int] | None = None
 
     def in_bounds(self, x: int, y: int) -> bool:
         return 0 <= x < self.width and 0 <= y < self.height
@@ -40,3 +47,5 @@ class Map:
         self.tiles[x][y] = tile
         self.transparent[x, y] = tile.transparent
         self.walkable[x, y] = tile.walkable
+        if tile.is_exit:
+            self.exit_pos = (x, y)

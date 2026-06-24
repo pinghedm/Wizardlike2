@@ -9,6 +9,7 @@ spells:
     effects:
       - type: damage
         power: 4
+    momentum_damage_per_stack: 0.5
     mastery:
       casts_per_rank: 2
       max_rank: 3
@@ -43,6 +44,7 @@ spells:
     effects:
       - type: damage
         power: 20
+    momentum_damage_per_stack: 0.5
     recipes:
       - ingredients: [reagent_a, reagent_a]
         charges: 5

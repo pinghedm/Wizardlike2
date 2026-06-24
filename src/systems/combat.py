@@ -31,6 +31,7 @@ from src.constants import (
     UI_YELLOW,
 )
 from src.ecs_helpers import actor_name, get_display_name, get_singleton, get_status, is_player, try_get_singleton
+from src.systems.momentum import reset_momentum
 from src.systems.movement import apply_knockback
 from src.systems.visuals import EFFECT_COLORS, spray_hit_particles, trigger_screen_flash
 
@@ -98,6 +99,8 @@ def _apply_hp_damage(target_ent: int, amount: int) -> int:
     record_damage_dealt(target_ent, mitigated)
     trigger_screen_flash(ent=target_ent, color=UI_RED)
     play_sfx(SoundId.HIT)
+    if mitigated > 0 and is_player(target_ent):
+        reset_momentum()  # taking a real hit shatters the combo
     return mitigated
 
 

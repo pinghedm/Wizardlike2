@@ -13,6 +13,7 @@ from src.components import (
     EnemyConfig,
     FieldOfView,
     FleeTag,
+    Guardian,
     GuardTag,
     Item,
     ItemType,
@@ -201,6 +202,8 @@ def spawn_enemy(
     drops = enemy_cfg.get('drops')
     if drops:
         components.append(Loot(drops=drops))
+    if enemy_cfg.get('guardian'):
+        components.append(Guardian())
     return esper.create_entity(*components)
 
 
@@ -255,6 +258,10 @@ def tunnel_between(start: Point, end: Point):
 
 EXIT_MIN_ROOM_DISTANCE = 2
 
+# Gate guardians per floor: a base count, plus one more for every few floors of depth.
+GUARDIANS_BASE = 2
+FLOORS_PER_EXTRA_GUARDIAN = 5
+
 
 def _select_exit_room(
     rooms: list[RectangularRoom],
@@ -276,38 +283,32 @@ def _select_exit_room(
     return max(candidates, key=lambda c: c[0])[1]
 
 
-def _room_entrances(room: RectangularRoom, dungeon: Map) -> list[Point]:
-    """Return the border tiles where a corridor crosses into the room.
-
-    A tile is an entrance only if it is a walkable border tile with a walkable
-    neighbour *outside* the room's bounding box (the point where an outside
-    corridor enters). This excludes border tiles that a corridor merely runs
-    alongside; blocking the crossing points still fully seals the room, since
-    any path from outside to the interior must pass through one of them.
-    """
-    entrances: list[Point] = []
-    for x in range(room.x1, room.x2 + 1):
-        for y in range(room.y1, room.y2 + 1):
-            on_border = x in (room.x1, room.x2) or y in (room.y1, room.y2)
-            if not (on_border and dungeon.is_walkable(x, y)):
-                continue
-            for nx, ny in ((x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)):
-                outside = nx < room.x1 or nx > room.x2 or ny < room.y1 or ny > room.y2
-                if outside and dungeon.is_walkable(nx, ny):
-                    entrances.append(Point(x, y))
-                    break
-    return entrances
+def _guardian_count(floor: int) -> int:
+    """How many gate guardians seal `floor`: two to start, one more every five floors deep."""
+    return GUARDIANS_BASE + floor // FLOORS_PER_EXTRA_GUARDIAN
 
 
-def _spawn_exit_guardians(dungeon: Map, exit_room: RectangularRoom, rooms: list[RectangularRoom], floor: int):
-    """Spawn non-walkable guardian enemies at every entrance to the exit room."""
+def _spawn_guardians(dungeon: Map, exit_room: RectangularRoom, rooms: list[RectangularRoom], floor: int):
+    """Spawn the floor's gate guardians, which seal the exit until slain. One holds the exit
+    room; the rest hide in other rooms, so clearing the seal means exploring the floor."""
     configs = esper.get_component(Configuration)[0][1]
     guardians = [e for e in configs.enemies.values() if e.get('guardian') and e['floors'][0] <= floor <= e['floors'][1]]
     if not guardians:
         return
     guardian_cfg = random.choice(guardians)
-    for entrance in _room_entrances(exit_room, dungeon):
-        spawn_enemy(guardian_cfg, entrance.x, entrance.y, rooms)
+
+    # The exit room hosts one; fill the rest from other rooms (skipping the player's start).
+    others = [r for r in rooms if r is not exit_room and r is not rooms[0]]
+    random.shuffle(others)
+    host_rooms = [exit_room, *others[: _guardian_count(floor) - 1]]
+
+    exit_p = exit_room.center
+    for room in host_rooms:
+        x = random.randint(room.x1 + 1, room.x2 - 1)
+        y = random.randint(room.y1 + 1, room.y2 - 1)
+        if (x, y) == (exit_p.x, exit_p.y):  # don't bury the stairs under its guardian
+            x = min(x + 1, room.x2 - 1)
+        spawn_enemy(guardian_cfg, x, y, rooms)
 
 
 def _current_floor() -> int:
@@ -407,7 +408,7 @@ def generate_dungeon(
     if exit_room is not None:
         exit_p = exit_room.center
         dungeon.set_tile(exit_p.x, exit_p.y, exit_tile)
-        _spawn_exit_guardians(dungeon, exit_room, rooms, floor_number)
+        _spawn_guardians(dungeon, exit_room, rooms, floor_number)
 
     _announce_floor(floor_number)
     return dungeon, player_start

@@ -15,6 +15,7 @@ from src.components import (
     PatrolTag,
     Point,
     Position,
+    Stats,
     StatusType,
 )
 from src.constants import UI_MAGENTA, UI_RED
@@ -173,6 +174,12 @@ class AISystem(esper.Processor):
         for ent, (pos, _ai) in esper.get_components(Position, AI):
             actor = esper.try_component(ent, Actor)
             if actor and actor.cooldown > 0:
+                continue
+
+            # A lethally-hit enemy lingers in queries until DeathSystem's deferred delete is
+            # purged next tick; skip it so a slain foe can't get a free retaliation.
+            stats = esper.try_component(ent, Stats)
+            if stats is not None and stats.hp <= 0:
                 continue
 
             if get_status(ent, StatusType.STUN):

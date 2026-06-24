@@ -1,9 +1,9 @@
 import esper
 import tcod.event
 
-from src.components import Enemy, Experience, Modal, PlayerTag, Position, RunStats, Stats
+from src.components import Enemy, Experience, Guardian, Modal, PlayerTag, Position, RunStats, Stats
 from src.constants import MAX_FLOORS
-from src.ecs_helpers import get_display_name, get_singleton
+from src.ecs_helpers import exit_is_sealed, get_display_name, get_singleton
 from src.map_objects import Map, Tile
 from src.states import DisplayMode
 from src.systems import cast_spell, grant_xp
@@ -179,3 +179,43 @@ def test_casting_does_not_grant_xp():
     cast_spell('test_wand', px + 2, py)
 
     assert _player_experience(runner).xp == 0
+
+
+# --- Gate guardians sealing the exit ----------------------------------------
+
+
+def test_a_living_guardian_seals_the_exit():
+    runner = HeadlessRunner(use_random_map=False)
+    _make_exit_above_player(runner)
+    px, py = runner.player_pos
+    runner.spawn_enemy(px + 3, py, runner.enemy_config('test_guardian'))  # sealing the floor
+    assert exit_is_sealed()
+
+    runner.simulate_key(tcod.event.KeySym.UP)  # step onto the sealed exit
+
+    assert not esper.get_component(Modal)  # descent is barred
+    assert runner.game_state.floor == 1
+    assert any('sealed' in m.lower() for m in runner.get_log_messages())
+
+
+def test_clearing_the_guardians_opens_the_exit():
+    runner = HeadlessRunner(use_random_map=False)
+    _make_exit_above_player(runner)
+    px, py = runner.player_pos
+    guardian = runner.spawn_enemy(px + 3, py, runner.enemy_config('test_guardian'))
+
+    esper.component_for_entity(guardian, Stats).hp = 0
+    runner.tick(1)  # DeathSystem clears the last guardian
+    assert not exit_is_sealed()
+
+    runner.simulate_key(tcod.event.KeySym.UP)  # now the stairs accept the descent
+
+    assert esper.get_component(Modal)
+    runner.simulate_key(tcod.event.KeySym.RETURN)
+    assert runner.game_state.floor == 2
+
+
+def test_a_guardianless_floor_is_never_sealed():
+    HeadlessRunner(use_random_map=False)  # a clean room spawns no guardians
+    assert not esper.get_component(Guardian)
+    assert not exit_is_sealed()

@@ -9,6 +9,7 @@ spells:
     effects:
       - type: damage
         power: 8
+    momentum_damage_per_stack: 0.08
     mastery:
       casts_per_rank: 4
       max_rank: 5
@@ -35,6 +36,7 @@ spells:
     shop:
       price: 40
       charges: 3
+    momentum_damage_per_stack: 0.06
     mastery:
       casts_per_rank: 5
       max_rank: 5
@@ -53,6 +55,7 @@ spells:
     recipes:
       - ingredients: [ice_shard, ice_shard]
         charges: 5
+    momentum_damage_per_stack: 0.06
     mastery:
       casts_per_rank: 5
       max_rank: 5
@@ -269,6 +272,7 @@ spells:
     recipes:
       - ingredients: [storm_shard, storm_shard]
         charges: 4
+    momentum_damage_per_stack: 0.1
     mastery:
       casts_per_rank: 5
       max_rank: 5

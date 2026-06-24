@@ -44,6 +44,21 @@ def test_adjacent_enemy_attacks_player():
     assert any('hits you' in m.lower() for m in runner.get_log_messages())
 
 
+def test_slain_adjacent_enemy_gets_no_final_retaliation():
+    # A lethally-hit enemy lingers in queries until DeathSystem's deferred delete is purged;
+    # it must not still attack on the tick it dies (AISystem skips hp<=0 entities).
+    runner = HeadlessRunner(use_random_map=False)
+    px, py = runner.player_pos
+    enemy = runner.spawn_enemy(px + 1, py, {**runner.enemy_config(), 'speed': 0})
+    esper.component_for_entity(enemy, Stats).hp = 0
+
+    hp_before = esper.component_for_entity(runner.player, Stats).hp
+    runner.tick(1)
+
+    assert not esper.entity_exists(enemy)
+    assert esper.component_for_entity(runner.player, Stats).hp == hp_before
+
+
 def test_guard_attacks_adjacent_player():
     runner = HeadlessRunner(use_random_map=False)
     px, py = runner.player_pos

@@ -2,10 +2,9 @@ import esper
 import pytest
 
 from src.components import FieldOfView, Item, ItemType, Point, Position
-from src.map_objects import Map, Tile
 from src.procgen import (
     RectangularRoom,
-    _room_entrances,
+    _guardian_count,
     _select_exit_room,
     transition_to_next_floor,
     tunnel_between,
@@ -51,28 +50,12 @@ def test_select_exit_room_picks_farthest_room_at_least_two_away(n_rooms, expecte
         assert chosen is rooms[expected_index]
 
 
-def test_room_entrances_returns_only_corridor_crossings():
-    wall = Tile(walkable=False, transparent=False, sprite_id='w', fg=(0, 0, 0), bg=(0, 0, 0))
-    floor = Tile(walkable=True, transparent=True, sprite_id='f', fg=(0, 0, 0), bg=(0, 0, 0))
-    dungeon = Map(20, 20, wall)
-    room = RectangularRoom(x=2, y=2, width=5, height=5, dungeon=dungeon)  # bounds (2,2)-(7,7)
-
-    # Carve the interior (leaves the border ring as walls).
-    for x in range(room.x1 + 1, room.x2):
-        for y in range(room.y1 + 1, room.y2):
-            dungeon.set_tile(x, y, floor)
-
-    # A real corridor crossing the left border (has an outside tile leading in).
-    opening = Point(room.x1, room.y1 + 2)
-    dungeon.set_tile(opening.x, opening.y, floor)
-    dungeon.set_tile(opening.x - 1, opening.y, floor)  # corridor outside the room
-
-    # A border tile a corridor merely grazes: walkable, adjacent to the interior,
-    # but with no walkable neighbour outside the room. It must NOT be an entrance.
-    graze = Point(room.x1 + 2, room.y2)
-    dungeon.set_tile(graze.x, graze.y, floor)
-
-    assert _room_entrances(room, dungeon) == [opening]
+@pytest.mark.parametrize(
+    'floor, expected',
+    [(1, 2), (4, 2), (5, 3), (9, 3), (10, 4)],  # base 2, +1 every 5 floors deep
+)
+def test_guardian_count_grows_with_depth(floor, expected):
+    assert _guardian_count(floor) == expected
 
 
 def _assert_contiguous_path(path, start, end):

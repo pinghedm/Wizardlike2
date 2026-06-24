@@ -22,6 +22,12 @@ from src.systems.crafting import (
     match_recipe,
     refill_basic_spells,
 )
+from src.systems.momentum import (
+    MomentumSystem,
+    build_momentum,
+    momentum_damage_mult,
+    reset_momentum,
+)
 from src.systems.movement import can_act, get_action_cooldown, move_entity
 from src.systems.processors import (
     ActionSystem,
@@ -55,9 +61,11 @@ __all__ = [
     'DeathSystem',
     'FOVSystem',
     'MetaSaveSystem',
+    'MomentumSystem',
     'RenderSystem',
     'StatusSystem',
     'apply_effect',
+    'build_momentum',
     'can_act',
     'can_craft_known_spell',
     'cast_spell',
@@ -72,7 +80,9 @@ __all__ = [
     'is_game_active',
     'is_reagent',
     'match_recipe',
+    'momentum_damage_mult',
     'move_entity',
+    'reset_momentum',
     'roll_loot',
     'spawn_particle_burst',
     'spell_charge_bonus',

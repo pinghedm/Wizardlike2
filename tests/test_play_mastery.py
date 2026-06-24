@@ -11,6 +11,7 @@ from src.systems import (
     cast_spell,
     grant_spell_mastery,
     refill_basic_spells,
+    reset_momentum,
     spell_charge_bonus,
     spell_power_mult,
     spell_rank,
@@ -60,6 +61,8 @@ def test_mastery_scales_spell_damage():
     _rank_up_wand(2)  # -> rank 1, power x1.5
     assert spell_power_mult(WAND) == 1.5
 
+    # Isolate mastery from the combo: the prior cast built a stack that would also amplify.
+    reset_momentum()
     other = runner.spawn_enemy(px - 1, py)
     other_hp = esper.component_for_entity(other, Stats).hp
     cast_spell('test_wand', px - 1, py)

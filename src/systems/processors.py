@@ -15,6 +15,7 @@ from src.components import (
     Loot,
     MessageLog,
     MetaSaveState,
+    Momentum,
     Point,
     Position,
     Renderable,
@@ -33,6 +34,7 @@ from src.constants import (
 )
 from src.debug import debug_log
 from src.ecs_helpers import (
+    exit_is_sealed,
     get_display_name,
     get_player_component,
     get_singleton,
@@ -45,6 +47,7 @@ from src.layout import LayoutProcessor
 from src.map_objects import Map
 from src.states import WORLD_VIEW_MODES, DisplayMode, GameState
 from src.systems.combat import apply_status_pulse, roll_loot
+from src.systems.momentum import build_momentum
 from src.systems.progression import grant_xp
 from src.systems.visuals import EFFECT_COLORS
 from src.ui_helpers import blend
@@ -87,19 +90,25 @@ class DeathSystem(esper.Processor):
                     enemy = esper.try_component(ent, Enemy)
                     if enemy is not None:
                         grant_xp(enemy.xp_reward)
+                    build_momentum()  # a kill feeds the combo before its loot is rolled
                     self._drop_loot(ent)
                     esper.delete_entity(ent)
 
     def _drop_loot(self, ent: int):
-        """Scatter a slain enemy's rolled loot onto its tile."""
+        """Scatter a slain enemy's rolled loot onto its tile, plus one extra roll per
+        momentum bonus — chaining kills/casts makes foes drop more reagents."""
         if not (esper.has_component(ent, Position) and esper.has_component(ent, Loot)):
             return
-        drop = roll_loot(esper.component_for_entity(ent, Loot))
-        if drop is None:
-            return
+        loot = esper.component_for_entity(ent, Loot)
         pos = esper.component_for_entity(ent, Position)
-        itype, count = drop
-        spawn_item_entity(itype, pos.x, pos.y, count)
+        momentum = get_player_component(Momentum)
+        rolls = 1 + (momentum.bonus_drops if momentum is not None else 0)
+        for _ in range(rolls):
+            drop = roll_loot(loot)
+            if drop is None:
+                continue
+            itype, count = drop
+            spawn_item_entity(itype, pos.x, pos.y, count)
 
 
 class MetaSaveSystem(esper.Processor):
@@ -216,6 +225,7 @@ class RenderSystem(LayoutProcessor):
         # frame (measured ~28ms -> <1ms here).
         tiles_x, tiles_y = self.layout.viewport_tiles
         origin_x, origin_y = view.x - cam_x * TILE_SCALE, view.y - cam_y * TILE_SCALE
+        sealed = exit_is_sealed()
         for x in range(cam_x, min(game_map.width, cam_x + tiles_x)):
             for y in range(cam_y, min(game_map.height, cam_y + tiles_y)):
                 is_visible = player_fov is not None and Point(x, y) in player_fov.visible_tiles
@@ -226,6 +236,10 @@ class RenderSystem(LayoutProcessor):
                 tile = game_map.tiles[x][y]
                 fg = tile.fg
                 bg = tile.bg
+
+                # The exit stays dim until its guardians are cleared, then lights up.
+                if tile.is_exit and sealed:
+                    fg = to_rgb([int(c * Map.SEALED_EXIT_DIM) for c in fg])
 
                 if not is_visible:
                     # Dim the colors for explored but not visible tiles

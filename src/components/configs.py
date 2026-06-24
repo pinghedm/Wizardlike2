@@ -37,6 +37,7 @@ class SpellConfig(TypedDict):
     basic: NotRequired[bool]
     charges: NotRequired[int]  # a basic spell's per-floor charge capacity
     mastery: NotRequired[SpellMasteryConfig]
+    momentum_damage_per_stack: NotRequired[float]  # damage bonus per momentum stack (combo)
 
 
 class IngredientConfig(TypedDict):

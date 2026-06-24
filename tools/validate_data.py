@@ -40,6 +40,7 @@ ALLOWED_SPELL_FIELDS = {
     'basic',
     'charges',
     'mastery',
+    'momentum_damage_per_stack',
 }
 
 VALID_TARGETS = {t.value for t in TargetMode}
@@ -440,6 +441,11 @@ def validate_data() -> bool:
 
             if 'mastery' in spell:
                 errors += validate_spell_mastery(spell['mastery'], f'Spell "{sid}"')
+
+            mds = spell.get('momentum_damage_per_stack')
+            if mds is not None and (not isinstance(mds, (int, float)) or isinstance(mds, bool) or mds < 0):
+                print(f'ERROR: Spell "{sid}" momentum_damage_per_stack must be a non-negative number.')
+                errors += 1
 
             # A basic spell is known from the start and refills to `charges` each floor, so it
             # carries a flat per-floor capacity instead of recipes; it's never crafted or sold.

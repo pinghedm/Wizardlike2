@@ -7,6 +7,7 @@ from src.components import (
     Message,
     MessageLog,
     Modal,
+    Momentum,
     Stats,
     StatusType,
 )
@@ -15,6 +16,7 @@ from src.constants import (
     UI_BLACK,
     UI_GRAY,
     UI_GRAY_DARK,
+    UI_ORANGE,
     UI_PERIWINKLE,
     UI_RED,
     UI_RED_DARK,
@@ -71,6 +73,7 @@ class HUDSystem(LayoutProcessor):
         self.render_hp_bar(stats_zone)
         self.render_xp_bar(stats_zone)
         self.render_shield(stats_zone)
+        self.render_momentum(stats_zone)
         self.render_floor_info(stats_zone, game_state.floor)
         self.render_gold(stats_zone)
         self.render_message_log(log_zone)
@@ -104,6 +107,17 @@ class HUDSystem(LayoutProcessor):
         shield = get_status(player, StatusType.SHIELD) if player is not None else None
         if shield:
             self.console.print(zone.x + 2, zone.y + 2, f'Shield: {shield.power}', fg=UI_SKY)
+
+    def render_momentum(self, zone: Rect):
+        """A row of pips showing current combo stacks, brightening as the chain grows. Hidden
+        when momentum is zero so it reads as a reward that lights up under aggression."""
+        momentum = get_player_component(Momentum)
+        if momentum is None or momentum.stacks == 0:
+            return
+        label = f'Combo x{momentum.stacks}'
+        self.console.print(zone.x + 2, zone.y + 6, label, fg=UI_ORANGE)
+        pips = '●' * momentum.stacks + '·' * (Momentum.MAX_STACKS - momentum.stacks)
+        self.console.print(zone.x + 2 + len(label) + 1, zone.y + 6, pips, fg=UI_ORANGE)
 
     def render_floor_info(self, zone: Rect, floor: int):
         self.console.print(zone.x + 2, zone.y + 5, f'Floor: {floor}', fg=UI_WHITE)

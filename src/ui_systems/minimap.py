@@ -12,11 +12,21 @@ drawn behind it — both glyph (fg) and background (bg) — so the live view sho
 the gaps, then overlays the bright paths on top.
 """
 
+import esper
 import tcod.console
 
-from src.components import Position
-from src.constants import UI_BLACK, UI_GRAY, UI_GRAY_MID, UI_GREEN_BRIGHT, to_rgb
-from src.ecs_helpers import get_player_component, get_singleton, try_get_singleton
+from src.components import Guardian, Position
+from src.constants import (
+    UI_BLACK,
+    UI_GRAY,
+    UI_GRAY_DARK,
+    UI_GRAY_MID,
+    UI_GREEN_BRIGHT,
+    UI_ORANGE,
+    UI_YELLOW,
+    to_rgb,
+)
+from src.ecs_helpers import exit_is_sealed, get_player_component, get_singleton, try_get_singleton
 from src.layout import LayoutProcessor
 from src.map_objects import Map
 from src.states import WORLD_VIEW_MODES, DisplayMode, GameState
@@ -26,6 +36,11 @@ from src.ui_helpers import blend, draw_titled_frame
 # glyph for each 4-bit fill mask built from them, so QUADRANTS[mask] fills exactly those cells.
 _SUBCELLS = ((0, 0), (1, 0), (0, 1), (1, 1))
 _QUADRANTS = ' ▘▝▀▖▌▞▛▗▚▐▜▄▙▟█'
+
+
+def _to_cell(map_x: int, map_y: int, cols: int, rows: int, game_map: Map) -> tuple[int, int]:
+    """Map-tile (map_x, map_y) to its column/row within a cols x rows minimap panel."""
+    return min(cols - 1, map_x * cols // game_map.width), min(rows - 1, map_y * rows // game_map.height)
 
 
 def _fill_explored(
@@ -53,9 +68,20 @@ def _fill_explored(
             if mask:
                 console.print(x0 + cx, y0 + cy, _QUADRANTS[mask], fg=UI_GRAY)
 
+    # Markers, drawn over the paths but only on explored tiles so they don't reveal unseen
+    # ground: living guardians, then the exit (dim while they seal it, bright once cleared),
+    # and the player on top.
+    for _ent, (pos, _guardian) in esper.get_components(Position, Guardian):
+        if game_map.explored[pos.x, pos.y]:
+            gx, gy = _to_cell(pos.x, pos.y, cols, rows, game_map)
+            console.print(x0 + gx, y0 + gy, 'G', fg=UI_ORANGE)
+
+    if game_map.exit_pos is not None and game_map.explored[game_map.exit_pos]:
+        ex, ey = _to_cell(*game_map.exit_pos, cols, rows, game_map)
+        console.print(x0 + ex, y0 + ey, '>', fg=UI_GRAY_DARK if exit_is_sealed() else UI_YELLOW)
+
     if player_pos is not None:
-        px = min(cols - 1, player_pos.x * cols // game_map.width)
-        py = min(rows - 1, player_pos.y * rows // game_map.height)
+        px, py = _to_cell(player_pos.x, player_pos.y, cols, rows, game_map)
         console.print(x0 + px, y0 + py, '@', fg=UI_GREEN_BRIGHT)
 
 

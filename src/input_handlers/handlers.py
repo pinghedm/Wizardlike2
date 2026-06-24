@@ -34,6 +34,7 @@ from src.constants import (
     UI_YELLOW,
 )
 from src.ecs_helpers import (
+    exit_is_sealed,
     get_display_name,
     get_player,
     get_player_component,
@@ -220,6 +221,12 @@ def _try_descend(game_state: GameState) -> DisplayMode:
         return DisplayMode.EXPLORING
     player_pos = esper.component_for_entity(player, Position)
     if not maps[0][1].tiles[player_pos.x][player_pos.y].is_exit:
+        return DisplayMode.EXPLORING
+
+    if exit_is_sealed():
+        get_singleton(MessageLog).add_simple_message(
+            'The stairs are sealed — vanquish the gate guardians!', color=UI_YELLOW
+        )
         return DisplayMode.EXPLORING
 
     if game_state.floor >= MAX_FLOORS:
