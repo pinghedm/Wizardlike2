@@ -1,3 +1,5 @@
+from collections import Counter
+
 import esper
 import tcod.event
 from tcod.sdl.joystick import ControllerAxis, ControllerButton
@@ -174,9 +176,9 @@ def test_save_load_lifecycle():
     esper.create_entity(
         PlayerTag(),
         Stats(hp=80, max_hp=100),
-        Inventory(items={ItemType('reagent_a'): 5}),
+        Inventory(items=Counter({ItemType('reagent_a'): 5})),
         KnownRecipes(recipes={SpellType('test_bolt'): {(ItemType('reagent_a'), ItemType('reagent_b'))}}),
-        SpellInventory(spells={SpellType('test_bolt'): 3}),
+        SpellInventory(spells=Counter({SpellType('test_bolt'): 3})),
     )
 
     # Save and wipe

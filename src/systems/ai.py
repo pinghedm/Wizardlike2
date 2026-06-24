@@ -21,6 +21,7 @@ from src.components import (
 from src.constants import UI_MAGENTA, UI_RED
 from src.debug import debug_log
 from src.ecs_helpers import (
+    chebyshev_distance,
     get_display_name,
     get_player,
     get_player_component,
@@ -124,7 +125,7 @@ def _process_flee(ent: int, pos: Position, pathfinding_context: PathContext):
 
 def _can_use_ability(ent: int, pos: Position, player_pos: Position, ability: EnemyAbility) -> bool:
     """An ability fires when the player is within range and in the enemy's line of sight."""
-    if max(abs(player_pos.x - pos.x), abs(player_pos.y - pos.y)) > ability.range:
+    if chebyshev_distance(player_pos, pos) > ability.range:
         return False
     if esper.has_component(ent, FieldOfView):
         return player_pos.point in esper.component_for_entity(ent, FieldOfView).visible_tiles

@@ -27,7 +27,7 @@ from src.constants import (
     to_rgb,
 )
 from src.ecs_helpers import exit_is_sealed, get_player_component, get_singleton, try_get_singleton
-from src.layout import LayoutProcessor
+from src.layout import Layout, LayoutProcessor
 from src.map_objects import Map
 from src.states import WORLD_VIEW_MODES, DisplayMode, GameState
 from src.ui_helpers import blend, draw_titled_frame
@@ -43,15 +43,12 @@ def _to_cell(map_x: int, map_y: int, cols: int, rows: int, game_map: Map) -> tup
     return min(cols - 1, map_x * cols // game_map.width), min(rows - 1, map_y * rows // game_map.height)
 
 
-def _fill_explored(
-    console: tcod.console.Console, x0: int, y0: int, cols: int, rows: int, game_map: Map, player_pos: Position | None
-) -> None:
-    """Fill a cols x rows region at (x0, y0) with the explored open space of `game_map`,
-    plus a player marker, downsampling the map onto it via 2x2 quadrant sub-cells."""
-    if cols < 1 or rows < 1:
-        return
+def _explored_mask_grid(cols: int, rows: int, game_map: Map) -> list[int]:
+    """The per-cell 4-bit quadrant fill masks (row-major, length cols*rows) for `game_map`'s
+    explored open space downsampled onto a cols x rows panel via 2x2 sub-cells. This is the
+    expensive part of drawing a minimap, so callers on the per-frame path cache the result."""
     sub_cols, sub_rows = cols * 2, rows * 2
-
+    masks = [0] * (cols * rows)
     for cy in range(rows):
         for cx in range(cols):
             mask = 0
@@ -65,6 +62,26 @@ def _fill_explored(
                 my1 = max(my0 + 1, (sy + 1) * game_map.height // sub_rows)
                 if (game_map.explored[mx0:mx1, my0:my1] & game_map.walkable[mx0:mx1, my0:my1]).any():
                     mask |= 1 << bit
+            masks[cy * cols + cx] = mask
+    return masks
+
+
+def _draw_explored(
+    console: tcod.console.Console,
+    x0: int,
+    y0: int,
+    cols: int,
+    rows: int,
+    masks: list[int],
+    game_map: Map,
+    player_pos: Position | None,
+) -> None:
+    """Draw the explored-path quadrant glyphs from `masks`, then the live markers over them."""
+    if cols < 1 or rows < 1:
+        return
+    for cy in range(rows):
+        for cx in range(cols):
+            mask = masks[cy * cols + cx]
             if mask:
                 console.print(x0 + cx, y0 + cy, _QUADRANTS[mask], fg=UI_GRAY)
 
@@ -85,12 +102,47 @@ def _fill_explored(
         console.print(x0 + px, y0 + py, '@', fg=UI_GREEN_BRIGHT)
 
 
+def _fill_explored(
+    console: tcod.console.Console, x0: int, y0: int, cols: int, rows: int, game_map: Map, player_pos: Position | None
+) -> None:
+    """Fill a cols x rows region at (x0, y0) with the explored open space of `game_map`, plus
+    markers, downsampling the map onto it via 2x2 quadrant sub-cells. Recomputes the masks each
+    call — for the full-screen map view, which opens infrequently."""
+    if cols < 1 or rows < 1:
+        return
+    masks = _explored_mask_grid(cols, rows, game_map)
+    _draw_explored(console, x0, y0, cols, rows, masks, game_map, player_pos)
+
+
 class MinimapSystem(LayoutProcessor):
     """The always-on corner minimap, drawn translucently over the world view."""
 
     # How far to fade the dungeon behind the minimap toward black: 0 leaves the live view at
     # full brightness, 1 is an opaque black panel. The explored paths draw bright on top.
     BACKDROP_FADE = 0.7
+
+    def __init__(self, layout: Layout):
+        super().__init__(layout)
+        # The explored-path fill costs several ms, but it only changes as the player explores.
+        # Cache it, recomputing when the floor's map, the panel size, or the explored-cell
+        # count changes; the markers and translucent backdrop still redraw every frame.
+        self._cached_map: Map | None = None
+        self._cached_size: tuple[int, int] = (0, 0)
+        self._cached_explored: int = -1
+        self._masks: list[int] = []
+
+    def _masks_for(self, game_map: Map, cols: int, rows: int) -> list[int]:
+        explored_count = int(game_map.explored.sum())
+        if (
+            game_map is not self._cached_map
+            or (cols, rows) != self._cached_size
+            or explored_count != self._cached_explored
+        ):
+            self._cached_map = game_map
+            self._cached_size = (cols, rows)
+            self._cached_explored = explored_count
+            self._masks = _explored_mask_grid(cols, rows, game_map)
+        return self._masks
 
     def process(self):
         if get_singleton(GameState).display_mode not in WORLD_VIEW_MODES:
@@ -103,6 +155,8 @@ class MinimapSystem(LayoutProcessor):
         if rect.width < 3 or rect.height < 3 or rect.y + rect.height > view.y + view.height:
             return
 
+        masks = self._masks_for(game_map, rect.width, rect.height)
+
         # Translucency: blend the dungeon already drawn here toward black in place (the same
         # blend-over-the-console approach the combat overlays use), keeping its glyphs faintly
         # visible, then overlay the explored paths on top.
@@ -111,7 +165,9 @@ class MinimapSystem(LayoutProcessor):
                 cell = self.console.rgb[y, x]
                 cell['fg'] = blend(to_rgb(cell['fg']), UI_BLACK, self.BACKDROP_FADE)
                 cell['bg'] = blend(to_rgb(cell['bg']), UI_BLACK, self.BACKDROP_FADE)
-        _fill_explored(self.console, rect.x, rect.y, rect.width, rect.height, game_map, get_player_component(Position))
+        _draw_explored(
+            self.console, rect.x, rect.y, rect.width, rect.height, masks, game_map, get_player_component(Position)
+        )
 
 
 class MapViewSystem(LayoutProcessor):

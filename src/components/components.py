@@ -205,7 +205,7 @@ class Experience:
 
 @dataclass
 class Inventory:
-    items: dict[ItemType, int] = field(default_factory=dict[ItemType, int])
+    items: Counter[ItemType] = field(default_factory=Counter[ItemType])
 
 
 @dataclass
@@ -219,7 +219,7 @@ class KnownRecipes:
 @dataclass
 class SpellInventory:
     # Tracks remaining uses of each spell
-    spells: dict[SpellType, int] = field(default_factory=dict[SpellType, int])
+    spells: Counter[SpellType] = field(default_factory=Counter[SpellType])
 
 
 @dataclass

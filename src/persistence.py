@@ -20,7 +20,7 @@ from src.components import (
     SpellType,
 )
 from src.constants import SAVE_DIR
-from src.ecs_helpers import try_get_singleton
+from src.ecs_helpers import RuntimeSingleton, try_get_singleton
 from src.states import PostCastBehavior
 
 # Cross-run progression and preferences, one file so it can grow more fields later.
@@ -217,14 +217,14 @@ def save_game():
     local single-player suspend-save and preserves any remapped keybindings.)
 
     RuntimeSingletons (e.g. the audio engine) are the exception: they wrap unpicklable
-    runtime handles and are services rather than game state, so any component flagged
-    DO_NOT_PICKLE is filtered out here (its owner re-attaches it after a clear_database()).
+    runtime handles and are services rather than game state, so they are filtered out here
+    (their owner re-attaches them after a clear_database()).
     """
     ensure_save_dir()
     snapshot: list[tuple[object, ...]] = []
     for ent in esper.get_entities():
         entity_components: tuple[object, ...] = esper.components_for_entity(ent)
-        components = tuple(c for c in entity_components if not getattr(c, 'DO_NOT_PICKLE', False))
+        components = tuple(c for c in entity_components if not isinstance(c, RuntimeSingleton))
         if components:
             snapshot.append(components)
     with open(SAVE_FILE, 'wb') as f:

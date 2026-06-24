@@ -70,6 +70,11 @@ class SpriteDefinition:
     block_codepoints: list[int] | None = None
 
 
+# Identity of a rasterized sprite, so two definitions sharing one image/region/scale reuse the
+# same codepoints instead of re-rasterizing: (path, asset type, pixel region, scale).
+type _AssetKey = tuple[str | None, AssetType | None, tuple[int, int, int, int] | None, float]
+
+
 def _fit_sprite_to_tile(tile_pixels: npt.NDArray[np.uint8], tw: int, th: int, scale: float) -> npt.NDArray[np.uint8]:
     """Normalize a sprite's pixels to RGBA and center it, scaled by `scale`, in a fresh
     (th, tw, 4) tile. A grayscale sprite becomes an opacity mask over white; an RGB sprite
@@ -373,8 +378,8 @@ class AssetLoader:
 
         # 2. Map graphical sprites to new codepoints in the Private Use Area
         current_codepoint = 0xE000
-        asset_to_codepoint = {}
-        block_for_key: dict[object, list[int]] = {}
+        asset_to_codepoint: dict[_AssetKey, int] = {}
+        block_for_key: dict[_AssetKey, list[int]] = {}
 
         for sprite_id, definition in self._mapping.items():
             if definition.path is None:

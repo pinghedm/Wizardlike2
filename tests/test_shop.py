@@ -18,8 +18,8 @@ from src.components import (
     UIState,
 )
 from src.constants import SHOP_FLOOR_INTERVAL
+from src.ecs_helpers import adjacent_component
 from src.input_handlers import handle_shop_input
-from src.input_handlers.handlers import _adjacent_shopkeeper
 from src.procgen import generate_shop_floor, is_shop_floor, spawn_shopkeeper, transition_to_next_floor
 from src.shop import build_shop_offers, purchase_offer
 from src.states import DisplayMode
@@ -219,11 +219,11 @@ def test_shop_floor_has_a_shopkeeper_no_enemies_and_an_exit():
 # --- shop interaction ----------------------------------------------------------
 
 
-def test_adjacent_shopkeeper_is_false_when_out_of_range():
+def test_adjacent_shopkeeper_is_none_when_out_of_range():
     runner = HeadlessRunner()
     px, py = runner.player_pos
     esper.create_entity(Position(px + 5, py), Shopkeeper())  # present, but not within a tile
-    assert _adjacent_shopkeeper(Position(px, py)) is False
+    assert adjacent_component(Position(px, py), Shopkeeper) is None
 
 
 def test_shop_ignores_unrelated_actions():

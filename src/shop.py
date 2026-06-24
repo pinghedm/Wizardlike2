@@ -102,7 +102,7 @@ def purchase_offer(offer: ShopOffer, quantity: int = 1) -> bool:
     gained = offer.amount * quantity
     if offer.kind == ShopOfferKind.INGREDIENT:
         assert isinstance(offer.purchaseable, ItemType)
-        inventory.items[offer.purchaseable] = inventory.items.get(offer.purchaseable, 0) + gained
+        inventory.items[offer.purchaseable] += gained
     elif offer.kind == ShopOfferKind.SPELL:
         assert isinstance(offer.purchaseable, SpellType)
         _grant_shop_spell(offer.purchaseable, gained)
@@ -124,7 +124,7 @@ def _grant_shop_spell(stype: SpellType, charges: int):
         s_conf = configs.spells_by_id.get(stype.value)
         if s_conf:
             known.recipes[stype] = {s_conf['recipes'][0]['ingredients']}
-    spell_inv.spells[stype] = spell_inv.spells.get(stype, 0) + charges
+    spell_inv.spells[stype] += charges
 
 
 def _heal_player(amount: int):

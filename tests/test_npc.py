@@ -3,8 +3,8 @@ import pytest
 import tcod.event
 
 from src.components import NPC, InputAction, Modal, Position
+from src.ecs_helpers import adjacent_component
 from src.input_handlers import handle_modal_input
-from src.input_handlers.handlers import _adjacent_npc
 from src.states import DisplayMode
 from tests.headless_runner import HeadlessRunner
 
@@ -13,11 +13,11 @@ def test_adjacent_npc_returns_the_neighbor_and_none_when_distant():
     runner = HeadlessRunner()
     px, py = runner.player_pos
     far = esper.create_entity(Position(px + 5, py), NPC(name='Hermit', dialogue=['...']))
-    assert _adjacent_npc(Position(px, py)) is None
+    assert adjacent_component(Position(px, py), NPC) is None
 
     esper.delete_entity(far, immediate=True)
     esper.create_entity(Position(px + 1, py), NPC(name='Old Wizard', dialogue=['Hello']))
-    npc = _adjacent_npc(Position(px, py))
+    npc = adjacent_component(Position(px, py), NPC)
     assert npc is not None and npc.name == 'Old Wizard'
 
 

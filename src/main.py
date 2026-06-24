@@ -1,6 +1,7 @@
 import atexit
 import sys
 import time
+from collections.abc import Callable
 
 import esper
 import tcod
@@ -52,7 +53,7 @@ from src.input_handlers import (
 )
 from src.layout import Layout
 from src.procgen import generate_dungeon
-from src.states import DisplayMode, GameState, PendingTransition
+from src.states import DisplayMode, GameState, HandlerResult, PendingTransition
 from src.systems import (
     ActionSystem,
     AISystem,
@@ -238,6 +239,21 @@ def _play_ui_cue(action: InputAction, mode: DisplayMode, modal_open: bool):
         audio.play_sfx(SoundId.MENU_CANCEL)
 
 
+# Each interactive screen's input handler, keyed by the mode it drives. A handler returns
+# either the next screen (applied to display_mode) or a PendingTransition for the main loop.
+_MODE_HANDLERS: dict[DisplayMode, Callable[[InputAction | None], HandlerResult]] = {
+    DisplayMode.EXPLORING: handle_exploring_input,
+    DisplayMode.MENU: handle_menu_input,
+    DisplayMode.COMBINING: handle_combining_input,
+    DisplayMode.CASTING: handle_casting_input,
+    DisplayMode.TARGETING: handle_targeting_input,
+    DisplayMode.SHOPPING: handle_shop_input,
+    DisplayMode.SETTINGS: handle_settings_input,
+    DisplayMode.GAME_OVER: handle_game_over_input,
+    DisplayMode.MAP_VIEW: handle_map_view_input,
+}
+
+
 def dispatch_action(action: InputAction | None, game_state: GameState) -> PendingTransition | None:
     """Route a resolved input action to the active mode's handler.
 
@@ -255,27 +271,10 @@ def dispatch_action(action: InputAction | None, game_state: GameState) -> Pendin
         handle_modal_input(action)
         return None
 
-    mode = game_state.display_mode
-    if mode == DisplayMode.EXPLORING:
-        result = handle_exploring_input(action)
-    elif mode == DisplayMode.MENU:
-        result = handle_menu_input(action)
-    elif mode == DisplayMode.COMBINING:
-        result = handle_combining_input(action)
-    elif mode == DisplayMode.CASTING:
-        result = handle_casting_input(action)
-    elif mode == DisplayMode.TARGETING:
-        result = handle_targeting_input(action)
-    elif mode == DisplayMode.SHOPPING:
-        result = handle_shop_input(action)
-    elif mode == DisplayMode.SETTINGS:
-        result = handle_settings_input(action)
-    elif mode == DisplayMode.GAME_OVER:
-        result = handle_game_over_input(action)
-    elif mode == DisplayMode.MAP_VIEW:
-        result = handle_map_view_input(action)
-    else:
+    handler = _MODE_HANDLERS.get(game_state.display_mode)
+    if handler is None:
         return None
+    result = handler(action)
 
     if isinstance(result, PendingTransition):
         return result

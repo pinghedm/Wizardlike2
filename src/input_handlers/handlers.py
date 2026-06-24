@@ -34,6 +34,7 @@ from src.constants import (
     UI_YELLOW,
 )
 from src.ecs_helpers import (
+    adjacent_component,
     exit_is_sealed,
     get_display_name,
     get_player,
@@ -114,22 +115,6 @@ def handle_map_view_input(action: InputAction | None) -> HandlerResult:
     return DisplayMode.MAP_VIEW
 
 
-def _adjacent_shopkeeper(player_pos: Position) -> bool:
-    """True if a shopkeeper is within one tile of the player (including their tile)."""
-    for _ent, (pos, _sk) in esper.get_components(Position, Shopkeeper):
-        if max(abs(pos.x - player_pos.x), abs(pos.y - player_pos.y)) <= 1:
-            return True
-    return False
-
-
-def _adjacent_npc(player_pos: Position) -> NPC | None:
-    """The NPC within one tile of the player (including their tile), if any."""
-    for _ent, (pos, npc) in esper.get_components(Position, NPC):
-        if max(abs(pos.x - player_pos.x), abs(pos.y - player_pos.y)) <= 1:
-            return npc
-    return None
-
-
 def handle_exploring_input(action: InputAction | None):
     game_state = get_singleton(GameState)
 
@@ -149,9 +134,9 @@ def handle_exploring_input(action: InputAction | None):
     elif action == InputAction.OPEN_MAP:
         return DisplayMode.MAP_VIEW
     elif action == InputAction.CONFIRM:
-        if _adjacent_shopkeeper(player_pos):
+        if adjacent_component(player_pos, Shopkeeper) is not None:
             return DisplayMode.SHOPPING
-        npc = _adjacent_npc(player_pos)
+        npc = adjacent_component(player_pos, NPC)
         if npc is not None:
             esper.create_entity(Modal(pages=npc.dialogue, title=npc.name))
     elif action == InputAction.SCROLL_UP:
@@ -189,6 +174,20 @@ def _bump_adjacent_enemy(player: int, target_x: int, target_y: int):
             return
 
 
+def _record_pickup(item: Item, run_stats: RunStats | None):
+    """Play the pickup cue and tally the item: gold is run currency (flushed to the meta
+    save), everything else is a crafting ingredient."""
+    if item.type == ItemType.GOLD:
+        play_sfx(SoundId.GOLD)
+        if run_stats:
+            run_stats.gold_collected += item.count
+        persistence.mark_meta_dirty()
+    else:
+        play_sfx(SoundId.PICKUP)
+        if run_stats:
+            run_stats.ingredients_collected[item.type] += item.count
+
+
 def _pick_up_items(player: int):
     """Collect every item on the player's tile into their inventory, tallying run stats
     and persisting gold the moment it is picked up."""
@@ -198,18 +197,10 @@ def _pick_up_items(player: int):
     run_stats = try_get_singleton(RunStats)
     for ent, (pos, item) in esper.get_components(Position, Item):
         if pos.x == player_pos.x and pos.y == player_pos.y:
-            player_inv.items[item.type] = player_inv.items.get(item.type, 0) + item.count
+            player_inv.items[item.type] += item.count
             log.add_simple_message(f'Picked up {item.count} {item.type.name}!', color=UI_GRAY)
             esper.delete_entity(ent)
-            if item.type == ItemType.GOLD:
-                play_sfx(SoundId.GOLD)
-                if run_stats:
-                    run_stats.gold_collected += item.count
-                persistence.mark_meta_dirty()
-            else:
-                play_sfx(SoundId.PICKUP)
-                if run_stats:
-                    run_stats.ingredients_collected[item.type] += item.count
+            _record_pickup(item, run_stats)
 
 
 def _try_descend(game_state: GameState) -> DisplayMode:

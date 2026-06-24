@@ -1,6 +1,7 @@
 from typing import TYPE_CHECKING
 
 import esper
+import numpy as np
 import tcod
 import tcod.map
 from tcod import libtcodpy
@@ -43,7 +44,7 @@ from src.ecs_helpers import (
     spawn_item_entity,
     try_get_singleton,
 )
-from src.layout import LayoutProcessor
+from src.layout import LayoutProcessor, Rect
 from src.map_objects import Map
 from src.states import WORLD_VIEW_MODES, DisplayMode, GameState
 from src.systems.combat import apply_status_pulse, roll_loot
@@ -169,7 +170,6 @@ class FOVSystem(esper.Processor):
 
         for ent, (pos, fov) in esper.get_components(Position, FieldOfView):
             if fov.dirty:
-                fov.visible_tiles = set()
                 # compute_fov expects [height, width] or [width, height] depending on order
                 # With 'F' order (column-major), it matches our [x][y] structure
                 fov_map = tcod.map.compute_fov(
@@ -180,14 +180,11 @@ class FOVSystem(esper.Processor):
                     algorithm=libtcodpy.FOV_BASIC,
                 )
 
-                # Update visible tiles and explored map
-                for x in range(game_map.width):
-                    for y in range(game_map.height):
-                        if fov_map[x, y]:
-                            fov.visible_tiles.add(Point(x, y))
-                            # Only update explored for player FOV
-                            if is_player(ent):
-                                game_map.explored[x, y] = True
+                # Build the visible-tile set from just the lit cells (np.argwhere), rather than
+                # scanning the whole map in Python; fold the same mask into explored for the player.
+                fov.visible_tiles = {Point(int(x), int(y)) for x, y in np.argwhere(fov_map)}
+                if is_player(ent):
+                    game_map.explored |= fov_map
 
                 fov.dirty = False
 
@@ -202,7 +199,6 @@ class RenderSystem(LayoutProcessor):
         if game_state.display_mode not in WORLD_VIEW_MODES:
             return
 
-        # 1. Get the Map and Player FOV
         game_map = try_get_singleton(Map)
         if not game_map:
             return
@@ -218,11 +214,15 @@ class RenderSystem(LayoutProcessor):
         focus_y = player_pos.y if player_pos else game_map.height // 2
         cam_x, cam_y = self.layout.camera_offset(focus_x, focus_y, game_map.width, game_map.height)
 
-        # 2. Render the map. Each tile fills a TILE_SCALE x TILE_SCALE block of cells, so
-        # the dungeon reads larger than the one-cell HUD. Walk only the tiles under the
-        # viewport and inline the block transform (origin hoisted out of the loop): at this
-        # cell count the Rect that map_viewport rebuilds per call otherwise dominates the
-        # frame (measured ~28ms -> <1ms here).
+        self._render_map(game_map, view, cam_x, cam_y, player_fov)
+        self._render_entities(view, cam_x, cam_y, player_fov)
+
+    def _render_map(self, game_map: Map, view: Rect, cam_x: int, cam_y: int, player_fov: FieldOfView | None) -> None:
+        """Draw the tiles under the viewport. Each tile fills a TILE_SCALE x TILE_SCALE block of
+        cells, so the dungeon reads larger than the one-cell HUD. Walk only the tiles under the
+        viewport and inline the block transform (origin hoisted out of the loop): at this cell
+        count the Rect that map_viewport rebuilds per call otherwise dominates the frame
+        (measured ~28ms -> <1ms here)."""
         tiles_x, tiles_y = self.layout.viewport_tiles
         origin_x, origin_y = view.x - cam_x * TILE_SCALE, view.y - cam_y * TILE_SCALE
         sealed = exit_is_sealed()
@@ -248,8 +248,9 @@ class RenderSystem(LayoutProcessor):
 
                 self._draw_block(tile.sprite_id, origin_x + x * TILE_SCALE, origin_y + y * TILE_SCALE, fg=fg, bg=bg)
 
-        # 3. Render all entities with Position and Renderable components that are visible,
-        # filling the same TILE_SCALE block so they read at the scaled tile size.
+    def _render_entities(self, view: Rect, cam_x: int, cam_y: int, player_fov: FieldOfView | None) -> None:
+        """Draw every visible entity with a Position and Renderable, filling the same
+        TILE_SCALE block so it reads at the scaled tile size."""
         for ent, (pos, rend) in esper.get_components(Position, Renderable):
             if player_fov is not None and pos.point not in player_fov.visible_tiles:
                 continue

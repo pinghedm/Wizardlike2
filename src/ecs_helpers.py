@@ -82,6 +82,20 @@ def is_player(entity: int) -> bool:
     return esper.has_component(entity, PlayerTag)
 
 
+def chebyshev_distance(a: Position, b: Position) -> int:
+    """Chebyshev (king-move) distance between two positions."""
+    return max(abs(a.x - b.x), abs(a.y - b.y))
+
+
+def adjacent_component[T](origin: Position, component_type: type[T]) -> T | None:
+    """The `component_type` of an entity within one tile of `origin` (including its own
+    tile), or None. Used to find a shopkeeper or NPC the player can interact with."""
+    for _ent, (pos, component) in esper.get_components(Position, component_type):
+        if chebyshev_distance(pos, origin) <= 1:
+            return component
+    return None
+
+
 def exit_is_sealed() -> bool:
     """Whether the floor's exit stairs are still sealed by living gate guardians — descent is
     barred until they're cleared. Counts only living guardians (hp > 0), so a guardian slain

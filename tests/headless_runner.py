@@ -200,7 +200,7 @@ class HeadlessRunner:
     def give_item(self, item_id: str, count: int):
         """Add ingredient items to the player's inventory."""
         inv = esper.component_for_entity(self.player, Inventory)
-        inv.items[ItemType(item_id)] = inv.items.get(ItemType(item_id), 0) + count
+        inv.items[ItemType(item_id)] += count
 
     def get_log_messages(self) -> list[str]:
         """Return all log lines as plain concatenated strings."""

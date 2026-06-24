@@ -119,7 +119,7 @@ def craft_known_spell(stype: SpellType) -> int | None:
 
     for itype, count in Counter(combo).items():
         inventory.items[itype] -= count
-    spell_inv.spells[stype] = spell_inv.spells.get(stype, 0) + charges
+    spell_inv.spells[stype] += charges
     play_sfx(SoundId.CRAFT)
     return charges
 
@@ -153,7 +153,7 @@ def discover_and_craft(selection: tuple[ItemType, ...]) -> tuple[SpellType, int]
     persistence.save_meta()
 
     charges += spell_charge_bonus(stype)
-    spell_inv.spells[stype] = spell_inv.spells.get(stype, 0) + charges
+    spell_inv.spells[stype] += charges
     for itype, count in Counter(selection).items():
         inventory.items[itype] -= count
     return stype, charges
@@ -179,6 +179,37 @@ def _apply_reaction_multiplier(target_ent: int, modifiers: list[DamageModifier],
         verb = 'is vulnerable' if mod.damage_mult > 1 else 'resists'
         log.add_simple_message(f'{name} {verb} while {mod.vs_status.name}!', color=UI_SKY)
     return mult
+
+
+def _spell_targets_in_radius(target_x: int, target_y: int, radius: int) -> list[int]:
+    """Entities with stats and a status slot whose tile lies within the spell's Euclidean
+    impact radius of (target_x, target_y)."""
+    targets: list[int] = []
+    for ent, (pos, _stats) in esper.get_components(Position, Stats):
+        if not esper.has_component(ent, StatusEffects):
+            continue
+        dx = pos.x - target_x
+        dy = pos.y - target_y
+        if dx**2 + dy**2 <= radius**2:
+            targets.append(ent)
+    return targets
+
+
+def _apply_spell_effects(
+    targets: list[int], s_conf: SpellConfig, stype: SpellType, caster: int, origin: Point, log: MessageLog
+) -> None:
+    """Apply every effect of the cast spell to each target. Mastery scales all effects;
+    momentum and elemental-reaction modifiers further scale damage/drain per target."""
+    mastery_mult = spell_power_mult(stype)
+    momentum_mult = momentum_damage_mult(stype)
+    for target in targets:
+        react_mult = _apply_reaction_multiplier(target, s_conf.get('modifiers', []), log)
+        for effect in s_conf['effects']:
+            power_mult = mastery_mult
+            if effect.type in (EffectType.DAMAGE, EffectType.DRAIN):
+                power_mult *= react_mult * momentum_mult
+            resolved = effect if power_mult == 1.0 else replace(effect, power=max(0, round(effect.power * power_mult)))
+            apply_effect(target, resolved, origin=origin, caster_ent=caster)
 
 
 def cast_spell(spell_id: str, target_x: int, target_y: int):
@@ -224,29 +255,7 @@ def cast_spell(spell_id: str, target_x: int, target_y: int):
         )
         play_sfx(cast_sound(effects[0].type))
 
-    # Find all entities in impact zone using Euclidean distance
-    targets: list[int] = []
-    for ent, (pos, _stats) in esper.get_components(Position, Stats):
-        if not esper.has_component(ent, StatusEffects):
-            continue
-
-        dx = pos.x - target_x
-        dy = pos.y - target_y
-        if dx**2 + dy**2 <= radius**2:
-            targets.append(ent)
-
-    # Mastery scales every effect's power; momentum and reaction modifiers further scale
-    # damage per target (momentum read before this cast feeds the combo). Knockback shoves
-    # targets away.
-    mastery_mult = spell_power_mult(stype)
-    momentum_mult = momentum_damage_mult(stype)
-    for target in targets:
-        react_mult = _apply_reaction_multiplier(target, s_conf.get('modifiers', []), log)
-        for effect in s_conf['effects']:
-            power_mult = mastery_mult
-            if effect.type in (EffectType.DAMAGE, EffectType.DRAIN):
-                power_mult *= react_mult * momentum_mult
-            resolved = effect if power_mult == 1.0 else replace(effect, power=max(0, round(effect.power * power_mult)))
-            apply_effect(target, resolved, origin=caster_origin, caster_ent=player)
+    targets = _spell_targets_in_radius(target_x, target_y, radius)
+    _apply_spell_effects(targets, s_conf, stype, player, caster_origin, log)
 
     build_momentum()  # this cast feeds the combo for the next action

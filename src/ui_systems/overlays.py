@@ -31,18 +31,21 @@ from src.systems import spawn_particle_burst, trigger_cast_visual
 from src.ui_helpers import blend
 
 
-def _iter_viewport_cells(view: Rect, cam_x: int, cam_y: int) -> Iterator[tuple[int, int, int, int]]:
-    """Yield (screen_x, screen_y, map_x, map_y) for every cell of the map viewport,
-    pairing each on-screen cell with the map tile the camera maps it to. Each tile spans
-    a TILE_SCALE block of cells, so adjacent cells share a map tile."""
-    for screen_y in range(view.y, view.y + view.height):
-        for screen_x in range(view.x, view.x + view.width):
-            yield (
-                screen_x,
-                screen_y,
-                (screen_x - view.x) // TILE_SCALE + cam_x,
-                (screen_y - view.y) // TILE_SCALE + cam_y,
-            )
+def _iter_cells_in_radius(
+    view: Rect, cam_x: int, cam_y: int, center_x: int, center_y: int, radius: int
+) -> Iterator[tuple[int, int, int, int]]:
+    """Yield (screen_x, screen_y, map_x, map_y) for the viewport cells whose map tile lies in
+    the bounding box of `radius` map tiles around (center_x, center_y), clipped to the viewport.
+    Each tile spans a TILE_SCALE block of cells, so adjacent cells share a map tile. Walking only
+    the affected box keeps an AoE paint off the rest of the viewport."""
+    for map_y in range(center_y - radius, center_y + radius + 1):
+        base_sy = view.y + (map_y - cam_y) * TILE_SCALE
+        for map_x in range(center_x - radius, center_x + radius + 1):
+            base_sx = view.x + (map_x - cam_x) * TILE_SCALE
+            for screen_y in range(base_sy, base_sy + TILE_SCALE):
+                for screen_x in range(base_sx, base_sx + TILE_SCALE):
+                    if view.contains(screen_x, screen_y):
+                        yield screen_x, screen_y, map_x, map_y
 
 
 class TargetingOverlaySystem(LayoutProcessor):
@@ -75,7 +78,9 @@ class TargetingOverlaySystem(LayoutProcessor):
         # an enemy on the ring keeps showing its glyph and status tint underneath.
         if reticle.radius > 0:
             r2 = reticle.radius**2
-            for screen_x, screen_y, map_x, map_y in _iter_viewport_cells(view, cam_x, cam_y):
+            for screen_x, screen_y, map_x, map_y in _iter_cells_in_radius(
+                view, cam_x, cam_y, reticle.x, reticle.y, reticle.radius
+            ):
                 if (map_x - reticle.x) ** 2 + (map_y - reticle.y) ** 2 > r2:
                     continue
                 on_edge = any(
@@ -205,7 +210,9 @@ class EffectOverlaySystem(LayoutProcessor):
         view = self.layout.map_viewport
         alpha = CastVisual.MAX_ALPHA * visual.ticks / visual.max_ticks
 
-        for screen_x, screen_y, map_x, map_y in _iter_viewport_cells(view, cam_x, cam_y):
+        for screen_x, screen_y, map_x, map_y in _iter_cells_in_radius(
+            view, cam_x, cam_y, visual.center.x, visual.center.y, visual.radius
+        ):
             if (map_x - visual.center.x) ** 2 + (map_y - visual.center.y) ** 2 <= visual.radius**2:
                 base = to_rgb(self.console.rgb[screen_y, screen_x]['bg'])
                 self.console.rgb[screen_y, screen_x]['bg'] = blend(base, visual.color, alpha)
