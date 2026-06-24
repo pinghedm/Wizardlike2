@@ -11,10 +11,14 @@ import pytest
 from src import persistence
 from src.components import (
     InputAction,
+    Inventory,
     ItemType,
     KnownRecipes,
     MessageLog,
     Modal,
+    Shopkeeper,
+    ShopOffer,
+    ShopOfferKind,
     SpellInventory,
     SpellType,
     Stats,
@@ -243,6 +247,77 @@ def test_casting_menu_ignores_zero_charge_spells():
     text = _full_text(runner)
     assert 'TEST_BOLT' not in text  # a depleted spell drops out of the picker
     assert 'TEST_WAND' in text  # the basic attack remains, always castable
+
+
+# --- MenuSystem.render_shop_menu --------------------------------------------
+
+
+def _ingredient_offer(label: str, price: int, item: str = 'reagent_a') -> ShopOffer:
+    return ShopOffer(kind=ShopOfferKind.INGREDIENT, price=price, label=label, purchaseable=ItemType(item), amount=1)
+
+
+def _open_shop(runner: HeadlessRunner, offers: list[ShopOffer], gold: int = 0) -> UIState:
+    esper.create_entity(Shopkeeper(offers=offers))
+    esper.component_for_entity(runner.player, Inventory).items[ItemType.GOLD] = gold
+    runner.game_state.display_mode = DisplayMode.SHOPPING
+    return _ui_state(runner)
+
+
+def test_shop_menu_shows_gold_and_stock():
+    runner = HeadlessRunner(use_random_map=False)
+    _open_shop(runner, [_ingredient_offer('Reagent A', 5), _ingredient_offer('Reagent B', 8)], gold=50)
+
+    text = _full_text(runner)
+    assert 'Shop' in text
+    assert 'Gold: 50' in text
+    assert 'Reagent A' in text
+    assert 'Reagent B' in text
+
+
+def test_shop_menu_says_sold_out_with_no_offers():
+    runner = HeadlessRunner(use_random_map=False)
+    _open_shop(runner, [], gold=10)
+
+    assert 'Sold out.' in _full_text(runner)
+
+
+def test_shop_menu_dims_an_unaffordable_offer():
+    runner = HeadlessRunner(use_random_map=False)
+    ui = _open_shop(runner, [_ingredient_offer('Cheap', 5), _ingredient_offer('Pricey', 10)], gold=6)
+    ui.shop_cursor = 0  # 'Cheap' selected and affordable
+
+    assert runner.get_console_fg(*_find_text(runner, 'Cheap')) == UI_YELLOW
+    assert runner.get_console_fg(*_find_text(runner, 'Pricey')) == UI_GRAY_DARK
+
+
+def test_shop_menu_marks_the_selected_row_and_its_quantity():
+    runner = HeadlessRunner(use_random_map=False)
+    ui = _open_shop(runner, [_ingredient_offer('Reagent A', 5), _ingredient_offer('Reagent B', 8)], gold=100)
+    ui.shop_cursor = 1
+    ui.shop_quantity = 3
+
+    text = _full_text(runner)
+    assert 'x3 (24 G)' in text  # running total for the selected row: 8 * 3
+    assert runner.get_console_fg(*_find_text(runner, 'Reagent B')) == UI_YELLOW
+    assert runner.get_console_fg(*_find_text(runner, 'Reagent A')) == UI_WHITE
+
+
+def test_shop_menu_windows_a_long_stock_list():
+    runner = HeadlessRunner(use_random_map=False)
+    offers = [_ingredient_offer(f'Item {i:02d}', 1) for i in range(20)]
+    ui = _open_shop(runner, offers, gold=100)
+    ui.shop_cursor = 19  # scrolled to the bottom of the stock
+
+    text = _full_text(runner)
+    assert 'Item 19' in text  # the cursor row stays in view
+    assert 'Item 00' not in text  # the top of the list scrolled out of the window
+
+
+def test_shop_menu_skipped_without_a_shopkeeper():
+    runner = HeadlessRunner(use_random_map=False)
+    runner.game_state.display_mode = DisplayMode.SHOPPING  # no Shopkeeper entity exists
+
+    assert 'Shop' not in _full_text(runner)
 
 
 # --- MenuSystem.render_settings_menu ----------------------------------------

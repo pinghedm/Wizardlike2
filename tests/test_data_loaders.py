@@ -5,6 +5,8 @@ tests write a tiny PNG and feed it through."""
 import numpy as np
 from PIL import Image
 
+from src import data_loaders
+from src.audio import MusicTrack, SoundId
 from src.constants import TILE_SCALE
 from src.data_loaders import AssetLoader, _fit_sprite_to_tile
 
@@ -92,3 +94,95 @@ def test_font_glyph_has_no_block_form(tmp_path):
 
     # A font glyph fills its block with the one glyph, so it needs no sliced sub-tiles.
     assert loader.get_block_codepoints('letter') is None
+
+
+def test_identical_sprites_share_one_rasterization(tmp_path):
+    png = tmp_path / 'shared.png'
+    Image.new('RGBA', (10, 10), (255, 255, 255, 255)).save(png)
+    loader = AssetLoader()
+    loader.register_sprite('one', {'path': str(png)})
+    loader.register_sprite('two', {'path': str(png)})  # same path/region/scale
+
+    loader.build_tileset()
+
+    # The second sprite reuses the first's codepoints rather than re-rasterizing.
+    assert loader.get_codepoint('one') == loader.get_codepoint('two')
+    assert loader.get_block_codepoints('one') == loader.get_block_codepoints('two')
+
+
+def test_region_sprite_rasterizes_just_its_region(tmp_path):
+    png = tmp_path / 'sheet.png'
+    Image.new('RGBA', (20, 20), (255, 255, 255, 255)).save(png)
+    loader = AssetLoader()
+    loader.register_sprite('cell', {'path': str(png), 'type': 'REGION', 'region': [0, 0, 10, 10]})
+
+    loader.build_tileset()
+
+    assert loader.get_codepoint('cell') != ord('█')  # registered, not the fallback
+
+
+def test_unloadable_sprite_falls_back_to_the_block_glyph(tmp_path):
+    loader = AssetLoader()
+    loader.register_sprite('broken', {'path': str(tmp_path / 'missing.png')})
+
+    loader.build_tileset()
+
+    assert loader.get_codepoint('broken') == ord('█')
+
+
+# --- registration & config loading ------------------------------------------
+
+
+def test_register_sprite_keeps_the_pixel_region():
+    loader = AssetLoader()
+    loader.register_sprite('thing', {'path': 'x.png', 'type': 'REGION', 'region': [3, 4, 5, 6]})
+    assert loader._mapping['thing'].region == (3, 4, 5, 6)
+
+
+def test_register_from_config_uses_the_sprite_block_when_present():
+    loader = AssetLoader()
+    loader.register_from_config('thing', {'sprite': {'path': 'x.png'}}, default_char='?')
+    assert loader._mapping['thing'].path == 'x.png'
+
+
+def test_register_from_config_falls_back_to_a_font_char():
+    loader = AssetLoader()
+    loader.register_from_config('thing', {'char': 'K'}, default_char='?')
+    assert loader._mapping['thing'].codepoint == ord('K')
+
+
+def test_get_codepoint_for_unknown_sprite_is_the_block_glyph():
+    assert AssetLoader().get_codepoint('absent') == ord('█')
+
+
+def test_content_loaders_tolerate_missing_data_files(tmp_path, monkeypatch):
+    monkeypatch.setattr(data_loaders, 'DATA_DIR', str(tmp_path))  # an empty data dir
+    loader = AssetLoader()
+
+    assert data_loaders.load_enemies_config(loader) == {}
+    assert data_loaders.load_tiles_config(loader) == []
+    assert data_loaders.load_npcs_config(loader) == []
+    data_loaders.register_character_sprites(loader)  # no characters.yaml: returns quietly
+    assert data_loaders.load_sounds_config() == {}
+    assert data_loaders.load_music_config() == {}
+
+
+def test_load_sounds_config_parses_known_ids_and_skips_unknown(tmp_path, monkeypatch):
+    (tmp_path / 'sounds.yaml').write_text(
+        'sounds:\n'
+        '  hit: {waveform: square, freq: 200, duration: 0.1}\n'
+        '  not_a_sound: {waveform: sine, freq: 100, duration: 0.1}\n'
+    )
+    monkeypatch.setattr(data_loaders, 'DATA_DIR', str(tmp_path))
+
+    specs = data_loaders.load_sounds_config()
+
+    assert SoundId.HIT in specs
+    assert list(specs) == [SoundId.HIT]  # the unknown id is dropped
+
+
+def test_load_music_config_parses_known_tracks_and_skips_unknown(tmp_path, monkeypatch):
+    (tmp_path / 'music.yaml').write_text('music:\n  dungeon: audio/d.wav\n  not_a_track: audio/x.wav\n')
+    monkeypatch.setattr(data_loaders, 'DATA_DIR', str(tmp_path))
+
+    assert data_loaders.load_music_config() == {MusicTrack.DUNGEON: 'audio/d.wav'}

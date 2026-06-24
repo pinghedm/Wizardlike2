@@ -24,7 +24,8 @@ line-ending = "lf"
 
 [tool.coverage.run]
 source = ["src"]
-omit = ["src/**/__init__.py"]
+# debug.py is a dev-only stderr logging shim gated on WIZARDLIKE_DEBUG; nothing to assert.
+omit = ["src/**/__init__.py", "src/debug.py"]
 branch = true
 
 [tool.coverage.report]
