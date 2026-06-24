@@ -36,6 +36,7 @@ from src.systems.processors import (
     MetaSaveSystem,
     RenderSystem,
     StatusSystem,
+    render_entities,
 )
 from src.systems.progression import (
     grant_spell_mastery,
@@ -71,6 +72,7 @@ __all__ = [
     'cast_spell',
     'refill_basic_spells',
     'craft_known_spell',
+    'render_entities',
     'deal_damage',
     'discover_and_craft',
     'get_action_cooldown',

@@ -12,10 +12,12 @@ drawn behind it — both glyph (fg) and background (bg) — so the live view sho
 the gaps, then overlays the bright paths on top.
 """
 
+from typing import TYPE_CHECKING
+
 import esper
 import tcod.console
 
-from src.components import Guardian, Position
+from src.components import FieldOfView, Guardian, Position
 from src.constants import (
     UI_BLACK,
     UI_GRAY,
@@ -30,7 +32,11 @@ from src.ecs_helpers import exit_is_sealed, get_player_component, get_singleton,
 from src.layout import Layout, LayoutProcessor
 from src.map_objects import Map
 from src.states import WORLD_VIEW_MODES, DisplayMode, GameState
+from src.systems import render_entities
 from src.ui_helpers import blend, draw_titled_frame
+
+if TYPE_CHECKING:
+    from src.data_loaders import AssetLoader
 
 # The 2x2 sub-cell offsets (top-left, top-right, bottom-left, bottom-right) and the block
 # glyph for each 4-bit fill mask built from them, so QUADRANTS[mask] fills exactly those cells.
@@ -75,15 +81,19 @@ def _draw_explored(
     masks: list[int],
     game_map: Map,
     player_pos: Position | None,
+    path_opacity: float = 1.0,
 ) -> None:
-    """Draw the explored-path quadrant glyphs from `masks`, then the live markers over them."""
+    """Draw the explored-path quadrant glyphs from `masks`, then the live markers over them.
+    `path_opacity` < 1 blends the path ink over the cell behind it so the live view shows
+    through (the corner minimap); markers stay opaque so they remain legible."""
     if cols < 1 or rows < 1:
         return
     for cy in range(rows):
         for cx in range(cols):
             mask = masks[cy * cols + cx]
             if mask:
-                console.print(x0 + cx, y0 + cy, _QUADRANTS[mask], fg=UI_GRAY)
+                ink = blend(to_rgb(console.rgb[y0 + cy, x0 + cx]['bg']), UI_GRAY, path_opacity)
+                console.print(x0 + cx, y0 + cy, _QUADRANTS[mask], fg=ink)
 
     # Markers, drawn over the paths but only on explored tiles so they don't reveal unseen
     # ground: living guardians, then the exit (dim while they seal it, bright once cleared),
@@ -118,11 +128,14 @@ class MinimapSystem(LayoutProcessor):
     """The always-on corner minimap, drawn translucently over the world view."""
 
     # How far to fade the dungeon behind the minimap toward black: 0 leaves the live view at
-    # full brightness, 1 is an opaque black panel. The explored paths draw bright on top.
-    BACKDROP_FADE = 0.7
+    # full brightness, 1 is an opaque black panel. The explored paths draw over it at
+    # PATH_OPACITY, blended toward the cell behind them so the whole panel stays translucent.
+    BACKDROP_FADE = 0.3
+    PATH_OPACITY = 0.3
 
-    def __init__(self, layout: Layout):
+    def __init__(self, layout: Layout, asset_loader: AssetLoader):
         super().__init__(layout)
+        self.asset_loader = asset_loader
         # The explored-path fill costs several ms, but it only changes as the player explores.
         # Cache it, recomputing when the floor's map, the panel size, or the explored-cell
         # count changes; the markers and translucent backdrop still redraw every frame.
@@ -156,6 +169,7 @@ class MinimapSystem(LayoutProcessor):
             return
 
         masks = self._masks_for(game_map, rect.width, rect.height)
+        player_pos = get_player_component(Position)
 
         # Translucency: blend the dungeon already drawn here toward black in place (the same
         # blend-over-the-console approach the combat overlays use), keeping its glyphs faintly
@@ -166,7 +180,16 @@ class MinimapSystem(LayoutProcessor):
                 cell['fg'] = blend(to_rgb(cell['fg']), UI_BLACK, self.BACKDROP_FADE)
                 cell['bg'] = blend(to_rgb(cell['bg']), UI_BLACK, self.BACKDROP_FADE)
         _draw_explored(
-            self.console, rect.x, rect.y, rect.width, rect.height, masks, game_map, get_player_component(Position)
+            self.console, rect.x, rect.y, rect.width, rect.height, masks, game_map, player_pos, self.PATH_OPACITY
+        )
+
+        # The path fill is opaque, so any creature standing under the panel would vanish. Redraw
+        # just the entities this rect covers on top of it, keeping them legible as their own glyph.
+        focus_x = player_pos.x if player_pos else game_map.width // 2
+        focus_y = player_pos.y if player_pos else game_map.height // 2
+        cam_x, cam_y = self.layout.camera_offset(focus_x, focus_y, game_map.width, game_map.height)
+        render_entities(
+            self.console, self.layout, self.asset_loader, cam_x, cam_y, get_player_component(FieldOfView), clip=rect
         )
 
 

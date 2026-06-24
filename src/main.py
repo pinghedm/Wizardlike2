@@ -125,7 +125,7 @@ def add_render_systems(layout: Layout, asset_loader: AssetLoader):
     esper.add_processor(RenderSystem(layout, asset_loader))
     esper.add_processor(TargetingOverlaySystem(layout))
     esper.add_processor(EffectOverlaySystem(layout))
-    esper.add_processor(MinimapSystem(layout))
+    esper.add_processor(MinimapSystem(layout, asset_loader))
     esper.add_processor(MenuSystem(layout))
     esper.add_processor(HUDSystem(layout))
     esper.add_processor(MapViewSystem(layout))

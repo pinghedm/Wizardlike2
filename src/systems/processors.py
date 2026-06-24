@@ -189,6 +189,64 @@ class FOVSystem(esper.Processor):
                 fov.dirty = False
 
 
+def draw_block(
+    console: tcod.console.Console, asset_loader: AssetLoader, sprite_id: str, x: int, y: int, fg: RGB, bg: RGB | None
+) -> None:
+    """Draw a sprite into its TILE_SCALE x TILE_SCALE block at console cell (x, y).
+    An image sprite rasterized at block size draws its sub-tiles one per cell; a font
+    glyph (no block form) just fills the block with the single glyph."""
+    block = asset_loader.get_block_codepoints(sprite_id)
+    if block is None:
+        codepoint = asset_loader.get_codepoint(sprite_id)
+        console.draw_rect(x, y, TILE_SCALE, TILE_SCALE, ch=codepoint, fg=fg, bg=bg)
+        return
+    for i, codepoint in enumerate(block):
+        console.print(x + i % TILE_SCALE, y + i // TILE_SCALE, chr(codepoint), fg=fg, bg=bg)
+
+
+def _status_tint(ent: int) -> RGB | None:
+    """The tint of the entity's highest-priority active status, or None if it has none."""
+    for status in STATUS_TINT_PRIORITY:
+        if get_status(ent, status):
+            return EFFECT_COLORS[EffectType(status)]
+    return None
+
+
+def render_entities(
+    console: tcod.console.Console,
+    layout: Layout,
+    asset_loader: AssetLoader,
+    cam_x: int,
+    cam_y: int,
+    player_fov: FieldOfView | None,
+    clip: Rect | None = None,
+) -> None:
+    """Draw every visible entity with a Position and Renderable, filling the same TILE_SCALE
+    block so it reads at the scaled tile size. `clip` restricts drawing to entities whose block
+    overlaps that rect, so the minimap can redraw just the entities it covers on top of itself."""
+    view = layout.map_viewport
+    for ent, (pos, rend) in esper.get_components(Position, Renderable):
+        if player_fov is not None and pos.point not in player_fov.visible_tiles:
+            continue
+
+        block_x, block_y = layout.map_to_screen(map_x=pos.x, map_y=pos.y, cam_x=cam_x, cam_y=cam_y)
+        if not view.contains(block_x, block_y):
+            continue
+        if clip is not None and not (
+            block_x < clip.x + clip.width
+            and block_x + TILE_SCALE > clip.x
+            and block_y < clip.y + clip.height
+            and block_y + TILE_SCALE > clip.y
+        ):
+            continue
+
+        debug_log(f'render entity {ent} sprite={rend.sprite_id} at {(pos.x, pos.y)}')
+        # A statused entity keeps its glyph color over a tint of its active status.
+        tint = _status_tint(ent)
+        bg = blend(UI_BLACK, tint, 0.5) if tint is not None else None
+        draw_block(console, asset_loader, rend.sprite_id, block_x, block_y, fg=rend.color, bg=bg)
+
+
 class RenderSystem(LayoutProcessor):
     def __init__(self, layout: Layout, asset_loader: AssetLoader):
         super().__init__(layout)
@@ -215,7 +273,7 @@ class RenderSystem(LayoutProcessor):
         cam_x, cam_y = self.layout.camera_offset(focus_x, focus_y, game_map.width, game_map.height)
 
         self._render_map(game_map, view, cam_x, cam_y, player_fov)
-        self._render_entities(view, cam_x, cam_y, player_fov)
+        render_entities(self.console, self.layout, self.asset_loader, cam_x, cam_y, player_fov)
 
     def _render_map(self, game_map: Map, view: Rect, cam_x: int, cam_y: int, player_fov: FieldOfView | None) -> None:
         """Draw the tiles under the viewport. Each tile fills a TILE_SCALE x TILE_SCALE block of
@@ -246,40 +304,12 @@ class RenderSystem(LayoutProcessor):
                     fg = to_rgb([int(c * 0.3) for c in fg])
                     bg = to_rgb([int(c * 0.3) for c in bg])
 
-                self._draw_block(tile.sprite_id, origin_x + x * TILE_SCALE, origin_y + y * TILE_SCALE, fg=fg, bg=bg)
-
-    def _render_entities(self, view: Rect, cam_x: int, cam_y: int, player_fov: FieldOfView | None) -> None:
-        """Draw every visible entity with a Position and Renderable, filling the same
-        TILE_SCALE block so it reads at the scaled tile size."""
-        for ent, (pos, rend) in esper.get_components(Position, Renderable):
-            if player_fov is not None and pos.point not in player_fov.visible_tiles:
-                continue
-
-            block_x, block_y = self.layout.map_to_screen(map_x=pos.x, map_y=pos.y, cam_x=cam_x, cam_y=cam_y)
-            if not view.contains(block_x, block_y):
-                continue
-
-            debug_log(f'render entity {ent} sprite={rend.sprite_id} at {(pos.x, pos.y)}')
-            # A statused entity keeps its glyph color over a tint of its active status.
-            tint = self._status_tint(ent)
-            bg = blend(UI_BLACK, tint, 0.5) if tint is not None else None
-            self._draw_block(rend.sprite_id, block_x, block_y, fg=rend.color, bg=bg)
-
-    def _draw_block(self, sprite_id: str, x: int, y: int, fg: RGB, bg: RGB | None) -> None:
-        """Draw a sprite into its TILE_SCALE x TILE_SCALE block at console cell (x, y).
-        An image sprite rasterized at block size draws its sub-tiles one per cell; a font
-        glyph (no block form) just fills the block with the single glyph."""
-        block = self.asset_loader.get_block_codepoints(sprite_id)
-        if block is None:
-            codepoint = self.asset_loader.get_codepoint(sprite_id)
-            self.console.draw_rect(x, y, TILE_SCALE, TILE_SCALE, ch=codepoint, fg=fg, bg=bg)
-            return
-        for i, codepoint in enumerate(block):
-            self.console.print(x + i % TILE_SCALE, y + i // TILE_SCALE, chr(codepoint), fg=fg, bg=bg)
-
-    def _status_tint(self, ent: int) -> RGB | None:
-        """The tint of the entity's highest-priority active status, or None if it has none."""
-        for status in STATUS_TINT_PRIORITY:
-            if get_status(ent, status):
-                return EFFECT_COLORS[EffectType(status)]
-        return None
+                draw_block(
+                    self.console,
+                    self.asset_loader,
+                    tile.sprite_id,
+                    origin_x + x * TILE_SCALE,
+                    origin_y + y * TILE_SCALE,
+                    fg=fg,
+                    bg=bg,
+                )
