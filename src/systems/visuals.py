@@ -6,6 +6,7 @@ import esper
 from src.components import (
     CastVisual,
     EffectType,
+    FloatingNumber,
     Particle,
     Point,
     Position,
@@ -121,6 +122,26 @@ def spawn_particle_burst(center: Point, color: tuple[int, int, int], count: int)
                 max_ticks=Particle.DURATION,
             )
         )
+
+
+def trigger_floating_number(target_ent: int, text: str, color: tuple[int, int, int]):
+    """Float `text` upward from an entity's tile as combat feedback (damage or heal).
+
+    Callers pass the formatted string (e.g. '0' for a fully shielded hit, '+5' for a
+    heal). No-op only for an entity without a position to anchor to."""
+    if not esper.has_component(target_ent, Position):
+        return
+    pos = esper.component_for_entity(target_ent, Position)
+    esper.create_entity(
+        FloatingNumber(
+            x=float(pos.x),
+            y=float(pos.y),
+            text=text,
+            color=color,
+            ticks=FloatingNumber.DURATION,
+            max_ticks=FloatingNumber.DURATION,
+        )
+    )
 
 
 def spray_hit_particles(target_ent: int):

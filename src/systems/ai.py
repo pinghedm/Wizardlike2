@@ -34,6 +34,7 @@ from src.states import GameState
 from src.systems.combat import apply_effect, deal_damage
 from src.systems.movement import get_action_cooldown, move_entity
 from src.systems.utils import step_toward
+from src.systems.visuals import trigger_projectile
 
 # Memoized Dijkstra maps, keyed by goal tile, so each target's map is built once per AI tick.
 type PathContext = dict[Point, tcod.path.Dijkstra]
@@ -135,6 +136,13 @@ def _can_use_ability(ent: int, pos: Position, player_pos: Position, ability: Ene
 def _use_ability(ent: int, player_ent: int, ability: EnemyAbility, log: MessageLog):
     log.add_simple_message(f'The {get_display_name(ent)} attacks from afar!', color=UI_MAGENTA)
     origin = esper.component_for_entity(ent, Position).point
+
+    # Fly a cosmetic glyph from the enemy to the player, styled like the player's own
+    # spell projectiles. Effects below land immediately; the projectile is purely visual.
+    if ability.effects:
+        player_pos = esper.component_for_entity(player_ent, Position).point
+        trigger_projectile(start=origin, target=player_pos, effect_type=ability.effects[0].type, burst_radius=0)
+
     for effect in ability.effects:
         debug_log(f'  ability effect {effect.type} power={effect.power} dur={effect.duration} -> player {player_ent}')
         apply_effect(player_ent, effect, origin=origin, caster_ent=ent)

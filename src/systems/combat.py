@@ -33,7 +33,7 @@ from src.constants import (
 from src.ecs_helpers import actor_name, get_display_name, get_singleton, get_status, is_player, try_get_singleton
 from src.systems.momentum import reset_momentum
 from src.systems.movement import apply_knockback
-from src.systems.visuals import EFFECT_COLORS, spray_hit_particles, trigger_screen_flash
+from src.systems.visuals import EFFECT_COLORS, spray_hit_particles, trigger_floating_number, trigger_screen_flash
 
 
 @dataclass(frozen=True)
@@ -98,6 +98,7 @@ def _apply_hp_damage(target_ent: int, amount: int) -> int:
     stats.hp -= mitigated
     record_damage_dealt(target_ent, mitigated)
     trigger_screen_flash(ent=target_ent, color=UI_RED)
+    trigger_floating_number(target_ent, str(mitigated), UI_RED if is_player(target_ent) else UI_ORANGE)
     play_sfx(SoundId.HIT)
     if mitigated > 0 and is_player(target_ent):
         reset_momentum()  # taking a real hit shatters the combo
@@ -135,11 +136,14 @@ def apply_status_pulse(ent: int, status_type: StatusType, power: int, log: Messa
         stats.hp -= power
         record_damage_dealt(ent, power)
         trigger_screen_flash(ent=ent, color=UI_GREEN)
+        trigger_floating_number(ent, str(power), UI_GREEN_MID)
         play_sfx(SoundId.POISON_TICK)
         if log:
             log.add_simple_message(f'{name} took {power} poison damage!', color=UI_GREEN_MID)
     elif status_type == StatusType.REGEN:
-        stats.hp = min(stats.max_hp, stats.hp + power)
+        healed = min(power, stats.max_hp - stats.hp)
+        stats.hp += healed
+        trigger_floating_number(ent, f'+{healed}', UI_GREEN_BRIGHT)
         play_sfx(SoundId.REGEN_TICK)
         if log:
             log.add_simple_message(f'{name} regained {power} HP.', color=UI_GREEN_BRIGHT)
@@ -170,7 +174,9 @@ def apply_effect(
         log.add_simple_message(f'{target_name} took {dmg} damage!{shielded}', color=UI_ORANGE)
 
     elif effect.type == EffectType.HEAL:
-        stats.hp = min(stats.max_hp, stats.hp + effect.power)
+        healed = min(effect.power, stats.max_hp - stats.hp)
+        stats.hp += healed
+        trigger_floating_number(target_ent, f'+{healed}', UI_GREEN_BRIGHT)
         log.add_simple_message(f'{target_name} healed for {effect.power} HP!', color=UI_GREEN_BRIGHT)
 
     elif effect.type == EffectType.DRAIN:
@@ -180,9 +186,9 @@ def apply_effect(
         log.add_simple_message(f'{target_name} took {dmg} damage!{shielded}', color=UI_CRIMSON)
         if caster_ent is not None and esper.has_component(caster_ent, Stats):
             caster_stats = esper.component_for_entity(caster_ent, Stats)
-            before = caster_stats.hp
-            caster_stats.hp = min(caster_stats.max_hp, caster_stats.hp + effect.lifesteal)
-            healed = caster_stats.hp - before
+            healed = min(effect.lifesteal, caster_stats.max_hp - caster_stats.hp)
+            caster_stats.hp += healed
+            trigger_floating_number(caster_ent, f'+{healed}', UI_GREEN_BRIGHT)
             log.add_simple_message(
                 f'{get_display_name(caster_ent)} drained {healed} HP!',
                 color=UI_GREEN_BRIGHT,

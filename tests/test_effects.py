@@ -5,6 +5,7 @@ from src.components import (
     DamageModifier,
     Effect,
     EffectType,
+    FloatingNumber,
     MessageLog,
     Particle,
     Point,
@@ -15,7 +16,7 @@ from src.components import (
     StatusEffects,
     StatusType,
 )
-from src.constants import STATUS_PULSE_INTERVAL, UI_GREEN, UI_ORANGE, UI_RED
+from src.constants import STATUS_PULSE_INTERVAL, UI_GREEN, UI_GREEN_BRIGHT, UI_ORANGE, UI_RED
 from src.ecs_helpers import get_singleton
 from src.systems import (
     EFFECT_COLORS,
@@ -184,6 +185,77 @@ def test_damaging_an_enemy_sprays_particles_but_a_player_hit_does_not():
     enemy = runner.spawn_enemy(px + 2, py)
     apply_effect(enemy, Effect(EffectType.DAMAGE, power=3))
     assert len(esper.get_component(Particle)) == Particle.HIT_COUNT
+
+
+def _floating_numbers():
+    return [number for _ent, number in esper.get_component(FloatingNumber)]
+
+
+def test_a_player_hit_floats_a_red_damage_number():
+    runner = HeadlessRunner(use_random_map=False)
+    apply_effect(runner.player, Effect(EffectType.DAMAGE, power=3))
+    numbers = _floating_numbers()
+    assert len(numbers) == 1
+    assert numbers[0].text == '3'
+    assert numbers[0].color == UI_RED
+
+
+def test_an_enemy_hit_floats_an_orange_damage_number():
+    runner = HeadlessRunner(use_random_map=False)
+    px, py = runner.player_pos
+    enemy = runner.spawn_enemy(px + 2, py)
+    apply_effect(enemy, Effect(EffectType.DAMAGE, power=5))
+    numbers = _floating_numbers()
+    assert len(numbers) == 1
+    assert numbers[0].text == '5'
+    assert numbers[0].color == UI_ORANGE
+
+
+def test_a_fully_shielded_hit_still_floats_a_zero():
+    runner = HeadlessRunner(use_random_map=False)
+    enemy = runner.spawn_enemy(*runner.player_pos)
+    esper.component_for_entity(enemy, StatusEffects).active[StatusType.SHIELD] = Effect(
+        EffectType.SHIELD, power=5, duration=99
+    )
+    apply_effect(enemy, Effect(EffectType.DAMAGE, power=4))  # wholly absorbed
+    assert [number.text for number in _floating_numbers()] == ['0']
+
+
+def test_a_poison_pulse_floats_its_damage_number():
+    runner = HeadlessRunner(use_random_map=False)
+    status = esper.component_for_entity(runner.player, StatusEffects)
+    status.active[StatusType.POISON] = Effect(EffectType.POISON, duration=STATUS_PULSE_INTERVAL, power=2)
+
+    StatusSystem().process()
+
+    assert [number.text for number in _floating_numbers()] == ['2']
+
+
+def test_a_heal_floats_a_green_plus_number_for_the_amount_restored():
+    runner = HeadlessRunner(use_random_map=False)
+    stats = esper.component_for_entity(runner.player, Stats)
+    stats.hp = stats.max_hp - 2  # only 2 HP is missing, so a power-5 heal restores 2
+
+    apply_effect(runner.player, Effect(EffectType.HEAL, power=5))
+
+    numbers = _floating_numbers()
+    assert len(numbers) == 1
+    assert numbers[0].text == '+2'
+    assert numbers[0].color == UI_GREEN_BRIGHT
+
+
+def test_effect_overlay_rises_and_ages_out_a_floating_number():
+    runner = HeadlessRunner(use_random_map=False)
+    px, py = runner.player_pos
+    esper.create_entity(FloatingNumber(x=float(px), y=float(py), text='7', color=UI_RED, ticks=2, max_ticks=2))
+
+    EffectOverlaySystem(runner.layout).process()  # draws, rises, ticks to 1
+    risen = _floating_numbers()
+    assert len(risen) == 1
+    assert risen[0].y < py  # floated upward
+
+    EffectOverlaySystem(runner.layout).process()  # ticks to 0 and is removed
+    assert not esper.get_component(FloatingNumber)
 
 
 def test_effect_overlay_ages_out_screen_flash():

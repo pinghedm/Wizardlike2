@@ -418,6 +418,27 @@ class Particle:
     max_ticks: int
 
 
+@dataclass
+class FloatingNumber:
+    """A damage or heal amount that floats up from an entity's tile and fades.
+
+    Pure combat feedback layered over the message log (red/orange for damage, green
+    '+N' for heals). Anchored at a sub-cell map position so it can rise smoothly; ages
+    every frame like the screen flash (not frozen by time_paused) so it clears even
+    while a modal is open.
+    """
+
+    DURATION: ClassVar[int] = 18  # frames it lives (~0.6s at ~30 tps)
+    RISE_SPEED: ClassVar[float] = 0.04  # map tiles risen per frame
+
+    x: float
+    y: float
+    text: str
+    color: tuple[int, int, int]
+    ticks: int
+    max_ticks: int
+
+
 class PlayerTag:
     pass
 

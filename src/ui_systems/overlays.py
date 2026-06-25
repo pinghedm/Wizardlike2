@@ -7,6 +7,7 @@ import numpy as np
 from src.audio import SoundId, play_sfx
 from src.components import (
     CastVisual,
+    FloatingNumber,
     Particle,
     Position,
     Projectile,
@@ -131,6 +132,7 @@ class EffectOverlaySystem(LayoutProcessor):
         self._render_screen_flash()
         self._render_projectiles()
         self._render_particles()
+        self._render_floating_numbers()
 
     def _time_paused(self) -> bool:
         return get_singleton(GameState).time_paused
@@ -190,6 +192,26 @@ class EffectOverlaySystem(LayoutProcessor):
                 particle.ticks -= 1
                 if particle.ticks <= 0:
                     esper.delete_entity(ent, immediate=True)
+
+    def _render_floating_numbers(self):
+        # Pure feedback like the screen flash: rises and fades every frame regardless of
+        # time_paused, so a number clears even while a modal is open.
+        cam = self._camera()
+        view = self.layout.map_viewport
+        for ent, number in esper.get_component(FloatingNumber):
+            number.y -= FloatingNumber.RISE_SPEED
+            if cam is not None:
+                block_x, block_y = self.layout.map_to_screen(
+                    map_x=round(number.x), map_y=round(number.y), cam_x=cam[0], cam_y=cam[1]
+                )
+                screen_x = block_x + TILE_SCALE // 2 - len(number.text) // 2
+                if view.contains(screen_x, block_y):
+                    ratio = number.ticks / number.max_ticks
+                    fg = to_rgb([int(c * ratio) for c in number.color])
+                    self.console.print(screen_x, block_y, number.text, fg=fg)
+            number.ticks -= 1
+            if number.ticks <= 0:
+                esper.delete_entity(ent, immediate=True)
 
     def _render_cast_visual(self):
         visuals = esper.get_component(CastVisual)
