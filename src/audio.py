@@ -9,7 +9,8 @@ sound may instead point at a WAV file); music is a looping WAV.
 The engine is a module-level service (like :mod:`src.persistence`), deliberately kept *outside*
 the ECS: it owns an audio stream that must never enter the save-game pickle. Every public call
 is a safe no-op until :func:`init_audio` succeeds, so the headless test harness and machines
-with no audio device simply stay silent. Set ``WIZARDLIKE_NO_AUDIO`` to force that silent path.
+with no audio device — or without the PortAudio library installed at all — simply stay silent.
+Set ``WIZARDLIKE_NO_AUDIO`` to force that silent path.
 """
 
 import enum
@@ -20,8 +21,12 @@ from dataclasses import dataclass
 
 import esper
 import numpy as np
-import sounddevice as sd
 from numpy.typing import NDArray
+
+try:
+    import sounddevice as sd
+except OSError:  # native PortAudio library absent — run silently
+    sd = None
 
 from src.components import EffectType
 from src.constants import DATA_DIR
@@ -250,6 +255,7 @@ class AudioEngine(RuntimeSingleton):
         self.sfx_volume = 1.0
         self.muted = False
         self._lock = threading.Lock()
+        assert sd is not None  # init_audio only builds the engine when PortAudio is present
         self._stream = sd.OutputStream(
             samplerate=SAMPLE_RATE, channels=CHANNELS, dtype='float32', callback=self._callback
         )
@@ -341,8 +347,8 @@ def init_audio(
 ) -> AudioEngine | None:
     """Open the audio device, preload the given sounds, apply the saved volumes, and register
     the engine as the ECS singleton. Returns the engine for main() to hold, or None when audio
-    is disabled (WIZARDLIKE_NO_AUDIO) or no device opens."""
-    if os.environ.get('WIZARDLIKE_NO_AUDIO'):
+    is disabled (WIZARDLIKE_NO_AUDIO), PortAudio is unavailable, or no device opens."""
+    if sd is None or os.environ.get('WIZARDLIKE_NO_AUDIO'):
         return None
     try:
         engine = AudioEngine(sound_specs, music_files)
