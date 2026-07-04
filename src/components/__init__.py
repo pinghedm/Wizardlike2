@@ -76,6 +76,7 @@ from src.components.enums import (
     SpellType,
     StatusType,
     TargetMode,
+    TileType,
 )
 from src.components.utils import Message, MessageSegment
 
@@ -143,6 +144,7 @@ __all__ = [
     'StatusEffects',
     'StatusType',
     'TargetMode',
+    'TileType',
     'TargetingReticle',
     'TileConfig',
     'UIState',

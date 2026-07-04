@@ -27,6 +27,7 @@ from src.components import (
     StatusType,
     TargetMode,
     TileConfig,
+    TileType,
 )
 from src.constants import DATA_DIR, FONT_FILE, FONT_TILE_PX, TILE_SCALE
 from src.debug import debug_log
@@ -245,6 +246,8 @@ def load_tiles_config(asset_loader: AssetLoader) -> list[TileConfig]:
         with open(f'{DATA_DIR}/tiles.yaml') as f:
             data = yaml.safe_load(f)['tiles']
             for tile in data:
+                tile['type'] = TileType(tile['type'])
+                tile['effects'] = _parse_effects(tile.get('effects', []))
                 asset_loader.register_from_config(tile['id'], tile, ' ')
             return data
     except FileNotFoundError:

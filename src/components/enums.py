@@ -45,6 +45,17 @@ class TargetMode(enum.StrEnum):
     ENEMY = 'enemy'
 
 
+class TileType(enum.StrEnum):
+    """A dungeon tile's role. WALL/FLOOR/EXIT are the structural tiles; HAZARD and TRAP
+    carry an on-enter effect payload (a TRAP stays concealed until the player detects it)."""
+
+    WALL = 'wall'
+    FLOOR = 'floor'
+    EXIT = 'exit'
+    HAZARD = 'hazard'
+    TRAP = 'trap'
+
+
 if TYPE_CHECKING:
     # The real enums are built from YAML at runtime (below); these stubs exist only so
     # the type checker knows the members the code references by name.

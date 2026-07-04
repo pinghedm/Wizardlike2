@@ -2,7 +2,7 @@ from typing import TYPE_CHECKING, NotRequired, TypedDict
 
 if TYPE_CHECKING:
     from src.components.components import DamageModifier, Effect, LootDrop
-    from src.components.enums import ItemType, TargetMode
+    from src.components.enums import ItemType, TargetMode, TileType
 
 
 class RecipeConfig(TypedDict):
@@ -57,11 +57,12 @@ class ShopConfig(TypedDict):
 
 class TileConfig(TypedDict):
     id: str
-    type: str
+    type: TileType  # a `trap` is a concealed hazard; concealment is derived from the type
     char: str | None
     fg: list[int] | None
     bg: list[int] | None
     depth: list[int]
+    effects: NotRequired[list[Effect]]  # on-enter payload for hazard/trap tiles
 
 
 class EnemyConfig(TypedDict):

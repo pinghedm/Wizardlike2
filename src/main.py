@@ -59,6 +59,7 @@ from src.systems import (
     AISystem,
     DeathSystem,
     FOVSystem,
+    HazardSystem,
     MetaSaveSystem,
     MomentumSystem,
     RenderSystem,
@@ -116,6 +117,7 @@ def add_logic_systems():
     esper.add_processor(StatusSystem())
     esper.add_processor(MomentumSystem())
     esper.add_processor(AISystem())
+    esper.add_processor(HazardSystem())
     esper.add_processor(FOVSystem())
     esper.add_processor(CycleTargetSystem())
     esper.add_processor(MetaSaveSystem())

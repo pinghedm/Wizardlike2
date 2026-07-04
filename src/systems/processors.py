@@ -29,6 +29,7 @@ from src.constants import (
     RGB,
     STATUS_PULSE_INTERVAL,
     TILE_SCALE,
+    TRAP_DETECT_RADIUS,
     UI_BLACK,
     UI_YELLOW,
     to_rgb,
@@ -47,7 +48,7 @@ from src.ecs_helpers import (
 from src.layout import LayoutProcessor, Rect
 from src.map_objects import Map
 from src.states import WORLD_VIEW_MODES, DisplayMode, GameState
-from src.systems.combat import apply_status_pulse, roll_loot
+from src.systems.combat import apply_effect, apply_status_pulse, roll_loot
 from src.systems.momentum import build_momentum
 from src.systems.progression import grant_xp
 from src.systems.visuals import EFFECT_COLORS
@@ -161,6 +162,47 @@ class StatusSystem(esper.Processor):
                     del status.active[status_type]
 
 
+class HazardSystem(esper.Processor):
+    """Applies a hazard/trap tile's on-enter effects to any actor that steps onto it, and
+    springs (reveals) a concealed trap the instant it's triggered. Tracks each actor's last
+    cell so effects fire once per entry — not every tick it stands there. Purely ECS-driven,
+    so it covers player steps, enemy pathing, and knockback landings without coupling to them."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._last_cell: dict[int, Point] = {}
+
+    def process(self):
+        if get_singleton(GameState).time_paused:
+            return
+        game_map = try_get_singleton(Map)
+        if game_map is None:
+            return
+
+        live: set[int] = set()
+        # StatusEffects gates to actors (player + enemies) — apply_effect reads Stats and
+        # StatusEffects, so items/NPCs on hazard cells are correctly skipped.
+        for ent, (pos, _status) in esper.get_components(Position, StatusEffects):
+            live.add(ent)
+            if self._last_cell.get(ent) == pos.point:
+                continue
+            self._last_cell[ent] = pos.point
+            tile = game_map.tiles[pos.x][pos.y]
+            if not tile.effects:
+                continue
+            if tile.hidden and not game_map.revealed[pos.x, pos.y]:
+                game_map.revealed[pos.x, pos.y] = True
+                if is_player(ent):
+                    log = try_get_singleton(MessageLog)
+                    if log:
+                        log.add_simple_message('You trigger a hidden trap!', color=UI_YELLOW)
+            for effect in tile.effects:
+                apply_effect(ent, effect, origin=pos.point)
+
+        # Forget entities that no longer exist (slain enemies) so the cache can't grow unbounded.
+        self._last_cell = {ent: cell for ent, cell in self._last_cell.items() if ent in live}
+
+
 class FOVSystem(esper.Processor):
     def process(self):
         maps = esper.get_component(Map)
@@ -185,8 +227,20 @@ class FOVSystem(esper.Processor):
                 fov.visible_tiles = {Point(int(x), int(y)) for x, y in np.argwhere(fov_map)}
                 if is_player(ent):
                     game_map.explored |= fov_map
+                    _reveal_nearby_traps(game_map, pos, fov.visible_tiles)
 
                 fov.dirty = False
+
+
+def _reveal_nearby_traps(game_map: Map, player_pos: Position, visible_tiles: set[Point]) -> None:
+    """Mark concealed traps the player can now perceive: those in line of sight and within
+    TRAP_DETECT_RADIUS."""
+    for p in visible_tiles:
+        if max(abs(p.x - player_pos.x), abs(p.y - player_pos.y)) > TRAP_DETECT_RADIUS:
+            continue
+        tile = game_map.tiles[p.x][p.y]
+        if tile.hidden and not game_map.revealed[p.x, p.y]:
+            game_map.revealed[p.x, p.y] = True
 
 
 def draw_block(
@@ -292,6 +346,9 @@ class RenderSystem(LayoutProcessor):
                     continue
 
                 tile = game_map.tiles[x][y]
+                # A concealed trap the player hasn't detected yet masquerades as plain floor.
+                if tile.hidden and not game_map.revealed[x, y]:
+                    tile = game_map.floor_look
                 fg = tile.fg
                 bg = tile.bg
 

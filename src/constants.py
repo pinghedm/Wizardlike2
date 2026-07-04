@@ -79,6 +79,10 @@ PLAYER_MOVE_COST = 5
 # multiple of this interval to get a predictable number of pulses.
 STATUS_PULSE_INTERVAL = 30
 
+# A hidden trap reveals itself once the player sees a cell within this Chebyshev radius
+# (see FOVSystem/_reveal_nearby_traps). Enemies get no detection and blunder in.
+TRAP_DETECT_RADIUS = 3
+
 # Directory holding game-content YAML (ingredients, spells, tiles, etc.).
 DATA_DIR = os.environ.get('WIZARDLIKE_DATA_DIR', 'data')
 

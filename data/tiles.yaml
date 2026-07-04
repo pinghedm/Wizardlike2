@@ -31,3 +31,71 @@ tiles:
       type: REGION
       region: [0, 70, 10, 10]
       scale: 1.0
+  # --- Hazards: visible, walkable terrain that applies an on-enter effect (HazardSystem). ---
+  - id: water
+    type: hazard
+    char: '~'
+    fg: [80, 120, 255]
+    bg: [20, 30, 60]
+    depth: [1, 10]
+    effects:
+      - type: wet
+        duration: 90
+  - id: flames
+    type: hazard
+    char: '^'
+    fg: [255, 140, 0]
+    bg: [40, 15, 0]
+    depth: [2, 10]
+    effects:
+      - type: damage
+        power: 12
+  - id: lava
+    type: hazard
+    char: '~'
+    fg: [255, 80, 0]
+    bg: [50, 10, 0]
+    depth: [4, 10]
+    effects:
+      - type: damage
+        power: 22
+  - id: chasm
+    type: hazard
+    char: ' '
+    fg: [40, 40, 55]
+    bg: [5, 5, 10]
+    depth: [4, 10]
+    effects:
+      - type: damage
+        power: 40
+  # --- Traps: hidden until detected nearby, then shown; enemies never detect them. ---
+  - id: spike_trap
+    type: trap
+    char: '^'
+    fg: [200, 200, 210]
+    bg: [25, 25, 25]
+    depth: [1, 10]
+    effects:
+      - type: damage
+        power: 15
+  - id: poison_trap
+    type: trap
+    char: '^'
+    fg: [120, 220, 80]
+    bg: [15, 25, 15]
+    depth: [2, 10]
+    effects:
+      - type: damage
+        power: 8
+      - type: poison
+        power: 3
+        duration: 90
+  - id: snare_trap
+    type: trap
+    char: '^'
+    fg: [200, 180, 80]
+    bg: [25, 22, 10]
+    depth: [1, 10]
+    effects:
+      - type: stun
+        duration: 60

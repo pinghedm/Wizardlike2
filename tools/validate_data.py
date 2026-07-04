@@ -4,7 +4,7 @@ from pathlib import Path
 import yaml
 
 from src.audio import MusicTrack, SoundId, Waveform
-from src.components import EffectType, StatusType, TargetMode
+from src.components import EffectType, StatusType, TargetMode, TileType
 from src.constants import MAX_FLOORS
 
 VALID_EFFECT_INFO = {
@@ -73,6 +73,9 @@ ALLOWED_ENEMY_FIELDS = {
 ALLOWED_DROP_FIELDS = {'type', 'min', 'max', 'chance'}
 
 ALLOWED_NPC_FIELDS = {'id', 'name', 'floor', 'dialogue', 'sprite', 'color'}
+
+VALID_TILE_TYPES = {t.value for t in TileType}
+ALLOWED_TILE_FIELDS = {'id', 'type', 'char', 'sprite', 'fg', 'bg', 'depth', 'effects'}
 
 VALID_WAVEFORMS = {w.name.lower() for w in Waveform}
 ALLOWED_SOUND_SYNTH_FIELDS = {'waveform', 'freq', 'duration', 'freq_end', 'decay', 'volume'}
@@ -326,6 +329,62 @@ def validate_drops(drops, ing_ids, context_label: str) -> int:
     return errors
 
 
+def validate_tiles(tiles) -> int:
+    """Validate the tiles list. Returns the number of errors found.
+
+    A `hazard`/`trap` tile carries an on-enter effect payload (a trap is just a concealed
+    hazard); the structural wall/floor/exit tiles must not.
+    """
+    errors = 0
+    tile_ids = set()
+    for i, tile in enumerate(tiles):
+        if 'id' not in tile:
+            print(f'ERROR: Tile #{i} missing "id".')
+            errors += 1
+            continue
+        tid = tile['id']
+        if tid in tile_ids:
+            print(f'ERROR: Duplicate tile ID: "{tid}"')
+            errors += 1
+        tile_ids.add(tid)
+
+        for field in ['type', 'depth']:
+            if field not in tile:
+                print(f'ERROR: Tile "{tid}" missing "{field}".')
+                errors += 1
+
+        # fg and bg are optional; if missing, engine provides defaults (White/Black)
+        for field in ['fg', 'bg']:
+            if field in tile:
+                val = tile[field]
+                if not isinstance(val, list) or len(val) != 3 or not all(isinstance(v, int) for v in val):
+                    print(f'ERROR: Tile "{tid}" {field} must be a list of 3 integers (RGB).')
+                    errors += 1
+
+        if 'depth' in tile:
+            depth = tile['depth']
+            if not isinstance(depth, list) or len(depth) != 2 or not all(isinstance(d, int) for d in depth):
+                print(f'ERROR: Tile "{tid}" depth must be a list of 2 integers.')
+                errors += 1
+
+        for field in sorted(set(tile) - ALLOWED_TILE_FIELDS):
+            print(f'ERROR: Tile "{tid}" has unexpected field "{field}".')
+            errors += 1
+
+        ttype = tile.get('type')
+        if ttype is not None and ttype not in VALID_TILE_TYPES:
+            print(f'ERROR: Tile "{tid}" type must be one of {sorted(VALID_TILE_TYPES)}.')
+            errors += 1
+
+        if ttype in (TileType.HAZARD.value, TileType.TRAP.value):
+            errors += validate_effects(tile.get('effects', []), f'Tile "{tid}"')
+        elif 'effects' in tile:
+            print(f'ERROR: Tile "{tid}" is type "{ttype}" and may not carry "effects".')
+            errors += 1
+
+    return errors
+
+
 def validate_data() -> bool:
     data_dir = Path('data')
     ingredients_file = data_dir / 'ingredients.yaml'
@@ -502,36 +561,7 @@ def validate_data() -> bool:
             print(f'ERROR: Failed to parse tiles.yaml: {e}')
             return False
 
-        tile_ids = set()
-        for i, tile in enumerate(tiles_data.get('tiles', [])):
-            if 'id' not in tile:
-                print(f'ERROR: Tile #{i} missing "id".')
-                errors += 1
-                continue
-            tid = tile['id']
-            if tid in tile_ids:
-                print(f'ERROR: Duplicate tile ID: "{tid}"')
-                errors += 1
-            tile_ids.add(tid)
-
-            for field in ['type', 'depth']:
-                if field not in tile:
-                    print(f'ERROR: Tile "{tid}" missing "{field}".')
-                    errors += 1
-
-            # fg and bg are optional; if missing, engine provides defaults (White/Black)
-            for field in ['fg', 'bg']:
-                if field in tile:
-                    val = tile[field]
-                    if not isinstance(val, list) or len(val) != 3 or not all(isinstance(v, int) for v in val):
-                        print(f'ERROR: Tile "{tid}" {field} must be a list of 3 integers (RGB).')
-                        errors += 1
-
-            if 'depth' in tile:
-                depth = tile['depth']
-                if not isinstance(depth, list) or len(depth) != 2 or not all(isinstance(d, int) for d in depth):
-                    print(f'ERROR: Tile "{tid}" depth must be a list of 2 integers.')
-                    errors += 1
+        errors += validate_tiles(tiles_data.get('tiles', []))
 
     # 4. Validate Enemies
     enemies_file = data_dir / 'enemies.yaml'

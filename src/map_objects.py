@@ -1,10 +1,9 @@
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
 import numpy as np
+from numpy.typing import NDArray
 
-if TYPE_CHECKING:
-    pass
+from src.components import Effect
 
 
 @dataclass(frozen=True)
@@ -15,6 +14,10 @@ class Tile:
     fg: tuple[int, int, int]
     bg: tuple[int, int, int]
     is_exit: bool = False
+    # A hazard/trap carries effects applied to any actor that enters the cell (HazardSystem).
+    # `hidden` marks a detection-reveal trap: drawn as plain floor until the player detects it.
+    effects: tuple[Effect, ...] = ()
+    hidden: bool = False
 
 
 class Map:
@@ -27,6 +30,12 @@ class Map:
         self.height = height
         self.tiles = [[default_tile for _ in range(height)] for _ in range(width)]
         self.explored = np.zeros((width, height), dtype=bool, order='F')
+        # Which hidden-trap cells the player has detected; a revealed trap draws its warning
+        # look, while an undetected one is drawn as `floor_look` (see FOVSystem / _render_map).
+        self.revealed: NDArray[np.bool_] = np.zeros((width, height), dtype=bool, order='F')
+        # The plain floor tile chosen for this floor, so the renderer can disguise concealed
+        # traps as floor. Seeded to the fill tile; procgen overwrites it with the real floor.
+        self.floor_look = default_tile
         # Derived arrays are seeded from the fill tile and kept in sync via set_tile.
         self.transparent = np.full((width, height), default_tile.transparent, dtype=bool, order='F')
         self.walkable = np.full((width, height), default_tile.walkable, dtype=bool, order='F')

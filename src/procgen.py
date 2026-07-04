@@ -28,6 +28,7 @@ from src.components import (
     Stats,
     StatusEffects,
     TileConfig,
+    TileType,
 )
 from src.constants import (
     MAP_HEIGHT,
@@ -315,27 +316,81 @@ def _current_floor() -> int:
     return get_singleton(GameState).floor
 
 
-def _select_floor_tiles(floor_number: int) -> tuple[Tile, Tile, Tile]:
-    """Pick (wall, floor, exit) tiles appropriate to `floor_number`'s depth. Tiles
-    live on the Configuration singleton, so query it directly rather than threading
-    the config through every call site."""
+def _build_tile(cfg: TileConfig, walkable: bool, transparent: bool, is_exit: bool = False) -> Tile:
+    """Build a Tile from its config, carrying any on-enter effects. A `trap` tile is a concealed
+    hazard, so its hidden flag is derived from the type (the structural tiles carry neither)."""
+    return Tile(
+        walkable=walkable,
+        transparent=transparent,
+        sprite_id=cfg['id'],
+        fg=to_rgb(cfg.get('fg') or UI_WHITE),
+        bg=to_rgb(cfg.get('bg') or UI_BLACK),
+        is_exit=is_exit,
+        effects=tuple(cfg.get('effects', ())),
+        hidden=cfg['type'] == TileType.TRAP,
+    )
+
+
+def _tiles_for_depth(floor_number: int) -> list[TileConfig]:
+    """Tile configs whose depth band covers `floor_number`. Tiles live on the Configuration
+    singleton, so query it directly rather than threading the config through every call site."""
     tiles_config = get_singleton(Configuration).tiles
-    available_tiles = [t for t in tiles_config if t['depth'][0] <= floor_number <= t['depth'][1]]
+    return [t for t in tiles_config if t['depth'][0] <= floor_number <= t['depth'][1]]
 
-    def make_tile(cfg: TileConfig, walkable: bool, transparent: bool, is_exit: bool = False):
-        return Tile(
-            walkable=walkable,
-            transparent=transparent,
-            sprite_id=cfg['id'],
-            fg=to_rgb(cfg.get('fg') or UI_WHITE),
-            bg=to_rgb(cfg.get('bg') or UI_BLACK),
-            is_exit=is_exit,
-        )
 
-    wall_tile = make_tile(random.choice([t for t in available_tiles if t['type'] == 'wall']), False, False)
-    floor_tile = make_tile(random.choice([t for t in available_tiles if t['type'] == 'floor']), True, True)
-    exit_tile = make_tile(random.choice([t for t in available_tiles if t['type'] == 'exit']), True, True, is_exit=True)
+def _select_floor_tiles(floor_number: int) -> tuple[Tile, Tile, Tile]:
+    """Pick (wall, floor, exit) tiles appropriate to `floor_number`'s depth."""
+    available_tiles = _tiles_for_depth(floor_number)
+    wall_tile = _build_tile(random.choice([t for t in available_tiles if t['type'] == TileType.WALL]), False, False)
+    floor_tile = _build_tile(random.choice([t for t in available_tiles if t['type'] == TileType.FLOOR]), True, True)
+    exit_tile = _build_tile(
+        random.choice([t for t in available_tiles if t['type'] == TileType.EXIT]), True, True, is_exit=True
+    )
     return wall_tile, floor_tile, exit_tile
+
+
+def _scatter_hazards(
+    dungeon: Map,
+    rooms: list[RectangularRoom],
+    player_start: Point,
+    exit_center: Point | None,
+    floor_number: int,
+) -> None:
+    """Sprinkle a depth-scaling number of hazards and concealed traps over open room floor.
+    Both go in room interiors — never walls, corridors, the stairs, or the player's start room.
+    Rooms are open, so there's always a way around: a trap in a one-wide corridor would be an
+    unavoidable tax rather than a threat to route around or bait an enemy onto, and keeping off
+    corridors leaves the connecting paths clear so connectivity is untouched."""
+    available = _tiles_for_depth(floor_number)
+    hazard_cfgs = [t for t in available if t['type'] == TileType.HAZARD]
+    trap_cfgs = [t for t in available if t['type'] == TileType.TRAP]
+    if not rooms or (not hazard_cfgs and not trap_cfgs):
+        return
+
+    protected = {(player_start.x, player_start.y)}
+    if exit_center is not None:
+        protected.add((exit_center.x, exit_center.y))
+
+    # Candidate cells are the interiors of every room but the player's start (rooms[0]).
+    candidates = [
+        (x, y)
+        for room in rooms[1:]
+        for x in range(room.x1 + 1, room.x2)
+        for y in range(room.y1 + 1, room.y2)
+        if bool(dungeon.walkable[x, y]) and (x, y) not in protected
+    ]
+    random.shuffle(candidates)
+
+    def place_tiles(cfgs: list[TileConfig], count: int) -> None:
+        # Draw from the shuffled pool so hazards and traps never land on the same cell.
+        for _ in range(min(count, len(candidates))):
+            x, y = candidates.pop()
+            dungeon.set_tile(x, y, _build_tile(random.choice(cfgs), walkable=True, transparent=True))
+
+    if hazard_cfgs:
+        place_tiles(hazard_cfgs, 3 + floor_number)
+    if trap_cfgs:
+        place_tiles(trap_cfgs, 2 + floor_number)
 
 
 def _announce_floor(floor_number: int):
@@ -399,16 +454,21 @@ def generate_dungeon(
             break
         dungeon, rooms, player_start = build_attempt()
 
+    # Record the floor tile so the renderer can disguise concealed traps as ordinary floor.
+    dungeon.floor_look = floor_tile
+
     for i, room in enumerate(rooms):
         room.spawn_entities(rooms, spawn_enemies=(i > 0))
 
     _spawn_floor_npcs(rooms, floor_number)
 
     exit_room = _select_exit_room(rooms) or (rooms[-1] if rooms else None)
-    if exit_room is not None:
-        exit_p = exit_room.center
-        dungeon.set_tile(exit_p.x, exit_p.y, exit_tile)
+    exit_room_center = exit_room.center if exit_room is not None else None
+    if exit_room is not None and exit_room_center is not None:
+        dungeon.set_tile(exit_room_center.x, exit_room_center.y, exit_tile)
         _spawn_guardians(dungeon, exit_room, rooms, floor_number)
+
+    _scatter_hazards(dungeon, rooms, player_start, exit_room_center, floor_number)
 
     _announce_floor(floor_number)
     return dungeon, player_start
