@@ -105,10 +105,13 @@ def get_action_cooldown(entity: int, base_speed: int) -> int:
 def can_act(entity: int) -> bool:
     """Whether `entity` may take an action this input, gating the player's movement/casting.
 
-    Default movement is uncapped (as fast as the player presses): the action cooldown
-    decays but never blocks. Only a SLOW status throttles it — each move sets a doubled
-    cooldown (see get_action_cooldown), and further input is ignored until it elapses.
+    STUN freezes the actor outright until it wears off (the same gate AISystem applies to
+    enemies). Otherwise movement is uncapped (as fast as the player presses): the action
+    cooldown decays but never blocks — only a SLOW status throttles it, each move setting a
+    doubled cooldown (see get_action_cooldown) that ignores further input until it elapses.
     """
+    if get_status(entity, StatusType.STUN):
+        return False
     if get_status(entity, StatusType.SLOW):
         return esper.component_for_entity(entity, Actor).cooldown <= 0
     return True

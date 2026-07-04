@@ -83,3 +83,13 @@ def test_movement_is_swallowed_while_slowed_and_on_cooldown():
 
     assert runner.player_pos == before
     assert runner.display_mode == DisplayMode.EXPLORING
+
+
+def test_movement_is_swallowed_while_stunned():
+    runner = HeadlessRunner(use_random_map=False)
+    esper.component_for_entity(runner.player, StatusEffects).active[StatusType.STUN] = Effect(type=EffectType.STUN)
+    before = runner.player_pos
+
+    runner.simulate_key(tcod.event.KeySym.UP)
+
+    assert runner.player_pos == before  # a snare trap's stun roots the player in place
