@@ -58,3 +58,15 @@ class Map:
         self.walkable[x, y] = tile.walkable
         if tile.is_exit:
             self.exit_pos = (x, y)
+
+    def reveal_all_traps(self) -> int:
+        """Mark every still-armed hidden trap on this floor as detected (drawn as a warning
+        instead of plain floor). Returns how many were newly revealed; sprung traps are already
+        visible, so they don't count."""
+        count = 0
+        for x in range(self.width):
+            for y in range(self.height):
+                if self.tiles[x][y].hidden and not self.revealed[x, y]:
+                    self.revealed[x, y] = True
+                    count += 1
+        return count

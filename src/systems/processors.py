@@ -1,3 +1,4 @@
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 import esper
@@ -46,7 +47,7 @@ from src.ecs_helpers import (
     try_get_singleton,
 )
 from src.layout import LayoutProcessor, Rect
-from src.map_objects import Map
+from src.map_objects import Map, Tile
 from src.states import WORLD_VIEW_MODES, DisplayMode, GameState
 from src.systems.combat import apply_effect, apply_status_pulse, roll_loot
 from src.systems.momentum import build_momentum
@@ -190,14 +191,16 @@ class HazardSystem(esper.Processor):
             tile = game_map.tiles[pos.x][pos.y]
             if not tile.effects:
                 continue
-            if tile.hidden and not game_map.revealed[pos.x, pos.y]:
-                game_map.revealed[pos.x, pos.y] = True
-                if is_player(ent):
-                    log = try_get_singleton(MessageLog)
-                    if log:
-                        log.add_simple_message('You trigger a hidden trap!', color=UI_YELLOW)
+            if tile.hidden and is_player(ent):
+                log = try_get_singleton(MessageLog)
+                if log:
+                    log.add_simple_message('You spring a hidden trap!', color=UI_YELLOW)
             for effect in tile.effects:
                 apply_effect(ent, effect, origin=pos.point)
+            if tile.hidden:
+                # A trap fires once, then it's spent — swapped for a visible, inert marker. A
+                # hazard (not hidden) stays armed and re-triggers on each fresh entry.
+                game_map.set_tile(pos.x, pos.y, _spring_trap(tile))
 
         # Forget entities that no longer exist (slain enemies) so the cache can't grow unbounded.
         self._last_cell = {ent: cell for ent, cell in self._last_cell.items() if ent in live}
@@ -230,6 +233,12 @@ class FOVSystem(esper.Processor):
                     _reveal_nearby_traps(game_map, pos, fov.visible_tiles)
 
                 fov.dirty = False
+
+
+def _spring_trap(tile: Tile) -> Tile:
+    """The spent form of a triggered trap: visible but inert (no effects), and dimmed so it
+    reads as already-sprung rather than a live threat."""
+    return replace(tile, hidden=False, effects=(), fg=to_rgb([int(c * 0.5) for c in tile.fg]))
 
 
 def _reveal_nearby_traps(game_map: Map, player_pos: Position, visible_tiles: set[Point]) -> None:

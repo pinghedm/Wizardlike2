@@ -37,6 +37,7 @@ EFFECT_COLORS: dict[EffectType, tuple[int, int, int]] = {
     EffectType.DRAIN: UI_RED,
     EffectType.KNOCKBACK: UI_WHITE,
     EffectType.WET: UI_BLUE,
+    EffectType.REVEAL: UI_YELLOW,
 }
 
 # Glyph a spell's projectile flies as, keyed by its primary effect (color comes from
@@ -54,6 +55,7 @@ PROJECTILE_GLYPHS: dict[EffectType, str] = {
     EffectType.DRAIN: '%',
     EffectType.KNOCKBACK: '>',
     EffectType.WET: '~',
+    EffectType.REVEAL: 'o',
 }
 
 # Glyphs a particle in a spray can take.

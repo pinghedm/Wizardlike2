@@ -118,6 +118,7 @@ EFFECT_SOUNDS: dict[EffectType, SoundId] = {
     EffectType.REGEN: SoundId.CAST_HEAL,
     EffectType.HASTE: SoundId.CAST_BUFF,
     EffectType.SHIELD: SoundId.CAST_BUFF,
+    EffectType.REVEAL: SoundId.CAST_BUFF,
     EffectType.SLOW: SoundId.CAST_DEBUFF,
     EffectType.STUN: SoundId.CAST_DEBUFF,
     EffectType.POISON: SoundId.CAST_DEBUFF,

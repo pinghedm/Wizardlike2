@@ -19,6 +19,7 @@ VALID_EFFECT_INFO = {
     EffectType.DRAIN: ['power', 'lifesteal'],
     EffectType.KNOCKBACK: ['power'],
     EffectType.WET: ['duration'],
+    EffectType.REVEAL: [],  # a floor-wide utility effect; carries no power/duration
 }
 
 DAMAGING_EFFECTS = {EffectType.DAMAGE, EffectType.DRAIN}

@@ -30,6 +30,7 @@ class EffectType(enum.StrEnum):
     DRAIN = 'drain'
     KNOCKBACK = 'knockback'
     WET = 'wet'
+    REVEAL = 'reveal'  # a utility effect: lights up every hidden trap on the floor
 
 
 class ShopOfferKind(enum.StrEnum):

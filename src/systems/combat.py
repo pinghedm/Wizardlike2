@@ -31,6 +31,7 @@ from src.constants import (
     UI_YELLOW,
 )
 from src.ecs_helpers import actor_name, get_display_name, get_singleton, get_status, is_player, try_get_singleton
+from src.map_objects import Map
 from src.systems.momentum import reset_momentum
 from src.systems.movement import apply_knockback
 from src.systems.visuals import EFFECT_COLORS, spray_hit_particles, trigger_floating_number, trigger_screen_flash
@@ -199,6 +200,13 @@ def apply_effect(
             apply_knockback(target_ent, origin, effect.power)
         play_sfx(SoundId.KNOCKBACK)
         log.add_simple_message(f'{target_name} is knocked back!', color=UI_GRAY_LIGHT)
+
+    elif effect.type == EffectType.REVEAL:
+        game_map = try_get_singleton(Map)
+        if game_map is not None:
+            found = game_map.reveal_all_traps()
+            message = 'Hidden traps shimmer into view!' if found else 'You sense no hidden traps here.'
+            log.add_simple_message(message, color=UI_YELLOW if found else UI_GRAY_LIGHT)
 
     elif effect.type in STATUS_APPLY:
         application = STATUS_APPLY[effect.type]

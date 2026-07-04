@@ -278,3 +278,19 @@ spells:
       max_rank: 5
       charge_bonus_per_rank: 1
       power_per_rank: 0.12
+  # Rare (shop-learned): a utility buy that lights up every hidden trap on the floor. Rare spells
+  # are hidden from crafting discovery, so a shop purchase is how you learn the recipe.
+  - id: clairvoyance
+    name: Clairvoyance
+    description: Reveals every hidden trap on the floor.
+    target: self
+    rare: true
+    radius: 0
+    effects:
+      - type: reveal
+    recipes:
+      - ingredients: [earth_stone, gale_feather]
+        charges: 2
+    shop:
+      price: 40
+      charges: 2

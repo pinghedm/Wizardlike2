@@ -3,7 +3,7 @@ import esper
 from src.components import Effect, EffectType, FieldOfView, Point, Position, Stats, StatusEffects, StatusType
 from src.constants import TRAP_DETECT_RADIUS
 from src.map_objects import Map, Tile
-from src.systems import FOVSystem, HazardSystem
+from src.systems import FOVSystem, HazardSystem, apply_effect
 from src.systems.movement import apply_knockback
 from tests.headless_runner import HeadlessRunner
 
@@ -62,17 +62,33 @@ def test_water_hazard_applies_the_wet_status():
     assert StatusType.WET in esper.component_for_entity(runner.player, StatusEffects).active
 
 
-def test_stepping_onto_a_hidden_trap_springs_and_reveals_it():
+def test_stepping_onto_a_hidden_trap_springs_it_once_then_it_is_inert():
     runner = HeadlessRunner()
     px, py = runner.player_pos
     game_map = _game_map()
     game_map.set_tile(px, py, _effect_tile([Effect(type=EffectType.DAMAGE, power=15)], hidden=True))
 
+    hazards = HazardSystem()
+    hazards.process()  # the trap springs
+
+    assert esper.component_for_entity(runner.player, Stats).hp == 100 - 15
+    assert any('spring' in msg.lower() for msg in runner.get_log_messages())
+    spent = game_map.tiles[px][py]
+    assert not spent.effects and not spent.hidden  # spent: now visible and harmless
+
+    hazards.process()  # standing on the spent trap does nothing more
+    assert esper.component_for_entity(runner.player, Stats).hp == 100 - 15
+
+
+def test_a_hazard_is_not_consumed_when_triggered():
+    runner = HeadlessRunner()
+    px, py = runner.player_pos
+    game_map = _game_map()
+    game_map.set_tile(px, py, _effect_tile([Effect(type=EffectType.DAMAGE, power=10)]))  # visible hazard
+
     HazardSystem().process()
 
-    assert game_map.revealed[px, py]
-    assert esper.component_for_entity(runner.player, Stats).hp == 100 - 15
-    assert any('hidden trap' in msg for msg in runner.get_log_messages())
+    assert game_map.tiles[px][py].effects  # stays armed, unlike a sprung trap
 
 
 def test_knockback_into_a_chasm_damages_the_shoved_enemy():
@@ -118,3 +134,32 @@ def test_hidden_trap_stays_concealed_beyond_detection_radius():
     FOVSystem().process()
 
     assert not game_map.revealed[trap_x, py]
+
+
+# --- Reveal: lighting up every hidden trap on the floor ------------------------
+
+
+def test_reveal_all_traps_marks_every_hidden_trap():
+    runner = HeadlessRunner()
+    game_map = _game_map()
+    px, py = runner.player_pos
+    far_traps = [(px + 5, py), (px, py + 6)]
+    for x, y in far_traps:
+        game_map.set_tile(x, y, _effect_tile([Effect(type=EffectType.DAMAGE, power=5)], hidden=True))
+
+    count = game_map.reveal_all_traps()
+
+    assert count == 2
+    assert all(game_map.revealed[x, y] for x, y in far_traps)
+
+
+def test_reveal_effect_lights_up_hidden_traps():
+    runner = HeadlessRunner()
+    game_map = _game_map()
+    px, py = runner.player_pos
+    trap = (px + 5, py)  # well outside adjacent detection
+    game_map.set_tile(trap[0], trap[1], _effect_tile([Effect(type=EffectType.DAMAGE, power=5)], hidden=True))
+
+    apply_effect(runner.player, Effect(type=EffectType.REVEAL))
+
+    assert game_map.revealed[trap[0], trap[1]]
