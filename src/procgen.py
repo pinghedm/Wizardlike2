@@ -7,6 +7,7 @@ from src.components import (
     AI,
     NPC,
     Actor,
+    Boss,
     ChaseTag,
     Configuration,
     Enemy,
@@ -33,6 +34,7 @@ from src.components import (
 from src.constants import (
     MAP_HEIGHT,
     MAP_WIDTH,
+    MAX_FLOORS,
     MAX_ITEMS_PER_ROOM,
     MAX_ROOMS,
     ROOM_MAX_SIZE,
@@ -139,12 +141,12 @@ class RectangularRoom:
             game_state = get_singleton(GameState)
             floor = game_state.floor
 
-            # Filter enemies valid for current floor. Guardians are reserved for the
-            # floor exit (spawned by generate_dungeon), so exclude them here.
+            # Filter enemies valid for current floor. Guardians and the boss are reserved for
+            # the floor exit (spawned by generate_dungeon), so exclude them here.
             available_enemies = [
                 e
                 for e in configs.enemies.values()
-                if not e.get('guardian') and e['floors'][0] <= floor <= e['floors'][1]
+                if not e.get('guardian') and not e.get('boss') and e['floors'][0] <= floor <= e['floors'][1]
             ]
             if not available_enemies:
                 return
@@ -203,7 +205,12 @@ def spawn_enemy(
     drops = enemy_cfg.get('drops')
     if drops:
         components.append(Loot(drops=drops))
-    if enemy_cfg.get('guardian'):
+    # A boss both seals the exit (Guardian) and drives a phase-gated ability set (Boss), so it
+    # implies the guardian tag — data authors need only set `boss: true`.
+    if enemy_cfg.get('boss'):
+        components.append(Boss(abilities=enemy_cfg.get('abilities', [])))
+        components.append(Guardian())
+    elif enemy_cfg.get('guardian'):
         components.append(Guardian())
     return esper.create_entity(*components)
 
@@ -310,6 +317,24 @@ def _spawn_guardians(dungeon: Map, exit_room: RectangularRoom, rooms: list[Recta
         if (x, y) == (exit_p.x, exit_p.y):  # don't bury the stairs under its guardian
             x = min(x + 1, room.x2 - 1)
         spawn_enemy(guardian_cfg, x, y, rooms)
+
+
+def _spawn_boss(dungeon: Map, exit_room: RectangularRoom, rooms: list[RectangularRoom], floor: int):
+    """Spawn the floor boss in the exit room. Like a gate guardian it seals the exit until slain
+    (the boss carries the Guardian tag), so it's the run's climax — but it fights alone, not amid a
+    swarm. A no-op if no boss covers this depth, leaving the floor guardian-less rather than sealed."""
+    configs = esper.get_component(Configuration)[0][1]
+    bosses = [e for e in configs.enemies.values() if e.get('boss') and e['floors'][0] <= floor <= e['floors'][1]]
+    if not bosses:
+        return
+    boss_cfg = random.choice(bosses)
+
+    exit_p = exit_room.center
+    x = random.randint(exit_room.x1 + 1, exit_room.x2 - 1)
+    y = random.randint(exit_room.y1 + 1, exit_room.y2 - 1)
+    if (x, y) == (exit_p.x, exit_p.y):  # don't bury the stairs under the boss
+        x = min(x + 1, exit_room.x2 - 1)
+    spawn_enemy(boss_cfg, x, y, rooms)
 
 
 def _current_floor() -> int:
@@ -466,7 +491,11 @@ def generate_dungeon(
     exit_room_center = exit_room.center if exit_room is not None else None
     if exit_room is not None and exit_room_center is not None:
         dungeon.set_tile(exit_room_center.x, exit_room_center.y, exit_tile)
-        _spawn_guardians(dungeon, exit_room, rooms, floor_number)
+        # The final floor's seal is the boss alone; earlier floors get the guardian swarm.
+        if floor_number >= MAX_FLOORS:
+            _spawn_boss(dungeon, exit_room, rooms, floor_number)
+        else:
+            _spawn_guardians(dungeon, exit_room, rooms, floor_number)
 
     _scatter_hazards(dungeon, rooms, player_start, exit_room_center, floor_number)
 

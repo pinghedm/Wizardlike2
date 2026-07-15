@@ -66,10 +66,14 @@ ALLOWED_ENEMY_FIELDS = {
     'behavior',
     'floors',
     'ability',
+    'abilities',
     'blocks_movement',
     'guardian',
+    'boss',
     'drops',
 }
+
+ALLOWED_ABILITY_FIELDS = {'range', 'effects', 'hp_threshold', 'cooldown', 'name'}
 
 ALLOWED_DROP_FIELDS = {'type', 'min', 'max', 'chance'}
 
@@ -195,6 +199,47 @@ def validate_effects(effects, context_label: str) -> int:
             elif not isinstance(effect[req_field], int) or effect[req_field] <= 0:
                 print(f'ERROR: {context_label} effect #{eff_idx} field "{req_field}" must be a positive integer.')
                 errors += 1
+    return errors
+
+
+def validate_boss_abilities(abilities, context_label: str) -> int:
+    """Validate a boss's phase-gated `abilities` list. Returns the number of errors found.
+
+    Each ability is a ranged mini-spell (range + effects) plus an HP-fraction phase gate and a
+    reuse cooldown. `hp_threshold` is a fraction in (0, 1]; `cooldown` a non-negative integer.
+    """
+    if not isinstance(abilities, list) or not abilities:
+        print(f'ERROR: {context_label} "abilities" must be a non-empty list.')
+        return 1
+
+    errors = 0
+    for idx, ability in enumerate(abilities):
+        if not isinstance(ability, dict):
+            print(f'ERROR: {context_label} ability #{idx} must be a mapping.')
+            errors += 1
+            continue
+
+        for key in sorted(set(ability) - ALLOWED_ABILITY_FIELDS):
+            print(f'ERROR: {context_label} ability #{idx} has unexpected field "{key}".')
+            errors += 1
+
+        rng = ability.get('range')
+        if not isinstance(rng, int) or isinstance(rng, bool) or rng < 0:
+            print(f'ERROR: {context_label} ability #{idx} range must be a non-negative integer.')
+            errors += 1
+
+        errors += validate_effects(ability.get('effects', []), f'{context_label} ability #{idx}')
+
+        threshold = ability.get('hp_threshold', 1.0)
+        if not isinstance(threshold, (int, float)) or isinstance(threshold, bool) or not 0 < threshold <= 1:
+            print(f'ERROR: {context_label} ability #{idx} "hp_threshold" must be a number in (0, 1].')
+            errors += 1
+
+        cooldown = ability.get('cooldown', 0)
+        if not isinstance(cooldown, int) or isinstance(cooldown, bool) or cooldown < 0:
+            print(f'ERROR: {context_label} ability #{idx} "cooldown" must be a non-negative integer.')
+            errors += 1
+
     return errors
 
 
@@ -608,7 +653,7 @@ def validate_data() -> bool:
                 print(f'ERROR: Enemy "{eid}" behavior must be one of {sorted(VALID_BEHAVIORS)}.')
                 errors += 1
 
-            for field in ('blocks_movement', 'guardian'):
+            for field in ('blocks_movement', 'guardian', 'boss'):
                 if field in enemy and not isinstance(enemy[field], bool):
                     print(f'ERROR: Enemy "{eid}" {field} must be a boolean.')
                     errors += 1
@@ -632,6 +677,9 @@ def validate_data() -> bool:
                     print(f'ERROR: Enemy "{eid}" ability range must be a non-negative integer.')
                     errors += 1
                 errors += validate_effects(ability.get('effects', []), f'Enemy "{eid}" ability')
+
+            if 'abilities' in enemy:
+                errors += validate_boss_abilities(enemy['abilities'], f'Enemy "{eid}"')
 
             if 'drops' in enemy:
                 errors += validate_drops(enemy['drops'], ing_ids, f'Enemy "{eid}"')

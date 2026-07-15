@@ -452,6 +452,32 @@ class Guardian:
 
 
 @dataclass
+class BossAbility:
+    """One phase-gated boss attack: the same ranged mini-spell a regular foe uses, plus an
+    HP-fraction gate and a reuse cooldown. Usable while hp / max_hp <= `hp_threshold`, so a
+    threshold of 1.0 is available from the start and lower ones unlock as the boss is worn down."""
+
+    ability: EnemyAbility
+    hp_threshold: float = 1.0
+    cooldown: int = 0  # boss turns between uses
+    name: str = ''  # shown in the combat log and the phase-transition announcement
+
+
+@dataclass
+class Boss:
+    """A floor boss's phase-gated ability set. Sits alongside Enemy and Guardian: the Guardian
+    tag seals the exit, this drives the fight. `timers` holds each ability's remaining cooldown
+    (parallel to `abilities`); `phase` is the deepest phase entered, to announce transitions once."""
+
+    abilities: list[BossAbility]
+    phase: int = 0
+    timers: list[int] = field(init=False)
+
+    def __post_init__(self):
+        self.timers = [0] * len(self.abilities)
+
+
+@dataclass
 class ShopOffer:
     """One line in the shopkeeper's stock. `purchaseable` is the ingredient or
     spell bought (None for heal); `amount` is the per-unit count, charges, or HP."""

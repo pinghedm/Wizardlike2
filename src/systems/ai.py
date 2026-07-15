@@ -6,6 +6,7 @@ import tcod.path
 from src.components import (
     AI,
     Actor,
+    Boss,
     Enemy,
     EnemyAbility,
     FieldOfView,
@@ -133,8 +134,9 @@ def _can_use_ability(ent: int, pos: Position, player_pos: Position, ability: Ene
     return True
 
 
-def _use_ability(ent: int, player_ent: int, ability: EnemyAbility, log: MessageLog):
-    log.add_simple_message(f'The {get_display_name(ent)} attacks from afar!', color=UI_MAGENTA)
+def _use_ability(ent: int, player_ent: int, ability: EnemyAbility, log: MessageLog, label: str = ''):
+    action = f'unleashes {label}' if label else 'attacks from afar'
+    log.add_simple_message(f'The {get_display_name(ent)} {action}!', color=UI_MAGENTA)
     origin = esper.component_for_entity(ent, Position).point
 
     # Fly a cosmetic glyph from the enemy to the player, styled like the player's own
@@ -146,6 +148,58 @@ def _use_ability(ent: int, player_ent: int, ability: EnemyAbility, log: MessageL
     for effect in ability.effects:
         debug_log(f'  ability effect {effect.type} power={effect.power} dur={effect.duration} -> player {player_ent}')
         apply_effect(player_ent, effect, origin=origin, caster_ent=ent)
+
+
+def _select_boss_ability(boss: Boss, hp_frac: float, in_range: list[bool]) -> int | None:
+    """Index of the boss ability to fire this turn, or None if none is ready. An ability is ready
+    when it's in range, off cooldown, and phase-available (`hp_frac <= hp_threshold`). Among those,
+    pick the latest-phase one (lowest threshold) so the fight escalates as the boss is worn down."""
+    ready = [
+        i for i, ba in enumerate(boss.abilities) if in_range[i] and boss.timers[i] == 0 and hp_frac <= ba.hp_threshold
+    ]
+    if not ready:
+        return None
+    return min(ready, key=lambda i: boss.abilities[i].hp_threshold)
+
+
+def _boss_phase_level(boss: Boss, hp_frac: float) -> int:
+    """How many phase-gated (threshold < 1.0) abilities the boss's current HP has unlocked."""
+    return sum(1 for ba in boss.abilities if ba.hp_threshold < 1.0 and hp_frac <= ba.hp_threshold)
+
+
+def _use_boss_ability(ent: int, boss: Boss, pos: Position, player_pos: Position, player_ent: int, log: MessageLog):
+    """Advance the boss's cooldowns and phase, then fire its best ready ability. Returns whether one
+    fired, so the AI dispatch falls through to movement when the boss can't attack this turn."""
+    boss.timers = [max(0, t - 1) for t in boss.timers]
+
+    stats = esper.component_for_entity(ent, Stats)
+    hp_frac = stats.hp / stats.max_hp if stats.max_hp else 0.0
+
+    level = _boss_phase_level(boss, hp_frac)
+    if level > boss.phase:
+        boss.phase = level
+        log.add_simple_message(f'The {get_display_name(ent)} grows more dangerous!', color=UI_MAGENTA)
+
+    in_range = [_can_use_ability(ent, pos, player_pos, ba.ability) for ba in boss.abilities]
+    idx = _select_boss_ability(boss, hp_frac, in_range)
+    if idx is None:
+        return False
+    chosen = boss.abilities[idx]
+    _use_ability(ent, player_ent, chosen.ability, log, label=chosen.name)
+    boss.timers[idx] = chosen.cooldown
+    return True
+
+
+def _try_ranged_attack(ent: int, enemy: Enemy, pos: Position, player_pos: Position, player_ent: int, log: MessageLog):
+    """Fire a ranged attack if one is ready: a boss's phase-gated set, else a plain foe's single
+    ability. Returns whether an attack fired (a boss still ticks cooldowns/phases either way)."""
+    boss = esper.try_component(ent, Boss)
+    if boss is not None:
+        return _use_boss_ability(ent, boss, pos, player_pos, player_ent, log)
+    if enemy.ability is not None and _can_use_ability(ent, pos, player_pos, enemy.ability):
+        _use_ability(ent, player_ent, enemy.ability, log)
+        return True
+    return False
 
 
 class AISystem(esper.Processor):
@@ -206,9 +260,8 @@ class AISystem(esper.Processor):
                     f'The {get_display_name(ent)} hits you!',
                     color=UI_RED,
                 )
-            elif enemy and enemy.ability and _can_use_ability(ent, pos, player_pos, enemy.ability):
-                debug_log(f'AI {ent} ({get_display_name(ent)}) ability from {(pos.x, pos.y)}')
-                _use_ability(ent, player_ent, enemy.ability, get_singleton(MessageLog))
+            elif enemy and _try_ranged_attack(ent, enemy, pos, player_pos, player_ent, get_singleton(MessageLog)):
+                debug_log(f'AI {ent} ({get_display_name(ent)}) ranged attack from {(pos.x, pos.y)}')
             elif esper.has_component(ent, PatrolTag):
                 _process_patrol(ent, pos, pathfinding_context)
             elif esper.has_component(ent, FleeTag):

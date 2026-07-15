@@ -47,3 +47,28 @@ enemies:
     drops:
       - {type: gold, min: 2, max: 4, chance: 1}
       - {type: reagent_a, min: 0, max: 1, chance: 1}
+  - id: test_boss
+    char: "B"
+    color: [200, 40, 200]
+    hp: 100
+    damage: 20
+    speed: 100
+    xp: 100
+    behavior: CHASE
+    boss: true
+    floors: [1, 99]
+    abilities:
+      - name: Jab
+        range: 6
+        hp_threshold: 1.0
+        cooldown: 2
+        effects:
+          - type: damage
+            power: 8
+      - name: Nova
+        range: 6
+        hp_threshold: 0.5
+        cooldown: 3
+        effects:
+          - type: damage
+            power: 12

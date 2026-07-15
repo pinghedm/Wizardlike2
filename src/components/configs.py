@@ -1,7 +1,7 @@
 from typing import TYPE_CHECKING, NotRequired, TypedDict
 
 if TYPE_CHECKING:
-    from src.components.components import DamageModifier, Effect, LootDrop
+    from src.components.components import BossAbility, DamageModifier, Effect, LootDrop
     from src.components.enums import ItemType, TargetMode, TileType
 
 
@@ -76,6 +76,8 @@ class EnemyConfig(TypedDict):
     floors: list[int]
     blocks_movement: NotRequired[bool]
     guardian: NotRequired[bool]
+    boss: NotRequired[bool]  # implies the exit-seal; carries a phase-gated `abilities` set
+    abilities: NotRequired[list[BossAbility]]
     drops: NotRequired[list[LootDrop]]
 
 

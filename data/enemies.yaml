@@ -99,3 +99,43 @@ enemies:
           power: 5
         - type: slow
           duration: 90
+  - id: warden
+    sprite:
+      path: data/spritesheets/People.png
+      type: REGION
+      region: [210, 0, 10, 10]
+      scale: 1.0
+    color: [200, 40, 200]
+    hp: 400
+    damage: 25
+    speed: 30
+    xp: 200
+    behavior: CHASE
+    boss: true
+    floors: [10, 10]
+    abilities:
+      - name: Ember Lash
+        range: 6
+        hp_threshold: 1.0
+        cooldown: 2
+        effects:
+          - type: damage
+            power: 22
+      - name: Chill Nova
+        range: 8
+        hp_threshold: 0.66
+        cooldown: 5
+        effects:
+          - type: slow
+            duration: 90
+          - type: damage
+            power: 12
+      - name: Last Rite
+        range: 10
+        hp_threshold: 0.33
+        cooldown: 4
+        effects:
+          - type: damage
+            power: 30
+          - type: knockback
+            power: 2

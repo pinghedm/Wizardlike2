@@ -12,6 +12,7 @@ from PIL import Image
 
 from src.audio import MusicFiles, MusicTrack, SoundFile, SoundId, SoundSpecs, SynthSpec, Waveform
 from src.components import (
+    BossAbility,
     DamageModifier,
     Effect,
     EffectType,
@@ -213,6 +214,16 @@ def load_enemies_config(asset_loader: AssetLoader) -> dict[str, EnemyConfig]:
                         range=config['ability']['range'],
                         effects=_parse_effects(config['ability'].get('effects', [])),
                     )
+                if 'abilities' in config:
+                    config['abilities'] = [
+                        BossAbility(
+                            ability=EnemyAbility(range=a['range'], effects=_parse_effects(a.get('effects', []))),
+                            hp_threshold=a.get('hp_threshold', 1.0),
+                            cooldown=a.get('cooldown', 0),
+                            name=a.get('name', ''),
+                        )
+                        for a in config['abilities']
+                    ]
                 if 'drops' in config:
                     config['drops'] = [
                         LootDrop(

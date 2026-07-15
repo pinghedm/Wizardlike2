@@ -1,6 +1,6 @@
 import pytest
 
-from tools.validate_data import validate_modifiers, validate_tiles
+from tools.validate_data import validate_boss_abilities, validate_modifiers, validate_tiles
 
 DAMAGING = [{'type': 'damage', 'power': 5}]
 NON_DAMAGING = [{'type': 'heal', 'power': 5}]
@@ -40,6 +40,39 @@ def test_validate_modifiers_rejects_modifiers_on_a_spell_with_no_damaging_effect
 
 def test_validate_modifiers_rejects_an_empty_list():
     assert validate_modifiers([], DAMAGING, 'Spell "x"') > 0
+
+
+# --- validate_boss_abilities ---------------------------------------------------
+
+
+def _ability(**overrides):
+    ability = {'name': 'Jab', 'range': 5, 'hp_threshold': 0.5, 'cooldown': 2, 'effects': DAMAGING}
+    ability.update(overrides)
+    return ability
+
+
+def test_validate_boss_abilities_accepts_a_well_formed_ability():
+    assert validate_boss_abilities([_ability()], 'Enemy "boss"') == 0
+
+
+def test_validate_boss_abilities_rejects_an_empty_list():
+    assert validate_boss_abilities([], 'Enemy "boss"') > 0
+
+
+@pytest.mark.parametrize(
+    'ability',
+    [
+        _ability(oops=1),  # unexpected field
+        _ability(range=-1),  # negative range
+        _ability(hp_threshold=0),  # threshold must be in (0, 1]
+        _ability(hp_threshold=1.5),  # threshold above 1
+        _ability(cooldown=-2),  # negative cooldown
+        _ability(effects=[{'type': 'nonsense', 'power': 5}]),  # invalid effect
+        _ability(effects=[]),  # no effects
+    ],
+)
+def test_validate_boss_abilities_rejects_a_bad_ability(ability):
+    assert validate_boss_abilities([ability], 'Enemy "boss"') > 0
 
 
 # --- validate_tiles ------------------------------------------------------------

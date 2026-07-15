@@ -1,6 +1,7 @@
 import esper
 
 from src.components import (
+    Boss,
     Experience,
     Inventory,
     ItemType,
@@ -24,7 +25,14 @@ from src.constants import (
     UI_WHITE,
     UI_YELLOW,
 )
-from src.ecs_helpers import get_player, get_player_component, get_singleton, get_status, try_get_singleton
+from src.ecs_helpers import (
+    get_display_name,
+    get_player,
+    get_player_component,
+    get_singleton,
+    get_status,
+    try_get_singleton,
+)
 from src.layout import LayoutProcessor, Rect
 from src.states import WORLD_VIEW_MODES, GameState
 from src.ui_helpers import compute_visible_slice, draw_centered_frame, draw_titled_frame, wrap_message
@@ -62,6 +70,8 @@ class HUDSystem(LayoutProcessor):
     BAR_RIGHT_MARGIN = 2
     # Width of the stats column on the left of the HUD bar; the log fills the rest.
     HUD_STATS_WIDTH = 34
+    # The boss HP bar spans the top of the map viewport, centered and capped at this width.
+    BOSS_BAR_WIDTH = 40
 
     def process(self):
         game_state = get_singleton(GameState)
@@ -77,6 +87,7 @@ class HUDSystem(LayoutProcessor):
         self.render_floor_info(stats_zone, game_state.floor)
         self.render_gold(stats_zone)
         self.render_message_log(log_zone)
+        self.render_boss_bar(self.layout.map_viewport)
 
     def _draw_stat_bar(self, zone: Rect, row: int, label: str, ratio: float, fill: RGB, track: RGB):
         """Draw a labeled bar on `row` of the stats column: label at the left, the bar
@@ -94,6 +105,24 @@ class HUDSystem(LayoutProcessor):
         if stats is None:
             return
         self._draw_stat_bar(zone, 1, f'HP: {stats.hp}/{stats.max_hp}', stats.hp / stats.max_hp, UI_RED, UI_RED_DARK)
+
+    def render_boss_bar(self, zone: Rect):
+        """Show a living floor boss's HP bar across the top of the map viewport, so the fight's
+        progress reads at a glance. Draws nothing when no boss is alive."""
+        for ent, (_boss, stats) in esper.get_components(Boss, Stats):
+            if stats.hp <= 0:
+                continue
+            bar_width = min(self.BOSS_BAR_WIDTH, max(0, zone.width - 4))
+            if bar_width <= 0:
+                return
+            bar_x = zone.x + (zone.width - bar_width) // 2
+            label = f'{get_display_name(ent)}  {stats.hp}/{stats.max_hp}'
+            self.console.print(zone.x + (zone.width - len(label)) // 2, zone.y, label, fg=UI_WHITE)
+            self.console.draw_rect(bar_x, zone.y + 1, bar_width, 1, ch=ord('█'), fg=UI_RED_DARK)
+            filled = int((stats.hp / stats.max_hp) * bar_width) if stats.max_hp else 0
+            if filled > 0:
+                self.console.draw_rect(bar_x, zone.y + 1, filled, 1, ch=ord('█'), fg=UI_RED)
+            return  # only one boss bar at a time
 
     def render_xp_bar(self, zone: Rect):
         exp = get_player_component(Experience)
