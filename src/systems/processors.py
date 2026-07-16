@@ -11,6 +11,7 @@ from src import persistence
 from src.audio import SoundId, play_sfx
 from src.components import (
     Actor,
+    Boss,
     EffectType,
     Enemy,
     FieldOfView,
@@ -231,6 +232,7 @@ class FOVSystem(esper.Processor):
                 if is_player(ent):
                     game_map.explored |= fov_map
                     _reveal_nearby_traps(game_map, pos, fov.visible_tiles)
+                    _discover_visible_bosses(fov.visible_tiles)
 
                 fov.dirty = False
 
@@ -239,6 +241,14 @@ def _spring_trap(tile: Tile) -> Tile:
     """The spent form of a triggered trap: visible but inert (no effects), and dimmed so it
     reads as already-sprung rather than a live threat."""
     return replace(tile, hidden=False, effects=(), fg=to_rgb([int(c * 0.5) for c in tile.fg]))
+
+
+def _discover_visible_bosses(visible_tiles: set[Point]) -> None:
+    """Latch a boss as discovered the first time it enters the player's line of sight, so its
+    HP bar only appears once the player has actually found it. Stays true thereafter."""
+    for _ent, (boss, pos) in esper.get_components(Boss, Position):
+        if not boss.discovered and pos.point in visible_tiles:
+            boss.discovered = True
 
 
 def _reveal_nearby_traps(game_map: Map, player_pos: Position, visible_tiles: set[Point]) -> None:

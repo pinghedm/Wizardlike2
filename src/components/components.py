@@ -467,10 +467,12 @@ class BossAbility:
 class Boss:
     """A floor boss's phase-gated ability set. Sits alongside Enemy and Guardian: the Guardian
     tag seals the exit, this drives the fight. `timers` holds each ability's remaining cooldown
-    (parallel to `abilities`); `phase` is the deepest phase entered, to announce transitions once."""
+    (parallel to `abilities`); `phase` is the deepest phase entered, to announce transitions once.
+    `discovered` latches true once the player first lays eyes on the boss, gating its HP bar."""
 
     abilities: list[BossAbility]
     phase: int = 0
+    discovered: bool = False
     timers: list[int] = field(init=False)
 
     def __post_init__(self):

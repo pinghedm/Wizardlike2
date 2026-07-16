@@ -19,6 +19,7 @@ from src.ecs_helpers import exit_is_sealed, get_singleton
 from src.map_objects import Map
 from src.procgen import RectangularRoom, _spawn_boss
 from src.systems.ai import _boss_phase_level, _select_boss_ability, _use_boss_ability
+from src.systems.processors import _discover_visible_bosses
 from tests.headless_runner import HeadlessRunner
 
 
@@ -133,6 +134,34 @@ def test_final_floor_spawns_a_boss_in_the_exit_room():
     bosses = esper.get_components(Boss, Guardian)
     assert len(bosses) == 1
     assert exit_is_sealed()
+
+
+# --- discovery: the HP bar stays hidden until the player sees the boss ----------
+
+
+def test_boss_is_only_discovered_once_the_player_can_see_it():
+    runner = HeadlessRunner(use_random_map=False)
+    px, py = runner.player_pos
+    enemy = runner.spawn_enemy(px + 2, py, runner.enemy_config('test_boss'))
+    boss = esper.component_for_entity(enemy, Boss)
+
+    assert not boss.discovered  # freshly spawned, unseen -> HP bar hidden
+    _discover_visible_bosses({Point(px, py)})  # the boss's tile isn't visible
+    assert not boss.discovered
+    _discover_visible_bosses({Point(px + 2, py)})  # now it is
+    assert boss.discovered
+
+
+def test_computing_player_fov_over_the_boss_latches_it_discovered():
+    runner = HeadlessRunner(use_random_map=False)
+    px, py = runner.player_pos
+    enemy = runner.spawn_enemy(px, py + 2, runner.enemy_config('test_boss'))
+    boss = esper.component_for_entity(enemy, Boss)
+    esper.component_for_entity(runner.player, FieldOfView).dirty = True
+
+    runner.tick(1)  # FOVSystem recomputes the player's view over the nearby boss
+
+    assert boss.discovered
 
 
 # --- the data path: an abilities block parses into BossAbility objects ----------

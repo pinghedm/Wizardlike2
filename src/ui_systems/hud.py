@@ -109,8 +109,8 @@ class HUDSystem(LayoutProcessor):
     def render_boss_bar(self, zone: Rect):
         """Show a living floor boss's HP bar across the top of the map viewport, so the fight's
         progress reads at a glance. Draws nothing when no boss is alive."""
-        for ent, (_boss, stats) in esper.get_components(Boss, Stats):
-            if stats.hp <= 0:
+        for ent, (boss, stats) in esper.get_components(Boss, Stats):
+            if stats.hp <= 0 or not boss.discovered:
                 continue
             bar_width = min(self.BOSS_BAR_WIDTH, max(0, zone.width - 4))
             if bar_width <= 0:
