@@ -6,6 +6,7 @@ import numpy as np
 
 from src.audio import SoundId, play_sfx
 from src.components import (
+    Actor,
     CastVisual,
     FloatingNumber,
     Particle,
@@ -19,8 +20,10 @@ from src.components import (
 )
 from src.constants import (
     TILE_SCALE,
+    UI_GRAY_DARK,
     UI_MAROON,
     UI_NAVY,
+    UI_SKY,
     UI_YELLOW,
     to_rgb,
 )
@@ -112,6 +115,21 @@ class TargetingOverlaySystem(LayoutProcessor):
             self.console.print(view.x, view.y + 1, ' Move: arrows  Tab: switch  Enter: cast ', fg=UI_YELLOW, bg=UI_NAVY)
 
 
+# The little recharge bar that floats above the player while casting cools: its width in cells and
+# a thin lower-block glyph so it reads as a slim line rather than a chunky row of full blocks.
+_COOLDOWN_BAR_WIDTH = 4
+_COOLDOWN_BAR_GLYPH = '▁'
+
+
+def _cooldown_bar_fill(remaining: int, total: int, width: int) -> int:
+    """Number of filled cells for a recharge bar `remaining`/`total` ticks from ready. Fills as it
+    recharges — at least one cell the whole time it's cooling, the full width once ready."""
+    if remaining <= 0 or total <= 0:
+        return width
+    fill = 1 - remaining / total
+    return max(1, round(fill * width))
+
+
 class EffectOverlaySystem(LayoutProcessor):
     """Renders and ages out transient combat visuals: the damage screen flash and
     the spell-cast impact burst.
@@ -133,6 +151,7 @@ class EffectOverlaySystem(LayoutProcessor):
         self._render_projectiles()
         self._render_particles()
         self._render_floating_numbers()
+        self._render_cast_cooldown()
 
     def _time_paused(self) -> bool:
         return get_singleton(GameState).time_paused
@@ -212,6 +231,31 @@ class EffectOverlaySystem(LayoutProcessor):
             number.ticks -= 1
             if number.ticks <= 0:
                 esper.delete_entity(ent, immediate=True)
+
+    def _render_cast_cooldown(self):
+        """Float a small recharge bar a row above the player while a cast cooldown is running, so
+        next-cast readiness reads without leaving the action. It fills as it nears ready, then
+        vanishes. Gone entirely once the wizard can cast again."""
+        actor = get_player_component(Actor)
+        pos = get_player_component(Position)
+        cam = self._camera()
+        if actor is None or pos is None or cam is None or actor.cast_cooldown <= 0:
+            return
+        block_x, block_y = self.layout.map_to_screen(map_x=pos.x, map_y=pos.y, cam_x=cam[0], cam_y=cam[1])
+        width = _COOLDOWN_BAR_WIDTH
+        start_x = block_x + TILE_SCALE // 2 - width // 2  # centered over the player's tile
+        y = block_y - 1  # the row just above the head
+        view = self.layout.map_viewport
+
+        filled = _cooldown_bar_fill(actor.cast_cooldown, actor.cast_cooldown_max, width)
+        fill_ratio = 1 - actor.cast_cooldown / actor.cast_cooldown_max
+        r, g, b = UI_SKY
+        k = 0.5 + 0.5 * fill_ratio  # dim right after casting, brightening as it nears ready
+        bright = (int(r * k), int(g * k), int(b * k))
+        for i in range(width):
+            sx = start_x + i
+            if view.contains(sx, y):
+                self.console.print(sx, y, _COOLDOWN_BAR_GLYPH, fg=bright if i < filled else UI_GRAY_DARK)
 
     def _render_cast_visual(self):
         visuals = esper.get_component(CastVisual)

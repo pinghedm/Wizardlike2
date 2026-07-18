@@ -1,6 +1,11 @@
 import pytest
 
-from tools.validate_data import validate_boss_abilities, validate_modifiers, validate_tiles
+from tools.validate_data import (
+    validate_boss_abilities,
+    validate_effect_multipliers,
+    validate_modifiers,
+    validate_tiles,
+)
 
 DAMAGING = [{'type': 'damage', 'power': 5}]
 NON_DAMAGING = [{'type': 'heal', 'power': 5}]
@@ -40,6 +45,30 @@ def test_validate_modifiers_rejects_modifiers_on_a_spell_with_no_damaging_effect
 
 def test_validate_modifiers_rejects_an_empty_list():
     assert validate_modifiers([], DAMAGING, 'Spell "x"') > 0
+
+
+# --- validate_effect_multipliers -----------------------------------------------
+
+
+def test_validate_effect_multipliers_accepts_resist_immune_and_vuln():
+    mults = {'damage': 0.5, 'stun': 0, 'slow': 1.5}  # resist, immune, vulnerable
+    assert validate_effect_multipliers(mults, 'Enemy "x"') == 0
+
+
+def test_validate_effect_multipliers_rejects_an_empty_map():
+    assert validate_effect_multipliers({}, 'Enemy "x"') > 0
+
+
+@pytest.mark.parametrize(
+    'mults',
+    [
+        {'nonsense': 0.5},  # not a real EffectType
+        {'damage': -1},  # negative multiplier
+        {'damage': 'lots'},  # non-numeric
+    ],
+)
+def test_validate_effect_multipliers_rejects_a_bad_map(mults):
+    assert validate_effect_multipliers(mults, 'Enemy "x"') > 0
 
 
 # --- validate_boss_abilities ---------------------------------------------------

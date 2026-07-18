@@ -6,9 +6,11 @@ import esper
 from src import persistence
 from src.audio import SoundId, cast_sound, play_sfx
 from src.components import (
+    Actor,
     Configuration,
     DamageModifier,
     EffectType,
+    Experience,
     Inventory,
     ItemType,
     KnownRecipes,
@@ -22,11 +24,19 @@ from src.components import (
     Stats,
     StatusEffects,
 )
-from src.constants import UI_PERIWINKLE, UI_SKY
+from src.constants import (
+    LEVEL_CAST_SPEEDUP,
+    MASTERY_CAST_SPEEDUP,
+    MIN_CAST_COST,
+    PLAYER_CAST_COST,
+    UI_PERIWINKLE,
+    UI_SKY,
+)
 from src.ecs_helpers import actor_name, get_player, get_singleton, try_get_singleton
 from src.systems.combat import apply_effect
 from src.systems.momentum import build_momentum, momentum_damage_mult
-from src.systems.progression import grant_spell_mastery, spell_charge_bonus, spell_power_mult
+from src.systems.movement import get_action_cooldown
+from src.systems.progression import grant_spell_mastery, spell_charge_bonus, spell_power_mult, spell_rank
 from src.systems.visuals import trigger_projectile
 
 
@@ -212,6 +222,17 @@ def _apply_spell_effects(
             apply_effect(target, resolved, origin=origin, caster_ent=caster)
 
 
+def get_cast_cooldown(player: int, stype: SpellType) -> int:
+    """Ticks before the player may cast again. A base cost that shrinks with the player's level and
+    the spell's mastery rank — investment makes casting faster — floored at MIN_CAST_COST, then
+    modulated by SLOW/HASTE like any other action (see get_action_cooldown)."""
+    exp = esper.try_component(player, Experience)
+    level = exp.level if exp is not None else 1
+    reduction = LEVEL_CAST_SPEEDUP * (level - 1) + MASTERY_CAST_SPEEDUP * spell_rank(stype)
+    base = max(MIN_CAST_COST, PLAYER_CAST_COST - reduction)
+    return get_action_cooldown(player, base)
+
+
 def cast_spell(spell_id: str, target_x: int, target_y: int):
     log = get_singleton(MessageLog)
 
@@ -239,6 +260,10 @@ def cast_spell(spell_id: str, target_x: int, target_y: int):
     ranked_up = grant_spell_mastery(stype)
     if ranked_up is not None:
         log.add_simple_message(f'Your mastery of {s_conf["name"]} deepens — rank {ranked_up}!', color=UI_PERIWINKLE)
+
+    # Rate-limit casting: the next cast must wait out this cooldown (shrinks with level/mastery).
+    actor = esper.component_for_entity(player, Actor)
+    actor.cast_cooldown = actor.cast_cooldown_max = get_cast_cooldown(player, stype)
 
     radius = s_conf.get('radius', 0)
     caster_origin = esper.component_for_entity(player, Position).point

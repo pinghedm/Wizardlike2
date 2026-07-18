@@ -28,7 +28,7 @@ from src.systems.momentum import (
     momentum_damage_mult,
     reset_momentum,
 )
-from src.systems.movement import can_act, get_action_cooldown, move_entity
+from src.systems.movement import can_act, can_cast, get_action_cooldown, move_entity
 from src.systems.processors import (
     ActionSystem,
     DeathSystem,
@@ -70,6 +70,7 @@ __all__ = [
     'apply_effect',
     'build_momentum',
     'can_act',
+    'can_cast',
     'can_craft_known_spell',
     'cast_spell',
     'refill_basic_spells',

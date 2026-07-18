@@ -283,6 +283,8 @@ class Actor:
     """Component for entities that can take actions based on cooldowns."""
 
     cooldown: int = 0
+    cast_cooldown: int = 0  # player only: ticks until the next spell may be cast (see can_cast)
+    cast_cooldown_max: int = 0  # the full value cast_cooldown was last set to, for the recharge UI
     speed: int = 100  # Number of ticks between actions
 
 
@@ -449,6 +451,19 @@ class Guardian:
     lives the stairs can't be descended, so clearing them is the floor's climax."""
 
     pass
+
+
+@dataclass
+class EffectMultipliers:
+    """Per-EffectType multiplier on incoming effects. Any unlisted type defaults to 1.0 (normal);
+    < 1 resists, 0 is immunity (the effect is fully shrugged off — no damage, no status), > 1 is a
+    vulnerability. Read at the apply_effect choke point, so it gates spells, enemy abilities, and
+    hazards alike."""
+
+    by_type: dict[EffectType, float] = field(default_factory=dict[EffectType, float])
+
+    def multiplier(self, effect_type: EffectType) -> float:
+        return self.by_type.get(effect_type, 1.0)
 
 
 @dataclass

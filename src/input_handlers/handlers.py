@@ -60,6 +60,7 @@ from src.states import (
 )
 from src.systems import (
     can_act,
+    can_cast,
     cast_spell,
     craft_known_spell,
     deal_damage,
@@ -470,6 +471,9 @@ def enter_targeting_for_slot(slot: int) -> DisplayMode:
 
     # A self-cast spell resolves on the caster, no targeting step.
     if s_conf['target'] == TargetMode.SELF:
+        if not can_cast(player):
+            play_sfx(SoundId.MENU_CANCEL)  # still recovering from the last cast
+            return get_singleton(GameState).display_mode
         ui_state.active_targeting_spell_id = None
         cast_spell(spell_id=stype.value, target_x=player_pos.x, target_y=player_pos.y)
         return DisplayMode.EXPLORING
@@ -586,6 +590,9 @@ def handle_targeting_input(action: InputAction | None):
             return DisplayMode.CASTING
         if reticle.target_ent is None:
             return DisplayMode.TARGETING  # nothing to hit; wait for one to wander in
+        if not can_cast(player):
+            play_sfx(SoundId.MENU_CANCEL)  # still recovering from the last cast
+            return DisplayMode.TARGETING
         cast_spell(spell_id=spell_id, target_x=reticle.x, target_y=reticle.y)
         return _resolve_after_cast(ret_ent, ui_state)
 

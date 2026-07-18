@@ -115,3 +115,15 @@ def can_act(entity: int) -> bool:
     if get_status(entity, StatusType.SLOW):
         return esper.component_for_entity(entity, Actor).cooldown <= 0
     return True
+
+
+def can_cast(entity: int) -> bool:
+    """Whether the player may cast a spell this input.
+
+    STUN blocks casting outright. Otherwise a cast cooldown (set by the last cast in cast_spell,
+    shrinking with level and mastery) throttles casting so spells can't be spammed — unlike
+    movement, which is deliberately uncapped.
+    """
+    if get_status(entity, StatusType.STUN):
+        return False
+    return esper.component_for_entity(entity, Actor).cast_cooldown <= 0

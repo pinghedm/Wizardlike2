@@ -224,6 +224,10 @@ def load_enemies_config(asset_loader: AssetLoader) -> dict[str, EnemyConfig]:
                         )
                         for a in config['abilities']
                     ]
+                if 'effect_multipliers' in config:
+                    config['effect_multipliers'] = {
+                        EffectType(etype): float(mult) for etype, mult in config['effect_multipliers'].items()
+                    }
                 if 'drops' in config:
                     config['drops'] = [
                         LootDrop(

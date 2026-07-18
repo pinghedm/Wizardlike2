@@ -10,6 +10,7 @@ from src.components import (
     Boss,
     ChaseTag,
     Configuration,
+    EffectMultipliers,
     Enemy,
     EnemyConfig,
     FieldOfView,
@@ -165,6 +166,12 @@ class RectangularRoom:
             spawn_enemy(enemy_cfg, x, y, rooms, home_room=self)
 
 
+# Deeper floors bite harder: a regular enemy's HP and damage grow this much per floor of depth
+# (floor 1 is unscaled). Bosses are exempt — their difficulty is hand-tuned in data.
+DEPTH_HP_GROWTH = 0.12
+DEPTH_DAMAGE_GROWTH = 0.08
+
+
 def spawn_enemy(
     enemy_cfg: EnemyConfig,
     x: int,
@@ -172,7 +179,8 @@ def spawn_enemy(
     rooms: list[RectangularRoom],
     home_room: RectangularRoom | None = None,
 ) -> int:
-    """Create an enemy entity at (x, y), mapping the behavior string to a tag."""
+    """Create an enemy entity at (x, y), mapping the behavior string to a tag. A regular enemy's
+    HP and damage scale up with the current floor's depth; bosses keep their hand-tuned data stats."""
     behavior_name = enemy_cfg['behavior'].upper()
     if behavior_name == 'PATROL':
         anchor = home_room or rooms[0]
@@ -185,6 +193,11 @@ def spawn_enemy(
     else:
         behavior_tag = ChaseTag()
 
+    is_boss = enemy_cfg.get('boss', False)
+    depth = _current_floor() - 1
+    hp = enemy_cfg['hp'] if is_boss else max(1, round(enemy_cfg['hp'] * (1 + DEPTH_HP_GROWTH * depth)))
+    damage = enemy_cfg['damage'] if is_boss else max(0, round(enemy_cfg['damage'] * (1 + DEPTH_DAMAGE_GROWTH * depth)))
+
     components: list[object] = [
         Position(x, y),
         Renderable(sprite_id=enemy_cfg['id'], color=to_rgb(enemy_cfg['color'])),
@@ -192,22 +205,25 @@ def spawn_enemy(
         AI(),
         behavior_tag,
         Enemy(
-            attack_damage=enemy_cfg['damage'],
-            bump_damage=enemy_cfg['damage'] // 2,
+            attack_damage=damage,
+            bump_damage=damage // 2,
             blocks_movement=enemy_cfg.get('blocks_movement', False),
             ability=enemy_cfg.get('ability'),
             xp_reward=enemy_cfg['xp'],
         ),
-        Stats(hp=enemy_cfg['hp'], max_hp=enemy_cfg['hp']),
+        Stats(hp=hp, max_hp=hp),
         StatusEffects(),
         FieldOfView(radius=8),
     ]
     drops = enemy_cfg.get('drops')
     if drops:
         components.append(Loot(drops=drops))
+    multipliers = enemy_cfg.get('effect_multipliers')
+    if multipliers:
+        components.append(EffectMultipliers(by_type=dict(multipliers)))
     # A boss both seals the exit (Guardian) and drives a phase-gated ability set (Boss), so it
     # implies the guardian tag — data authors need only set `boss: true`.
-    if enemy_cfg.get('boss'):
+    if is_boss:
         components.append(Boss(abilities=enemy_cfg.get('abilities', [])))
         components.append(Guardian())
     elif enemy_cfg.get('guardian'):

@@ -69,10 +69,19 @@ SHOP_HEAL_BASE_AMOUNT = 50
 # ~10% at the first shop, ~20% at the second, ~30% at the third.
 SHOP_RARE_SPELL_CHANCE = 0.1
 
-# Cooldown (in ticks) the player incurs per move/cast, before status modifiers.
+# Cooldown (in ticks) the player incurs per move, before status modifiers.
 # At TICKS_PER_SECOND this caps the player's action rate; SLOW doubles it and
 # HASTE halves it (see get_action_cooldown). Lower = more responsive movement.
 PLAYER_MOVE_COST = 5
+
+# Casting is rate-limited (movement is not): each cast sets a cooldown that must elapse before the
+# next. The base cost shrinks by LEVEL_CAST_SPEEDUP per player level and MASTERY_CAST_SPEEDUP per
+# spell-mastery rank — investment makes a wizard cast faster — floored at MIN_CAST_COST (~move
+# speed), then modulated by SLOW/HASTE. At TICKS_PER_SECOND=30, 30 ticks ≈ 1s between casts.
+PLAYER_CAST_COST = 30
+MIN_CAST_COST = 10
+LEVEL_CAST_SPEEDUP = 1
+MASTERY_CAST_SPEEDUP = 1
 
 # Recurring status effects (poison, regen) fire one pulse every this many ticks
 # while active. A status' authored `duration` is in ticks, so author it as a

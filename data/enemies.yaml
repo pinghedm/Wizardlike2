@@ -13,8 +13,8 @@ enemies:
     behavior: CHASE
     floors: [1, 5]
     drops:
-      - {type: gold, min: 3, max: 8, chance: 3}
-      - {type: fire_crystal, min: 0, max: 1, chance: 1}
+      - { type: gold, min: 3, max: 8, chance: 3 }
+      - { type: fire_crystal, min: 0, max: 1, chance: 1 }
   - id: slime
     sprite:
       path: data/spritesheets/People.png
@@ -29,7 +29,7 @@ enemies:
     behavior: PATROL
     floors: [1, 10]
     drops:
-      - {type: gold, min: 1, max: 5, chance: 1}
+      - { type: gold, min: 1, max: 5, chance: 1 }
   - id: ghost
     sprite:
       path: data/spritesheets/People.png
@@ -79,6 +79,9 @@ enemies:
     blocks_movement: true
     guardian: true
     floors: [1, 10]
+    effect_multipliers:
+      damage: 0.75   # heavy plating blunts direct hits
+      knockback: 0   # too heavy to shove off the stairs
   - id: frost_shade
     sprite:
       path: data/spritesheets/People.png
@@ -92,6 +95,9 @@ enemies:
     xp: 14
     behavior: CHASE
     floors: [4, 10]
+    effect_multipliers:
+      slow: 0 # a creature of cold: chill does nothing
+      poison: 0.5 # resists venom
     ability:
       range: 4
       effects:
@@ -106,13 +112,17 @@ enemies:
       region: [210, 0, 10, 10]
       scale: 1.0
     color: [200, 40, 200]
-    hp: 400
+    hp: 550
     damage: 25
     speed: 30
     xp: 200
     behavior: CHASE
     boss: true
     floors: [10, 10]
+    effect_multipliers:
+      damage: 0.6 # armored: raw damage is a grind, so lean on reactions and status setups
+      stun: 0 # unbreakable: can't be stun-locked
+      poison: 0 # ignores damage-over-time
     abilities:
       - name: Ember Lash
         range: 6

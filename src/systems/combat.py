@@ -6,6 +6,7 @@ import esper
 from src.audio import SoundId, play_sfx
 from src.components import (
     Effect,
+    EffectMultipliers,
     EffectType,
     ItemType,
     Loot,
@@ -150,6 +151,21 @@ def apply_status_pulse(ent: int, status_type: StatusType, power: int, log: Messa
             log.add_simple_message(f'{name} regained {power} HP.', color=UI_GREEN_BRIGHT)
 
 
+def _effect_multiplier(target_ent: int, effect_type: EffectType) -> float:
+    """The target's incoming-effect multiplier for `effect_type` (1.0 if it has no EffectMultipliers)."""
+    mods = esper.try_component(target_ent, EffectMultipliers)
+    return mods.multiplier(effect_type) if mods is not None else 1.0
+
+
+def _scale_effect(effect: Effect, mult: float) -> Effect:
+    """Scale an effect's strength by `mult`: its power when it carries one, else its duration —
+    so a resisted hit lands softer, a resisted status wears off sooner, a vulnerable target suffers
+    more, all through the effect's own fields."""
+    if effect.power:
+        return replace(effect, power=max(0, round(effect.power * mult)))
+    return replace(effect, duration=max(1, round(effect.duration * mult)))
+
+
 def apply_effect(
     target_ent: int,
     effect: Effect,
@@ -162,11 +178,25 @@ def apply_effect(
     copy of the effect on the target's StatusEffects for StatusSystem to age. `origin`
     is the push source for knockback (the target is shoved away from it); `caster_ent`
     is who cast the effect (drain heals them).
+
+    The target's EffectMultipliers scale the effect first: 0 shrugs it off entirely (immunity),
+    < 1 resists, > 1 makes it hit harder — so one gate covers resistances for spells, enemy
+    abilities, and hazards.
     """
     log = get_singleton(MessageLog)
     stats = esper.component_for_entity(target_ent, Stats)
     status = esper.component_for_entity(target_ent, StatusEffects)
     target_name = actor_name(target_ent)
+
+    mult = _effect_multiplier(target_ent, effect.type)
+    if mult == 0:
+        log.add_simple_message(f'{target_name} is immune to {effect.type.name.lower()}!', color=UI_GRAY_LIGHT)
+        play_sfx(SoundId.FIZZLE)
+        return
+    if mult > 1:
+        log.add_simple_message(f'{target_name} is vulnerable to {effect.type.name.lower()}!', color=UI_SKY)
+    if mult != 1.0:
+        effect = _scale_effect(effect, mult)
 
     if effect.type == EffectType.DAMAGE:
         dmg = _apply_hp_damage(target_ent, effect.power)

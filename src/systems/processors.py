@@ -142,6 +142,8 @@ class ActionSystem(esper.Processor):
         for _ent, actor in esper.get_component(Actor):
             if actor.cooldown > 0:
                 actor.cooldown -= 1
+            if actor.cast_cooldown > 0:
+                actor.cast_cooldown -= 1
 
 
 class StatusSystem(esper.Processor):

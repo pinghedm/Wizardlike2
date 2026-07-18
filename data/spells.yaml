@@ -5,10 +5,10 @@ spells:
     target: enemy
     radius: 0
     basic: true
-    charges: 10
+    charges: 6
     effects:
       - type: damage
-        power: 8
+        power: 6
     momentum_damage_per_stack: 0.08
     mastery:
       casts_per_rank: 4

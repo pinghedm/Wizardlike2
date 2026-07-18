@@ -67,6 +67,7 @@ ALLOWED_ENEMY_FIELDS = {
     'floors',
     'ability',
     'abilities',
+    'effect_multipliers',
     'blocks_movement',
     'guardian',
     'boss',
@@ -199,6 +200,28 @@ def validate_effects(effects, context_label: str) -> int:
             elif not isinstance(effect[req_field], int) or effect[req_field] <= 0:
                 print(f'ERROR: {context_label} effect #{eff_idx} field "{req_field}" must be a positive integer.')
                 errors += 1
+    return errors
+
+
+def validate_effect_multipliers(multipliers, context_label: str) -> int:
+    """Validate an enemy's `effect_multipliers` map. Returns the number of errors found.
+
+    Each key is an EffectType name; each value is an incoming-effect multiplier >= 0 (0 = immune,
+    < 1 resists, > 1 vulnerable).
+    """
+    if not isinstance(multipliers, dict) or not multipliers:
+        print(f'ERROR: {context_label} "effect_multipliers" must be a non-empty mapping.')
+        return 1
+
+    valid_effect_type_names = [e.value for e in EffectType]
+    errors = 0
+    for key, value in multipliers.items():
+        if key not in valid_effect_type_names:
+            print(f'ERROR: {context_label} effect_multipliers has invalid effect type "{key}".')
+            errors += 1
+        if not isinstance(value, (int, float)) or isinstance(value, bool) or value < 0:
+            print(f'ERROR: {context_label} effect_multipliers["{key}"] must be a number >= 0.')
+            errors += 1
     return errors
 
 
@@ -680,6 +703,9 @@ def validate_data() -> bool:
 
             if 'abilities' in enemy:
                 errors += validate_boss_abilities(enemy['abilities'], f'Enemy "{eid}"')
+
+            if 'effect_multipliers' in enemy:
+                errors += validate_effect_multipliers(enemy['effect_multipliers'], f'Enemy "{eid}"')
 
             if 'drops' in enemy:
                 errors += validate_drops(enemy['drops'], ing_ids, f'Enemy "{eid}"')

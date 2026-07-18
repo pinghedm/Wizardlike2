@@ -2,7 +2,7 @@ from typing import TYPE_CHECKING, NotRequired, TypedDict
 
 if TYPE_CHECKING:
     from src.components.components import BossAbility, DamageModifier, Effect, LootDrop
-    from src.components.enums import ItemType, TargetMode, TileType
+    from src.components.enums import EffectType, ItemType, TargetMode, TileType
 
 
 class RecipeConfig(TypedDict):
@@ -78,6 +78,7 @@ class EnemyConfig(TypedDict):
     guardian: NotRequired[bool]
     boss: NotRequired[bool]  # implies the exit-seal; carries a phase-gated `abilities` set
     abilities: NotRequired[list[BossAbility]]
+    effect_multipliers: NotRequired[dict[EffectType, float]]  # incoming-effect resist/immune/vuln
     drops: NotRequired[list[LootDrop]]
 
 
