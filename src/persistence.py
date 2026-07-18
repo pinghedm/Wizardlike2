@@ -4,11 +4,11 @@ import pickle
 from typing import TypedDict
 
 import esper
-import tcod.event
-from tcod.sdl.joystick import ControllerAxis, ControllerButton
 
 from src.components import (
+    ControllerAxis,
     ControllerBinding,
+    ControllerButton,
     InputAction,
     Inventory,
     ItemType,
@@ -132,7 +132,7 @@ def _serialize_keybindings(keybindings: Keybindings) -> _RawKeybindings:
 
 def _deserialize_keybindings(data: _RawKeybindings) -> Keybindings:
     return Keybindings(
-        bindings={InputAction[name]: tcod.event.KeySym(value) for name, value in data.get('bindings', {}).items()},
+        bindings={InputAction[name]: value for name, value in data.get('bindings', {}).items()},
         controller={InputAction[name]: _deserialize_control(c) for name, c in data.get('controller', {}).items()},
     )
 

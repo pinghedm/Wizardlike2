@@ -3,9 +3,8 @@ from typing import TYPE_CHECKING
 
 import esper
 import numpy as np
+import pygame
 import tcod
-import tcod.map
-from tcod import libtcodpy
 
 from src import persistence
 from src.audio import SoundId, play_sfx
@@ -30,6 +29,7 @@ from src.components import (
 from src.constants import (
     RGB,
     STATUS_PULSE_INTERVAL,
+    TILE_PX,
     TILE_SCALE,
     TRAP_DETECT_RADIUS,
     UI_BLACK,
@@ -47,8 +47,10 @@ from src.ecs_helpers import (
     spawn_item_entity,
     try_get_singleton,
 )
-from src.layout import LayoutProcessor, Rect
+from src.fov import compute_fov
+from src.layout import Rect
 from src.map_objects import Map, Tile
+from src.render import Viewport, compute_viewport
 from src.states import WORLD_VIEW_MODES, DisplayMode, GameState
 from src.systems.combat import apply_effect, apply_status_pulse, roll_loot
 from src.systems.momentum import build_momentum
@@ -218,15 +220,7 @@ class FOVSystem(esper.Processor):
 
         for ent, (pos, fov) in esper.get_components(Position, FieldOfView):
             if fov.dirty:
-                # compute_fov expects [height, width] or [width, height] depending on order
-                # With 'F' order (column-major), it matches our [x][y] structure
-                fov_map = tcod.map.compute_fov(
-                    transparency=game_map.transparent,
-                    pov=(pos.x, pos.y),
-                    radius=fov.radius,
-                    light_walls=True,
-                    algorithm=libtcodpy.FOV_BASIC,
-                )
+                fov_map = compute_fov(game_map.transparent, (pos.x, pos.y), fov.radius)
 
                 # Build the visible-tile set from just the lit cells (np.argwhere), rather than
                 # scanning the whole map in Python; fold the same mask into explored for the player.
@@ -322,9 +316,11 @@ def render_entities(
         draw_block(console, asset_loader, rend.sprite_id, block_x, block_y, fg=rend.color, bg=bg)
 
 
-class RenderSystem(LayoutProcessor):
-    def __init__(self, layout: Layout, asset_loader: AssetLoader):
-        super().__init__(layout)
+class RenderSystem(esper.Processor):
+    """Draws the dungeon — tiles then entities — into the pygame window surface."""
+
+    def __init__(self, surface: pygame.Surface, asset_loader: AssetLoader):
+        self.surface = surface
         self.asset_loader = asset_loader
 
     def process(self):
@@ -338,56 +334,51 @@ class RenderSystem(LayoutProcessor):
 
         player_fov = get_player_component(FieldOfView)
         player_pos = get_player_component(Position)
-
-        # The camera follows the player; map cells draw into the map viewport,
-        # converted from map space to screen space (the console cell to draw at):
-        #   screen = viewport.origin + map_cell - camera
-        view = self.layout.map_viewport
         focus_x = player_pos.x if player_pos else game_map.width // 2
         focus_y = player_pos.y if player_pos else game_map.height // 2
-        cam_x, cam_y = self.layout.camera_offset(focus_x, focus_y, game_map.width, game_map.height)
+        viewport = compute_viewport(self.surface, focus_x, focus_y, game_map.width, game_map.height)
 
-        self._render_map(game_map, view, cam_x, cam_y, player_fov)
-        render_entities(self.console, self.layout, self.asset_loader, cam_x, cam_y, player_fov)
+        self._render_map(game_map, viewport, player_fov)
+        self._render_entities(viewport, player_fov)
 
-    def _render_map(self, game_map: Map, view: Rect, cam_x: int, cam_y: int, player_fov: FieldOfView | None) -> None:
-        """Draw the tiles under the viewport. Each tile fills a TILE_SCALE x TILE_SCALE block of
-        cells, so the dungeon reads larger than the one-cell HUD. Walk only the tiles under the
-        viewport and inline the block transform (origin hoisted out of the loop): at this cell
-        count the Rect that map_viewport rebuilds per call otherwise dominates the frame
-        (measured ~28ms -> <1ms here)."""
-        tiles_x, tiles_y = self.layout.viewport_tiles
-        origin_x, origin_y = view.x - cam_x * TILE_SCALE, view.y - cam_y * TILE_SCALE
+    def _render_map(self, game_map: Map, viewport: Viewport, player_fov: FieldOfView | None) -> None:
+        """Draw the explored/visible tiles under the viewport: a bg rect, then the tile's sprite
+        (a glyph for terrain, an image for the exit). Explored-but-unseen tiles are dimmed; a
+        still-sealed exit is dimmed until its guardians are cleared."""
+        tiles_x = viewport.width // TILE_PX + 1
+        tiles_y = viewport.height // TILE_PX + 1
         sealed = exit_is_sealed()
-        for x in range(cam_x, min(game_map.width, cam_x + tiles_x)):
-            for y in range(cam_y, min(game_map.height, cam_y + tiles_y)):
+        for x in range(viewport.cam_x, min(game_map.width, viewport.cam_x + tiles_x)):
+            for y in range(viewport.cam_y, min(game_map.height, viewport.cam_y + tiles_y)):
                 is_visible = player_fov is not None and Point(x, y) in player_fov.visible_tiles
-                is_explored = game_map.explored[x, y]
-                if not is_visible and not is_explored:
+                if not is_visible and not game_map.explored[x, y]:
                     continue
 
                 tile = game_map.tiles[x][y]
                 # A concealed trap the player hasn't detected yet masquerades as plain floor.
                 if tile.hidden and not game_map.revealed[x, y]:
                     tile = game_map.floor_look
-                fg = tile.fg
-                bg = tile.bg
-
-                # The exit stays dim until its guardians are cleared, then lights up.
+                fg, bg = tile.fg, tile.bg
                 if tile.is_exit and sealed:
                     fg = to_rgb([int(c * Map.SEALED_EXIT_DIM) for c in fg])
-
                 if not is_visible:
-                    # Dim the colors for explored but not visible tiles
                     fg = to_rgb([int(c * 0.3) for c in fg])
                     bg = to_rgb([int(c * 0.3) for c in bg])
 
-                draw_block(
-                    self.console,
-                    self.asset_loader,
-                    tile.sprite_id,
-                    origin_x + x * TILE_SCALE,
-                    origin_y + y * TILE_SCALE,
-                    fg=fg,
-                    bg=bg,
-                )
+                px, py = viewport.tile_to_px(x, y)
+                pygame.draw.rect(self.surface, bg, (px, py, TILE_PX, TILE_PX))
+                self.surface.blit(self.asset_loader.get_sprite(tile.sprite_id, TILE_PX, fg), (px, py))
+
+    def _render_entities(self, viewport: Viewport, player_fov: FieldOfView | None) -> None:
+        """Blit each visible entity's sprite at its tile, over a tint of its highest-priority
+        active status (a filled bg tile) when it has one."""
+        for ent, (pos, rend) in esper.get_components(Position, Renderable):
+            if player_fov is not None and pos.point not in player_fov.visible_tiles:
+                continue
+            px, py = viewport.tile_to_px(pos.x, pos.y)
+            if not viewport.contains_px(px, py):
+                continue
+            tint = _status_tint(ent)
+            if tint is not None:
+                pygame.draw.rect(self.surface, blend(UI_BLACK, tint, 0.5), (px, py, TILE_PX, TILE_PX))
+            self.surface.blit(self.asset_loader.get_sprite(rend.sprite_id, TILE_PX, rend.color), (px, py))

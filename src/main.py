@@ -4,22 +4,20 @@ import time
 from collections.abc import Callable
 
 import esper
-import tcod
-import tcod.sdl.joystick
+import pygame
 
 from src import audio, persistence
 from src.audio import AudioEngine, MusicTrack, SoundId
-from src.components import InputAction, MessageLog, MetaSaveState, Modal, Settings
+from src.components import ControllerButton, InputAction, MessageLog, MetaSaveState, Modal, Settings
 from src.constants import (
-    DISPLAY_SCALE,
-    FONT_TILE_PX,
     MAX_ITEMS_PER_ROOM,
     MAX_ROOMS,
     ROOM_MAX_SIZE,
     ROOM_MIN_SIZE,
-    SCREEN_HEIGHT,
-    SCREEN_WIDTH,
     TICKS_PER_SECOND,
+    UI_BLACK,
+    WINDOW_HEIGHT,
+    WINDOW_WIDTH,
 )
 from src.data_loaders import AssetLoader, get_game_configs, load_music_config, load_sounds_config
 from src.debug import debug_log
@@ -51,7 +49,6 @@ from src.input_handlers import (
     resolve_action,
     try_capture_remap_event,
 )
-from src.layout import Layout
 from src.procgen import generate_dungeon
 from src.states import DisplayMode, GameState, HandlerResult, PendingTransition
 from src.systems import (
@@ -67,15 +64,6 @@ from src.systems import (
     refill_basic_spells,
 )
 from src.targeting import CycleTargetSystem
-from src.ui_systems import (
-    EffectOverlaySystem,
-    HUDSystem,
-    MapViewSystem,
-    MenuSystem,
-    MinimapSystem,
-    ModalSystem,
-    TargetingOverlaySystem,
-)
 
 
 def init_game_world(asset_loader: AssetLoader):
@@ -123,15 +111,13 @@ def add_logic_systems():
     esper.add_processor(MetaSaveSystem())
 
 
-def add_render_systems(layout: Layout, asset_loader: AssetLoader):
-    esper.add_processor(RenderSystem(layout, asset_loader))
-    esper.add_processor(TargetingOverlaySystem(layout))
-    esper.add_processor(EffectOverlaySystem(layout))
-    esper.add_processor(MinimapSystem(layout, asset_loader))
-    esper.add_processor(MenuSystem(layout))
-    esper.add_processor(HUDSystem(layout))
-    esper.add_processor(MapViewSystem(layout))
-    esper.add_processor(ModalSystem(layout))
+def add_render_systems(surface: pygame.Surface, asset_loader: AssetLoader) -> RenderSystem:
+    """Register the pygame world renderer, returned so the loop can repoint its surface on
+    a window resize. HUD, overlays, menus, minimap, map view, and modals are ported in a
+    later step; only the dungeon draws for now."""
+    render_system = RenderSystem(surface, asset_loader)
+    esper.add_processor(render_system)
+    return render_system
 
 
 def init_main_menu():
@@ -181,12 +167,15 @@ def update_audio(audio_engine: AudioEngine | None, game_state: GameState):
     audio_engine.play_music(_track_for_mode(game_state.display_mode))
 
 
-def dispatch_input(
-    event: tcod.event.Event, game_state: GameState, controller: ControllerInput, now: float
-) -> PendingTransition | None:
-    """The single input router: resolve any raw event to an action and dispatch it.
+_CONTROLLER_EVENTS = (pygame.CONTROLLERAXISMOTION, pygame.CONTROLLERBUTTONDOWN, pygame.CONTROLLERBUTTONUP)
 
-    Keyboard events resolve through resolve_action; controller events through
+
+def dispatch_input(
+    event: pygame.event.Event, game_state: GameState, controller: ControllerInput, now: float
+) -> PendingTransition | None:
+    """The single input router: resolve any raw pygame event to an action and dispatch it.
+
+    Key events resolve through resolve_action; controller events through
     ControllerInput.handle_event (d-pad/stick/triggers + the quick-cast modifier, with
     hold-to-repeat) — `now` drives that repeat timing. The live controller readout records
     a pressed button even when a pending Settings remap then consumes the event, so noting
@@ -194,13 +183,13 @@ def dispatch_input(
     """
     keybindings = get_singleton(Settings).keybindings
 
-    if isinstance(event, tcod.event.ControllerButton) and event.pressed:
-        note_controller_button(event.button)
+    if event.type == pygame.CONTROLLERBUTTONDOWN:
+        note_controller_button(ControllerButton(event.button))
 
     if game_state.display_mode == DisplayMode.SETTINGS and try_capture_remap_event(event):
         return None
 
-    if isinstance(event, (tcod.event.ControllerAxis, tcod.event.ControllerButton)):
+    if event.type in _CONTROLLER_EVENTS:
         action = controller.handle_event(event, now, keybindings)
     else:
         action = resolve_action(event, keybindings)
@@ -327,131 +316,91 @@ def main():
     # which only flushes while paused, might not catch first.
     atexit.register(persistence.flush_meta)
 
-    # Asset Loader
+    pygame.init()
+    screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.RESIZABLE)
+    pygame.display.set_caption('WizardLike')
+    # Hold-to-repeat for keys, so holding a movement key keeps stepping. Normal movement isn't
+    # cooldown-gated (see can_act), so this interval sets the walking speed directly: 90ms ~= 11
+    # steps/sec. Lower = faster; the 200ms delay is the pause before a hold starts repeating.
+    pygame.key.set_repeat(200, 90)
+
     asset_loader = AssetLoader()
+    get_game_configs(asset_loader)  # register sprites/chars + load configs (memoized)
 
-    # Load Configs (memoized) to register sprites/chars
-    get_game_configs(asset_loader)
+    # Register processors once. They are stateless and survive the clear_database()
+    # done on load / new game, so they are never re-added.
+    add_logic_systems()
+    render_system = add_render_systems(screen, asset_loader)
 
-    # BUILD the master tileset
-    tileset = asset_loader.build_tileset()
+    # Boot straight into a new game. (The title menu returns once menus are ported.)
+    init_game_world(asset_loader)
+    get_singleton(GameState).display_mode = DisplayMode.EXPLORING
 
-    with tcod.context.new(
-        columns=SCREEN_WIDTH,
-        rows=SCREEN_HEIGHT,
-        width=SCREEN_WIDTH * FONT_TILE_PX,
-        height=SCREEN_HEIGHT * FONT_TILE_PX,
-        tileset=tileset,
-        title='WizardLike',
-        vsync=True,
-    ) as context:
-        root_console = tcod.console.Console(SCREEN_WIDTH, SCREEN_HEIGHT)
-        layout = Layout(root_console)
+    # Open the audio device. main() holds the engine so it survives the clear_database()
+    # on new game / load (update_audio re-attaches it); shutdown closes the device on exit.
+    # Stays silent if no device is available.
+    settings = get_singleton(Settings)
+    audio_engine = audio.init_audio(
+        sound_specs=load_sounds_config(),
+        music_files=load_music_config(),
+        music_volume=settings.music_volume,
+        sfx_volume=settings.sfx_volume,
+        muted=settings.muted,
+    )
+    atexit.register(audio.shutdown)
 
-        # Register processors once. They are stateless and survive the
-        # clear_database() done on load / new game, so they are never re-added.
-        add_logic_systems()
-        add_render_systems(layout, asset_loader)
+    # Enable gamepad input. Connected controllers are held in a list so SDL keeps them
+    # open and keeps delivering their events; the list is refreshed on plug/unplug.
+    controllers = connected_controllers()
+    debug_log(f'controllers connected: {len(controllers)}')
+    controller = ControllerInput()
 
-        # Boot into the title screen (New Game / Continue / Quit).
-        init_main_menu()
+    clock = pygame.time.Clock()
+    frame = 0
+    while True:
+        frame_start = time.perf_counter()
+        frame += 1
 
-        # Open the audio device and start the menu music. main() holds the engine so it
-        # survives the clear_database() on new game / load (update_audio re-attaches it);
-        # shutdown closes the device on exit. Stays silent if no device is available.
-        settings = get_singleton(Settings)
-        audio_engine = audio.init_audio(
-            sound_specs=load_sounds_config(),
-            music_files=load_music_config(),
-            music_volume=settings.music_volume,
-            sfx_volume=settings.sfx_volume,
-            muted=settings.muted,
-        )
-        atexit.register(audio.shutdown)
+        game_state = get_singleton(GameState)
+        update_pause_state(game_state)
+        update_audio(audio_engine, game_state)
 
-        # Enable gamepad input. Connected controllers are held in a list so SDL
-        # keeps them open and keeps delivering their button events; the list is
-        # refreshed when one is plugged in or removed.
-        tcod.sdl.joystick.init()
-        controllers = connected_controllers()
-        debug_log(f'controllers connected: {len(controllers)}')
+        screen.fill(UI_BLACK)
+        esper.process()
+        pygame.display.flip()
 
-        # Turns d-pad / stick / trigger input into discrete, repeating actions.
-        controller = ControllerInput()
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                sys.exit()
+            if event.type == pygame.VIDEORESIZE:
+                screen = pygame.display.set_mode((event.w, event.h), pygame.RESIZABLE)
+                render_system.surface = screen
+                continue
+            if event.type in (pygame.CONTROLLERDEVICEADDED, pygame.CONTROLLERDEVICEREMOVED):
+                controllers = connected_controllers()
+                debug_log(f'controllers changed: {len(controllers)} connected')
+                continue
 
-        tick_rate = 1 / TICKS_PER_SECOND
+            old_mode = game_state.display_mode
+            transition = dispatch_input(event, game_state, controller, frame_start)
 
-        frame = 0
-        while True:
-            frame_start = time.perf_counter()
-            frame += 1
-
-            # React to a resized window: size the console to the window divided by
-            # DISPLAY_SCALE (so present() upscales each cell), then repoint the
-            # layout so its panels recompute. recommended_console_size() already
-            # divides the window by the native tile size; DISPLAY_SCALE makes cells
-            # that many times chunkier.
-            native_columns, native_rows = context.recommended_console_size()
-            columns = max(1, native_columns // DISPLAY_SCALE)
-            rows = max(1, native_rows // DISPLAY_SCALE)
-            if (columns, rows) != (root_console.width, root_console.height):
-                root_console = tcod.console.Console(columns, rows)
-                layout.console = root_console
-
-            # Fetch fresh game state
+            # Carry out any queued world command. clear_database() wipes entities and
+            # components but leaves the (stateless) processors in place, so a load / new
+            # game may replace the GameState singleton.
+            apply_pending_transition(transition, game_state, asset_loader)
             game_state = get_singleton(GameState)
 
-            # Update time_paused based on mode or modals
-            update_pause_state(game_state)
+            # If the state changed, break the event loop to redraw immediately.
+            if game_state.display_mode != old_mode:
+                break
 
-            # Keep audio attached, volumes synced, and the right track looping for this screen.
-            update_audio(audio_engine, game_state)
+        # A held d-pad / stick / trigger repeats like a held key, once it is due.
+        repeat_action = controller.tick(frame_start)
+        if repeat_action is not None:
+            transition = dispatch_action(repeat_action, game_state)
+            apply_pending_transition(transition, game_state, asset_loader)
 
-            root_console.clear()
-
-            # Run all processors
-            debug_log(f'frame {frame}: process begin (mode={game_state.display_mode}, paused={game_state.time_paused})')
-            esper.process()
-            debug_log(f'frame {frame}: process end')
-
-            context.present(root_console)
-            debug_log(f'frame {frame}: present end')
-
-            for event in tcod.event.get():
-                if isinstance(event, tcod.event.Quit):
-                    sys.exit()
-
-                if isinstance(event, tcod.event.ControllerDevice):
-                    controllers = connected_controllers()
-                    debug_log(f'controllers changed: {len(controllers)} connected')
-                    continue
-
-                old_mode = game_state.display_mode
-                debug_log(f'frame {frame}: dispatch {type(event).__name__}')
-                transition = dispatch_input(event, game_state, controller, frame_start)
-
-                # Carry out any queued world command. clear_database() wipes entities and
-                # components but leaves the (stateless) processors in place, so a
-                # load / new game may replace the GameState singleton.
-                apply_pending_transition(transition, game_state, asset_loader)
-                game_state = get_singleton(GameState)
-
-                # If the state changed, break the event loop to redraw immediately
-                if game_state.display_mode != old_mode:
-                    break
-
-            # A held d-pad / stick / trigger repeats like a held key, once it is due.
-            repeat_action = controller.tick(frame_start)
-            if repeat_action is not None:
-                transition = dispatch_action(repeat_action, game_state)
-                apply_pending_transition(transition, game_state, asset_loader)
-                game_state = get_singleton(GameState)
-
-            # Precise timing
-            elapsed = time.perf_counter() - frame_start
-            remaining = tick_rate - elapsed
-            if remaining > 0:
-                time.sleep(remaining)
+        clock.tick(TICKS_PER_SECOND)
 
 
 if __name__ == '__main__':

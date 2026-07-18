@@ -2,6 +2,7 @@ from collections import Counter
 from collections.abc import Sequence
 
 import esper
+import pygame
 
 from src import persistence
 from src.components import (
@@ -430,7 +431,8 @@ class MenuSystem(LayoutProcessor):
             if ui_state.remapping_action == action:
                 self.console.print(x + self.SETTINGS_KEY_COL, row, 'Press any key or button...', fg=color)
             else:
-                self.console.print(x + self.SETTINGS_KEY_COL, row, keybindings.bindings[action].name, fg=color)
+                key_label = pygame.key.name(keybindings.bindings[action]).upper()
+                self.console.print(x + self.SETTINGS_KEY_COL, row, key_label, fg=color)
                 if has_controller:
                     self.console.print(
                         x + self.SETTINGS_CONTROLLER_COL, row, controller_binding_label(action, keybindings), fg=color

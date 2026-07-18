@@ -24,6 +24,13 @@ TICKS_PER_SECOND = 30
 # which draw one cell each — keep their normal size. 1 is the old 1-cell-per-tile view.
 TILE_SCALE = 2
 
+# A map tile is drawn TILE_PX square. UI_FONT_PX is the base HUD/menu text height. WINDOW_WIDTH/HEIGHT are
+# the default window size; the viewport shows more map when the window is enlarged.
+TILE_PX = 40
+UI_FONT_PX = 20
+WINDOW_WIDTH = 1600
+WINDOW_HEIGHT = 1000
+
 # Dungeon room generation. Rooms are placed by rejection sampling, so MAX_ROOMS is
 # an attempt count rather than a guarantee; a higher count packs the large map with
 # rooms instead of long stretches of corridor.

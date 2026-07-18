@@ -2,16 +2,14 @@ import os
 import shutil
 
 import esper
+import pygame
 import pytest
-import tcod.console
-import tcod.event
 
 from src import main, persistence
 from src.components import UIState
-from src.constants import SAVE_DIR, SCREEN_HEIGHT, SCREEN_WIDTH
+from src.constants import SAVE_DIR
 from src.data_loaders import AssetLoader
 from src.ecs_helpers import get_singleton
-from src.layout import Layout
 from src.states import DisplayMode, GameState, PendingTransition
 from src.systems import (
     ActionSystem,
@@ -21,7 +19,6 @@ from src.systems import (
     RenderSystem,
     StatusSystem,
 )
-from src.ui_systems import HUDSystem, MenuSystem, ModalSystem, TargetingOverlaySystem
 from tests.headless_runner import HeadlessRunner
 
 
@@ -60,11 +57,9 @@ def test_add_logic_systems_registers_processors():
         assert esper.get_processor(processor) is not None
 
 
-def test_add_render_systems_registers_processors():
-    layout = Layout(tcod.console.Console(SCREEN_WIDTH, SCREEN_HEIGHT))
-    main.add_render_systems(layout, AssetLoader())
-    for processor in (RenderSystem, MenuSystem, HUDSystem, ModalSystem, TargetingOverlaySystem):
-        assert esper.get_processor(processor) is not None
+def test_add_render_systems_registers_the_world_renderer():
+    main.add_render_systems(pygame.Surface((320, 200)), AssetLoader())
+    assert esper.get_processor(RenderSystem) is not None
 
 
 # Every display_mode that dispatch_input routes to an input handler. A benign,
@@ -85,7 +80,7 @@ def test_dispatch_input_routes_every_mode(mode):
     runner = HeadlessRunner(use_random_map=False)
     runner.game_state.display_mode = mode
 
-    runner.simulate_key(tcod.event.KeySym.F1)
+    runner.simulate_key(pygame.K_F1)
 
     assert isinstance(runner.display_mode, DisplayMode)
 

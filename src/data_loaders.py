@@ -6,6 +6,7 @@ from typing import NotRequired, TypedDict
 
 import numpy as np
 import numpy.typing as npt
+import pygame
 import tcod
 import yaml
 from PIL import Image
@@ -30,7 +31,7 @@ from src.components import (
     TileConfig,
     TileType,
 )
-from src.constants import DATA_DIR, FONT_FILE, FONT_TILE_PX, TILE_SCALE
+from src.constants import DATA_DIR, FONT_FILE, FONT_TILE_PX, RGB, TILE_SCALE, UI_WHITE
 from src.debug import debug_log
 
 
@@ -349,6 +350,10 @@ class AssetLoader:
     def __init__(self):
         self._cache: dict[str, np.ndarray] = {}
         self._mapping: dict[str, SpriteDefinition] = {}
+        # pygame render caches, populated lazily during rendering (once a display exists).
+        self._images: dict[str, pygame.Surface] = {}
+        self._sprites: dict[tuple[str, int, RGB | None], pygame.Surface] = {}
+        self._fonts: dict[int, pygame.font.Font] = {}
 
     def register_char(self, sprite_id: str, char: str):
         """Register a font-based character directly."""
@@ -468,3 +473,44 @@ class AssetLoader:
         None for font glyphs / 1x \u2014 in which case the renderer fills the block itself."""
         definition = self._mapping.get(sprite_id)
         return definition.block_codepoints if definition else None
+
+    def font(self, size: int) -> pygame.font.Font:
+        """The game typeface at `size` px, cached per size."""
+        if size not in self._fonts:
+            self._fonts[size] = pygame.font.Font(FONT_FILE, size)
+        return self._fonts[size]
+
+    def _source_image(self, path: str) -> pygame.Surface:
+        if path not in self._images:
+            self._images[path] = pygame.image.load(path).convert_alpha()
+        return self._images[path]
+
+    def get_sprite(self, sprite_id: str, size: int, fg: RGB | None = None) -> pygame.Surface:
+        """A `size`x`size` px Surface for `sprite_id`. An image sprite blits its source PNG
+        region scaled to fit (tinted by `fg` when it isn't white, matching the old fg multiply);
+        a font/char sprite renders the glyph in `fg` (white by default), centered on a
+        transparent tile. Cached per (sprite_id, size, fg)."""
+        key = (sprite_id, size, fg)
+        cached = self._sprites.get(key)
+        if cached is not None:
+            return cached
+
+        definition = self._mapping.get(sprite_id)
+        if definition is not None and definition.path is not None:
+            source = self._source_image(definition.path)
+            if definition.region is not None:
+                x, y, w, h = definition.region
+                source = source.subsurface(pygame.Rect(x, y, w, h))
+            surface = pygame.transform.smoothscale(source, (size, size))
+            if fg is not None and fg != UI_WHITE:
+                surface = surface.copy()
+                surface.fill((*fg, 255), special_flags=pygame.BLEND_RGBA_MULT)
+        else:
+            surface = pygame.Surface((size, size), pygame.SRCALPHA)
+            codepoint = definition.codepoint if definition and definition.codepoint else ord('\u2588')
+            glyph = self.font(size).render(chr(codepoint), True, fg or UI_WHITE)
+            surface.blit(glyph, glyph.get_rect(center=(size // 2, size // 2)))
+
+        surface = surface.convert_alpha()  # store in display format so per-frame blits are fast
+        self._sprites[key] = surface
+        return surface

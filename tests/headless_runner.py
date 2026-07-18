@@ -1,10 +1,10 @@
 import esper
+import pygame
 import tcod.console
-import tcod.event
-from tcod.sdl.joystick import ControllerButton
 
 from src.components import (
     Configuration,
+    ControllerButton,
     EnemyConfig,
     Inventory,
     ItemType,
@@ -135,14 +135,9 @@ class HeadlessRunner:
             update_pause_state(game_state)
             esper.process()
 
-    def simulate_key(self, sym: tcod.event.KeySym):
+    def simulate_key(self, sym: int):
         """Simulate a key press and dispatch it to the current input handler."""
-        event = tcod.event.KeyDown(
-            scancode=0,
-            sym=sym,
-            mod=tcod.event.Modifier.NONE,
-            repeat=False,
-        )
+        event = pygame.event.Event(pygame.KEYDOWN, key=sym)
         game_state = esper.get_component(GameState)[0][1]
         transition = dispatch_input(event, game_state, self._controller, now=0.0)
         apply_pending_transition(transition, game_state, self.asset_loader)
@@ -153,7 +148,8 @@ class HeadlessRunner:
         game loop uses: the d-pad drives movement, other buttons resolve through the
         controller (honoring the quick-cast modifier), after the Settings remap check."""
         game_state = esper.get_component(GameState)[0][1]
-        event = tcod.event.ControllerButton(which=0, button=button, pressed=pressed)
+        event_type = pygame.CONTROLLERBUTTONDOWN if pressed else pygame.CONTROLLERBUTTONUP
+        event = pygame.event.Event(event_type, button=int(button))
         transition = dispatch_input(event, game_state, self._controller, now=0.0)
         apply_pending_transition(transition, game_state, self.asset_loader)
         update_pause_state(esper.get_component(GameState)[0][1])

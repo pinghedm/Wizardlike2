@@ -18,6 +18,8 @@ pillow==12.2.0
     # via -r requirements.in
 pycparser==3.0
     # via cffi
+pygame-ce==2.5.7
+    # via -r requirements.in
 pyyaml==6.0.3
     # via -r requirements.in
 sounddevice==0.5.5

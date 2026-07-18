@@ -1,9 +1,17 @@
 import esper
+import pygame
 import pytest
-import tcod.event
-from tcod.sdl.joystick import ControllerAxis, ControllerButton
 
-from src.components import FieldOfView, InputAction, Keybindings, Point, Settings, UIState
+from src.components import (
+    ControllerAxis,
+    ControllerButton,
+    FieldOfView,
+    InputAction,
+    Keybindings,
+    Point,
+    Settings,
+    UIState,
+)
 from src.input_handlers import (
     TRIGGER_ENGAGE,
     ControllerInput,
@@ -17,16 +25,17 @@ STICK_ENGAGE = ControllerInput.STICK_ENGAGE
 REPEAT = ControllerInput.REPEAT_INTERVAL
 
 
-def _key(sym: tcod.event.KeySym) -> tcod.event.KeyDown:
-    return tcod.event.KeyDown(scancode=0, sym=sym, mod=tcod.event.Modifier.NONE, repeat=False)
+def _key(sym: int) -> pygame.event.Event:
+    return pygame.event.Event(pygame.KEYDOWN, key=sym)
 
 
-def _button(button: ControllerButton, pressed: bool = True) -> tcod.event.ControllerButton:
-    return tcod.event.ControllerButton(which=0, button=button, pressed=pressed)
+def _button(button: ControllerButton, pressed: bool = True) -> pygame.event.Event:
+    event_type = pygame.CONTROLLERBUTTONDOWN if pressed else pygame.CONTROLLERBUTTONUP
+    return pygame.event.Event(event_type, button=int(button))
 
 
-def _axis(axis: ControllerAxis, value: int) -> tcod.event.ControllerAxis:
-    return tcod.event.ControllerAxis(which=0, axis=axis, value=value)
+def _axis(axis: ControllerAxis, value: int) -> pygame.event.Event:
+    return pygame.event.Event(pygame.CONTROLLERAXISMOTION, axis=int(axis), value=value)
 
 
 def _kb() -> Keybindings:
@@ -75,21 +84,21 @@ def test_rebound_controller_button_resolves_to_its_action():
 
 
 def test_keypress_resolves_through_the_keymap():
-    kb = Keybindings(bindings={InputAction.MOVE_UP: tcod.event.KeySym.UP})
-    assert resolve_action(_key(tcod.event.KeySym.UP), kb) == InputAction.MOVE_UP
+    kb = Keybindings(bindings={InputAction.MOVE_UP: pygame.K_UP})
+    assert resolve_action(_key(pygame.K_UP), kb) == InputAction.MOVE_UP
 
 
 def test_unbound_key_resolves_to_nothing():
-    kb = Keybindings(bindings={InputAction.MOVE_UP: tcod.event.KeySym.UP})
-    assert resolve_action(_key(tcod.event.KeySym.Z), kb) is None
+    kb = Keybindings(bindings={InputAction.MOVE_UP: pygame.K_UP})
+    assert resolve_action(_key(pygame.K_z), kb) is None
 
 
 @pytest.mark.parametrize(
     ('sym', 'action'),
     [
-        (tcod.event.KeySym.N1, InputAction.QUICK_CAST_1),
-        (tcod.event.KeySym.N5, InputAction.QUICK_CAST_5),
-        (tcod.event.KeySym.N9, InputAction.QUICK_CAST_9),
+        (pygame.K_1, InputAction.QUICK_CAST_1),
+        (pygame.K_5, InputAction.QUICK_CAST_5),
+        (pygame.K_9, InputAction.QUICK_CAST_9),
     ],
 )
 def test_number_key_resolves_to_quick_cast(sym, action):
@@ -184,20 +193,20 @@ def test_releasing_a_trigger_stops_the_repeat():
 )
 def test_held_modifier_turns_face_buttons_into_quick_cast(button, action):
     c = ControllerInput()
-    assert c.resolve_button(_button(ControllerButton.LEFTSHOULDER), _kb()) is None  # modifier down
-    assert c.resolve_button(_button(button), _kb()) == action
+    assert c.resolve_button(ControllerButton.LEFTSHOULDER, True, _kb()) is None  # modifier down
+    assert c.resolve_button(button, True, _kb()) == action
 
 
 def test_face_button_without_modifier_resolves_normally():
     c = ControllerInput()
-    assert c.resolve_button(_button(ControllerButton.A), _kb()) == InputAction.CONFIRM
+    assert c.resolve_button(ControllerButton.A, True, _kb()) == InputAction.CONFIRM
 
 
 def test_releasing_the_modifier_restores_normal_face_buttons():
     c = ControllerInput()
-    c.resolve_button(_button(ControllerButton.LEFTSHOULDER, pressed=True), _kb())
-    c.resolve_button(_button(ControllerButton.LEFTSHOULDER, pressed=False), _kb())
-    assert c.resolve_button(_button(ControllerButton.A), _kb()) == InputAction.CONFIRM
+    c.resolve_button(ControllerButton.LEFTSHOULDER, True, _kb())
+    c.resolve_button(ControllerButton.LEFTSHOULDER, False, _kb())
+    assert c.resolve_button(ControllerButton.A, True, _kb()) == InputAction.CONFIRM
 
 
 # --- integration through the dispatch path ----------------------------------

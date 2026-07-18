@@ -1,8 +1,7 @@
 import enum
 from typing import TYPE_CHECKING
 
-import tcod.event
-from tcod.sdl.joystick import ControllerAxis, ControllerButton
+import pygame
 
 from src.constants import DATA_DIR
 from src.data_utils import load_str_enum_from_yaml
@@ -119,25 +118,57 @@ QUICK_CAST_ACTIONS = (
 )
 
 
+class ControllerButton(enum.IntEnum):
+    """SDL game-controller buttons, valued to match the ints pygame delivers in its
+    CONTROLLERBUTTONDOWN/UP events, so `ControllerButton(event.button)` round-trips."""
+
+    A = 0
+    B = 1
+    X = 2
+    Y = 3
+    BACK = 4
+    GUIDE = 5
+    START = 6
+    LEFTSTICK = 7
+    RIGHTSTICK = 8
+    LEFTSHOULDER = 9
+    RIGHTSHOULDER = 10
+    DPAD_UP = 11
+    DPAD_DOWN = 12
+    DPAD_LEFT = 13
+    DPAD_RIGHT = 14
+
+
+class ControllerAxis(enum.IntEnum):
+    """SDL game-controller axes, valued to match pygame's CONTROLLERAXISMOTION event.axis."""
+
+    LEFTX = 0
+    LEFTY = 1
+    RIGHTX = 2
+    RIGHTY = 3
+    TRIGGERLEFT = 4
+    TRIGGERRIGHT = 5
+
+
 # A controller binding is the SDL button or trigger axis driving an action.
 type ControllerBinding = ControllerButton | ControllerAxis
 
 
-# Default bindings for the rebindable actions.
+# Default bindings for the rebindable actions (keyboard keys are pygame key codes).
 # Movement is omitted from the controller map: it is fixed to the d-pad and left stick.
-DEFAULT_KEYBOARD_BINDINGS: dict[InputAction, tcod.event.KeySym] = {
-    InputAction.MOVE_UP: tcod.event.KeySym.UP,
-    InputAction.MOVE_DOWN: tcod.event.KeySym.DOWN,
-    InputAction.MOVE_LEFT: tcod.event.KeySym.LEFT,
-    InputAction.MOVE_RIGHT: tcod.event.KeySym.RIGHT,
-    InputAction.OPEN_CRAFTING: tcod.event.KeySym.C,
-    InputAction.OPEN_CASTING: tcod.event.KeySym.S,
-    InputAction.OPEN_MAP: tcod.event.KeySym.M,
-    InputAction.OPEN_MENU: tcod.event.KeySym.ESCAPE,
-    InputAction.CONFIRM: tcod.event.KeySym.RETURN,
-    InputAction.CYCLE_TAB: tcod.event.KeySym.TAB,
-    InputAction.SCROLL_UP: tcod.event.KeySym.PAGEUP,
-    InputAction.SCROLL_DOWN: tcod.event.KeySym.PAGEDOWN,
+DEFAULT_KEYBOARD_BINDINGS: dict[InputAction, int] = {
+    InputAction.MOVE_UP: pygame.K_UP,
+    InputAction.MOVE_DOWN: pygame.K_DOWN,
+    InputAction.MOVE_LEFT: pygame.K_LEFT,
+    InputAction.MOVE_RIGHT: pygame.K_RIGHT,
+    InputAction.OPEN_CRAFTING: pygame.K_c,
+    InputAction.OPEN_CASTING: pygame.K_s,
+    InputAction.OPEN_MAP: pygame.K_m,
+    InputAction.OPEN_MENU: pygame.K_ESCAPE,
+    InputAction.CONFIRM: pygame.K_RETURN,
+    InputAction.CYCLE_TAB: pygame.K_TAB,
+    InputAction.SCROLL_UP: pygame.K_PAGEUP,
+    InputAction.SCROLL_DOWN: pygame.K_PAGEDOWN,
 }
 
 DEFAULT_CONTROLLER_BINDINGS: dict[InputAction, ControllerBinding] = {

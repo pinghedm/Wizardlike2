@@ -1,7 +1,4 @@
 import esper
-import numpy as np
-import tcod
-import tcod.path
 
 from src.components import (
     AI,
@@ -31,6 +28,7 @@ from src.ecs_helpers import (
     try_get_singleton,
 )
 from src.map_objects import Map
+from src.pathfinding import Dijkstra
 from src.states import GameState
 from src.systems.combat import apply_effect, deal_damage
 from src.systems.movement import get_action_cooldown, move_entity
@@ -38,7 +36,7 @@ from src.systems.utils import step_toward
 from src.systems.visuals import trigger_projectile
 
 # Memoized Dijkstra maps, keyed by goal tile, so each target's map is built once per AI tick.
-type PathContext = dict[Point, tcod.path.Dijkstra]
+type PathContext = dict[Point, Dijkstra]
 
 
 def _ai_target(ent: int) -> Point | None:
@@ -58,13 +56,12 @@ def _compute_path(ent: int, target: Point | None, pathfinding_context: PathConte
     pf = pathfinding_context.get(target)
     if not pf:
         game_map = get_singleton(Map)
-        cost = game_map.walkable.astype(np.int32)
-        pf = tcod.path.Dijkstra(cost, diagonal=1.41)
+        pf = Dijkstra(game_map.walkable, diagonal=1.41)
         pf.set_goal(target.x, target.y)
 
     path = pf.get_path(pos.x, pos.y)
 
-    # tcod's Dijkstra path excludes the goal; add it back if reachable.
+    # get_path excludes the goal tile; add it back at the front if reachable.
     if path and (path[0][0] != target.x or path[0][1] != target.y):
         path.insert(0, (target.x, target.y))
 
@@ -226,10 +223,9 @@ class AISystem(esper.Processor):
             if target:
                 targets_to_compute.add(target)
 
-        cost = game_map.walkable.astype(np.int32)
         pathfinding_context: PathContext = {}
         for target in targets_to_compute:
-            pf = tcod.path.Dijkstra(cost, diagonal=1.41)
+            pf = Dijkstra(game_map.walkable, diagonal=1.41)
             pf.set_goal(target.x, target.y)
             pathfinding_context[target] = pf
 

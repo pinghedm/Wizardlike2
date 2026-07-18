@@ -3,8 +3,6 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import ClassVar, NamedTuple
 
-import tcod
-
 from src.components.configs import EnemyConfig, IngredientConfig, NPCConfig, SpellConfig, TileConfig
 from src.components.enums import (
     DEFAULT_CONTROLLER_BINDINGS,
@@ -132,7 +130,7 @@ class Configuration:
 class Keybindings:
     """Keyboard and controller input bindings (an attribute of the Settings singleton)."""
 
-    bindings: dict[InputAction, tcod.event.KeySym] = field(default_factory=DEFAULT_KEYBOARD_BINDINGS.copy)
+    bindings: dict[InputAction, int] = field(default_factory=DEFAULT_KEYBOARD_BINDINGS.copy)
     controller: dict[InputAction, ControllerBinding] = field(default_factory=DEFAULT_CONTROLLER_BINDINGS.copy)
 
     def __setstate__(self, state: dict[str, object]) -> None:
