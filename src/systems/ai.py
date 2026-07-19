@@ -38,6 +38,11 @@ from src.systems.visuals import trigger_projectile
 # Memoized Dijkstra maps, keyed by goal tile, so each target's map is built once per AI tick.
 type PathContext = dict[Point, Dijkstra]
 
+# Cap on how far the pure-Python Dijkstra floods from a goal. Comfortably larger than the on-screen
+# radius (viewport ~40 tiles, player centered), so a chase in view still finds its path, but it keeps
+# a fresh flood cheap when the goal churns as the player runs — a foe further than this just idles.
+_MAX_PATH_DIST = 45.0
+
 
 def _ai_target(ent: int) -> Point | None:
     """The tile an AI entity is currently pathing toward, by behavior tag."""
@@ -57,7 +62,7 @@ def _compute_path(ent: int, target: Point | None, pathfinding_context: PathConte
     if not pf:
         game_map = get_singleton(Map)
         pf = Dijkstra(game_map.walkable, diagonal=1.41)
-        pf.set_goal(target.x, target.y)
+        pf.set_goal(target.x, target.y, _MAX_PATH_DIST)
 
     path = pf.get_path(pos.x, pos.y)
 
@@ -202,6 +207,30 @@ def _try_ranged_attack(ent: int, enemy: Enemy, pos: Position, player_pos: Positi
 class AISystem(esper.Processor):
     """Drives tagged AI entities with FOV and Dijkstra pathfinding."""
 
+    # Cap on cached distance fields (each ~ a map-sized array), cleared past this so exploring one
+    # floor for a long time can't grow the cache unbounded.
+    PATH_CACHE_LIMIT = 64
+
+    def __init__(self) -> None:
+        super().__init__()
+        # Dijkstra distance fields keyed by (goal, flood bound), reused across frames: the walkable
+        # grid is static within a floor, so a repeated goal (a standing player, a patrol waypoint)
+        # builds once instead of re-flooding the whole map in pure Python every tick.
+        self._path_cache: dict[tuple[Point, float | None], Dijkstra] = {}
+        self._cache_map: Map | None = None
+
+    def _field_for(self, game_map: Map, target: Point, max_dist: float | None) -> Dijkstra:
+        """The cached (or freshly built) distance field to `target`, flooded out to `max_dist`."""
+        key = (target, max_dist)
+        pf = self._path_cache.get(key)
+        if pf is None:
+            if len(self._path_cache) >= self.PATH_CACHE_LIMIT:
+                self._path_cache.clear()
+            pf = Dijkstra(game_map.walkable, diagonal=1.41)
+            pf.set_goal(target.x, target.y, max_dist)
+            self._path_cache[key] = pf
+        return pf
+
     def process(self):
         game_state = get_singleton(GameState)
         if game_state.time_paused:
@@ -210,24 +239,38 @@ class AISystem(esper.Processor):
         game_map = try_get_singleton(Map)
         if not game_map:
             return
+        # A new floor swaps in a different Map (and walkable grid), so the cached fields no longer apply.
+        if game_map is not self._cache_map:
+            self._path_cache.clear()
+            self._cache_map = game_map
 
         player_ent = get_player()
         if player_ent is None:
             return
         player_pos = esper.component_for_entity(player_ent, Position)
 
-        # 1. Collect unique targets so each goal's Dijkstra map is built once.
-        targets_to_compute: set[Point] = set()
+        # 1. Collect unique goals, split by whether the flood should be distance-bounded. Patrol
+        # waypoints are far and static (flood the whole map, then cache), while chase and flee goals
+        # sit near the player and churn as it moves, so they're bounded to keep a fresh flood cheap.
+        patrol_targets: set[Point] = set()
+        near_targets: set[Point] = set()
         for ent, _ai in esper.get_component(AI):
-            target = _ai_target(ent)
-            if target:
-                targets_to_compute.add(target)
+            patrol = esper.try_component(ent, PatrolTag)
+            if patrol is not None:
+                # The current waypoint and the next one, since _process_patrol may advance on arrival
+                # within this same tick; both are static, so they build once and then cache.
+                patrol_targets.add(patrol.path[patrol.index])
+                patrol_targets.add(patrol.path[(patrol.index + 1) % len(patrol.path)])
+            else:
+                target = _ai_target(ent)
+                if target is not None:
+                    near_targets.add(target)
 
         pathfinding_context: PathContext = {}
-        for target in targets_to_compute:
-            pf = Dijkstra(game_map.walkable, diagonal=1.41)
-            pf.set_goal(target.x, target.y)
-            pathfinding_context[target] = pf
+        for target in patrol_targets:
+            pathfinding_context[target] = self._field_for(game_map, target, None)
+        for target in near_targets:
+            pathfinding_context.setdefault(target, self._field_for(game_map, target, _MAX_PATH_DIST))
 
         # 2. Dispatch behavior by tag.
         for ent, (pos, _ai) in esper.get_components(Position, AI):

@@ -28,8 +28,10 @@ class Dijkstra:
         self._dist: NDArray[np.float64] | None = None
         self._goal: tuple[int, int] | None = None
 
-    def set_goal(self, x: int, y: int) -> None:
-        """Compute the shortest-distance field to (x, y) over the walkable cells."""
+    def set_goal(self, x: int, y: int, max_dist: float | None = None) -> None:
+        """Compute the shortest-distance field to (x, y) over the walkable cells. When `max_dist`
+        is set, the flood stops there — cells further than that stay unreachable — so a chase path
+        near the goal stays cheap even on a big map (a start beyond it simply gets no path)."""
         dist = np.full((self.width, self.height), np.inf, dtype=np.float64)
         dist[x, y] = 0.0
         heap: list[tuple[float, int, int]] = [(0.0, x, y)]
@@ -43,6 +45,8 @@ class Dijkstra:
                     continue
                 step = self.diagonal if dx and dy else 1.0
                 nd = d + step
+                if max_dist is not None and nd > max_dist:
+                    continue
                 if nd < dist[nx, ny]:
                     dist[nx, ny] = nd
                     heapq.heappush(heap, (nd, nx, ny))

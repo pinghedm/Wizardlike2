@@ -4,6 +4,7 @@ from src.components import AI, Actor, FieldOfView, PatrolTag, Point, Position
 from src.map_objects import Map
 from src.procgen import RectangularRoom
 from src.systems.ai import (
+    _MAX_PATH_DIST,
     AISystem,
     _process_chase,
     _process_flee,
@@ -85,6 +86,31 @@ def test_patrol_advances_when_blocked_from_its_waypoint():
 
     assert (pos.x, pos.y) == (5, 3)  # couldn't step past the blocker
     assert esper.component_for_entity(enemy, PatrolTag).index == 1  # gave up, retargets
+
+
+def test_patrol_reaches_a_waypoint_beyond_the_chase_flood_bound():
+    """Regression: patrol goals must flood the whole map. Chase/flee goals are distance-bounded for
+    perf (so a fresh flood stays cheap as the player runs), but a patrol's waypoint can sit far
+    across the map — bounding it too stranded every patrol, unable to path to its next stop."""
+    runner = HeadlessRunner(use_random_map=False)
+    # Swap the little room for a long open map, then put a waypoint past the chase bound.
+    floor = esper.get_component(Map)[0][1].tiles[0][0]  # a walkable floor tile
+    for ent, _map in esper.get_component(Map):
+        esper.delete_entity(ent, immediate=True)
+    far = int(_MAX_PATH_DIST) + 10
+    esper.create_entity(Map(far + 5, 8, floor))
+    player_pos = esper.component_for_entity(runner.player, Position)
+    player_pos.x, player_pos.y = 10, 4  # keep the player in bounds of the reshaped map
+
+    game_map = esper.get_component(Map)[0][1]
+    # Room centres (4, 4) and (far + 1, 4): patrol path [(4, 4), (far + 1, 4)], > _MAX_PATH_DIST apart.
+    rooms = [RectangularRoom(3, 3, 2, 2, game_map), RectangularRoom(far, 3, 2, 2, game_map)]
+    enemy = runner.spawn_enemy(4, 4, {**runner.enemy_config(), 'behavior': 'PATROL'}, rooms=rooms)
+    pos = esper.component_for_entity(enemy, Position)
+
+    AISystem().process()  # the real path: builds the patrol goal's field unbounded
+
+    assert pos.x > 4  # stepped toward the far waypoint instead of stalling
 
 
 # --- _process_flee -------------------------------------------------------------

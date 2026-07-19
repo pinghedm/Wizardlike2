@@ -1,6 +1,6 @@
 import esper
+import pygame
 import pytest
-import tcod.event
 
 from src.components import InputAction, Inventory, ItemType, KnownRecipes, RunStats, SpellInventory, SpellType, UIState
 from src.ecs_helpers import get_singleton
@@ -39,11 +39,11 @@ def test_combining_ingredients_creates_spell():
     runner = HeadlessRunner(use_random_map=False)
     runner.give_item('reagent_a', 2)  # fixtures: reagent_a + reagent_a -> test_blast (5 charges)
 
-    runner.simulate_key(tcod.event.KeySym.c)  # EXPLORING -> COMBINING
+    runner.simulate_key(pygame.K_c)  # EXPLORING -> COMBINING
     assert runner.display_mode == DisplayMode.COMBINING
-    runner.simulate_key(tcod.event.KeySym.RIGHT)  # add 1st reagent_a
-    runner.simulate_key(tcod.event.KeySym.RIGHT)  # add 2nd reagent_a
-    runner.simulate_key(tcod.event.KeySym.RETURN)  # combine
+    runner.simulate_key(pygame.K_RIGHT)  # add 1st reagent_a
+    runner.simulate_key(pygame.K_RIGHT)  # add 2nd reagent_a
+    runner.simulate_key(pygame.K_RETURN)  # combine
 
     assert runner.display_mode == DisplayMode.EXPLORING
     assert esper.component_for_entity(runner.player, SpellInventory).spells[SpellType('test_blast')] == 5
@@ -56,12 +56,12 @@ def test_left_removes_a_selected_reagent_from_the_mix():
     runner.give_item('reagent_a', 2)
     ui_state = esper.get_component(UIState)[0][1]
 
-    runner.simulate_key(tcod.event.KeySym.c)  # -> COMBINING
-    runner.simulate_key(tcod.event.KeySym.RIGHT)  # add 1st
-    runner.simulate_key(tcod.event.KeySym.RIGHT)  # add 2nd
+    runner.simulate_key(pygame.K_c)  # -> COMBINING
+    runner.simulate_key(pygame.K_RIGHT)  # add 1st
+    runner.simulate_key(pygame.K_RIGHT)  # add 2nd
     assert ui_state.selected_for_crafting[ItemType('reagent_a')] == 2
 
-    runner.simulate_key(tcod.event.KeySym.LEFT)  # remove one back
+    runner.simulate_key(pygame.K_LEFT)  # remove one back
 
     assert ui_state.selected_for_crafting[ItemType('reagent_a')] == 1
 
@@ -84,10 +84,10 @@ def test_combining_an_unknown_combo_fizzles_and_clears_the_mix():
     runner.give_item('reagent_c', 2)  # fixtures: reagent_c + reagent_c -> no recipe
     ui_state = esper.get_component(UIState)[0][1]
 
-    runner.simulate_key(tcod.event.KeySym.c)
-    runner.simulate_key(tcod.event.KeySym.RIGHT)
-    runner.simulate_key(tcod.event.KeySym.RIGHT)
-    runner.simulate_key(tcod.event.KeySym.RETURN)  # combine
+    runner.simulate_key(pygame.K_c)
+    runner.simulate_key(pygame.K_RIGHT)
+    runner.simulate_key(pygame.K_RIGHT)
+    runner.simulate_key(pygame.K_RETURN)  # combine
 
     assert runner.display_mode == DisplayMode.COMBINING  # stays open after a fizzle
     assert ui_state.selected_for_crafting == {}  # the mix is reset
@@ -97,13 +97,13 @@ def test_combining_an_unknown_combo_fizzles_and_clears_the_mix():
 
 def test_tab_toggles_crafting_view():
     runner = HeadlessRunner(use_random_map=False)
-    runner.simulate_key(tcod.event.KeySym.c)  # -> COMBINING (Experiment by default)
+    runner.simulate_key(pygame.K_c)  # -> COMBINING (Experiment by default)
     ui_state = esper.get_component(UIState)[0][1]
     assert ui_state.crafting_view == CraftingView.EXPERIMENT
 
-    runner.simulate_key(tcod.event.KeySym.TAB)
+    runner.simulate_key(pygame.K_TAB)
     assert ui_state.crafting_view == CraftingView.SPELLBOOK
-    runner.simulate_key(tcod.event.KeySym.TAB)
+    runner.simulate_key(pygame.K_TAB)
     assert ui_state.crafting_view == CraftingView.EXPERIMENT
 
 
@@ -114,9 +114,9 @@ def test_spellbook_instant_crafts_known_spell():
     runner.give_item('reagent_a', 1)
     runner.give_item('reagent_b', 1)
 
-    runner.simulate_key(tcod.event.KeySym.c)  # -> COMBINING
-    runner.simulate_key(tcod.event.KeySym.TAB)  # -> Spellbook
-    runner.simulate_key(tcod.event.KeySym.RETURN)  # craft the selected recipe
+    runner.simulate_key(pygame.K_c)  # -> COMBINING
+    runner.simulate_key(pygame.K_TAB)  # -> Spellbook
+    runner.simulate_key(pygame.K_RETURN)  # craft the selected recipe
 
     assert runner.display_mode == DisplayMode.COMBINING  # stays open to craft more
     assert esper.component_for_entity(runner.player, SpellInventory).spells[SpellType('test_bolt')] == 3
@@ -130,9 +130,9 @@ def test_spellbook_craft_without_ingredients_does_nothing():
     recipes = esper.component_for_entity(runner.player, KnownRecipes)
     recipes.recipes[SpellType('test_bolt')] = {make_ingredients_type('reagent_a', 'reagent_b')}
 
-    runner.simulate_key(tcod.event.KeySym.c)
-    runner.simulate_key(tcod.event.KeySym.TAB)
-    runner.simulate_key(tcod.event.KeySym.RETURN)
+    runner.simulate_key(pygame.K_c)
+    runner.simulate_key(pygame.K_TAB)
+    runner.simulate_key(pygame.K_RETURN)
 
     assert esper.component_for_entity(runner.player, SpellInventory).spells.get(SpellType('test_bolt'), 0) == 0
     assert any('Not enough ingredients' in m for m in runner.get_log_messages())

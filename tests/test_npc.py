@@ -1,6 +1,6 @@
 import esper
+import pygame
 import pytest
-import tcod.event
 
 from src.components import NPC, InputAction, Modal, Position
 from src.ecs_helpers import adjacent_component
@@ -27,7 +27,7 @@ def test_confirm_next_to_an_npc_opens_a_dialogue_modal():
     pages = ['Welcome, apprentice.', 'Beware the depths.']
     esper.create_entity(Position(px + 1, py), NPC(name='Old Wizard', dialogue=pages))
 
-    runner.simulate_key(tcod.event.KeySym.RETURN)
+    runner.simulate_key(pygame.K_RETURN)
 
     modals = esper.get_component(Modal)
     assert len(modals) == 1

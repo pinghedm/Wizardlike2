@@ -1,5 +1,5 @@
 import esper
-import tcod.event
+import pygame
 
 from src.components import Enemy, Experience, Guardian, Modal, PlayerTag, Position, RunStats, Stats
 from src.constants import MAX_FLOORS
@@ -33,11 +33,11 @@ def test_stepping_on_exit_descends_to_next_floor():
     _make_exit_above_player(runner)
     enemy = runner.spawn_enemy(px + 3, py)
 
-    runner.simulate_key(tcod.event.KeySym.UP)  # step onto the exit -> spawns the descend modal
+    runner.simulate_key(pygame.K_UP)  # step onto the exit -> spawns the descend modal
     assert esper.get_component(Modal)
     assert runner.game_state.floor == 1
 
-    runner.simulate_key(tcod.event.KeySym.RETURN)  # closing the modal triggers the descent
+    runner.simulate_key(pygame.K_RETURN)  # closing the modal triggers the descent
 
     assert runner.game_state.floor == 2
     assert not esper.entity_exists(enemy)  # previous floor's enemies are cleared
@@ -50,14 +50,14 @@ def test_descend_modal_ignores_non_enter_keys():
     runner = HeadlessRunner(use_random_map=False)
     _make_exit_above_player(runner)
 
-    runner.simulate_key(tcod.event.KeySym.UP)  # step onto the exit -> spawns the descend modal
+    runner.simulate_key(pygame.K_UP)  # step onto the exit -> spawns the descend modal
     assert esper.get_component(Modal)
 
-    runner.simulate_key(tcod.event.KeySym.LEFT)  # an arrow must not confirm the descent
+    runner.simulate_key(pygame.K_LEFT)  # an arrow must not confirm the descent
     assert esper.get_component(Modal)
     assert runner.game_state.floor == 1
 
-    runner.simulate_key(tcod.event.KeySym.RETURN)
+    runner.simulate_key(pygame.K_RETURN)
     assert runner.game_state.floor == 2
 
 
@@ -69,10 +69,10 @@ def test_player_death_shows_the_game_over_screen_and_enter_returns_to_title():
     assert runner.display_mode == DisplayMode.GAME_OVER
     assert not esper.get_component(Modal)
 
-    runner.simulate_key(tcod.event.KeySym.LEFT)  # a stray key stays on the summary
+    runner.simulate_key(pygame.K_LEFT)  # a stray key stays on the summary
     assert runner.display_mode == DisplayMode.GAME_OVER
 
-    runner.simulate_key(tcod.event.KeySym.RETURN)  # Confirm carries out the return to the title menu
+    runner.simulate_key(pygame.K_RETURN)  # Confirm carries out the return to the title menu
     assert runner.display_mode == DisplayMode.MENU
     assert not esper.get_components(PlayerTag)
 
@@ -96,7 +96,7 @@ def test_reaching_final_floor_exit_wins_instead_of_descending():
     runner.game_state.floor = MAX_FLOORS
     _make_exit_above_player(runner)
 
-    runner.simulate_key(tcod.event.KeySym.UP)  # step onto the final exit -> victory
+    runner.simulate_key(pygame.K_UP)  # step onto the final exit -> victory
 
     assert runner.display_mode == DisplayMode.GAME_OVER
     assert get_singleton(RunStats).won is True
@@ -191,7 +191,7 @@ def test_a_living_guardian_seals_the_exit():
     runner.spawn_enemy(px + 3, py, runner.enemy_config('test_guardian'))  # sealing the floor
     assert exit_is_sealed()
 
-    runner.simulate_key(tcod.event.KeySym.UP)  # step onto the sealed exit
+    runner.simulate_key(pygame.K_UP)  # step onto the sealed exit
 
     assert not esper.get_component(Modal)  # descent is barred
     assert runner.game_state.floor == 1
@@ -208,10 +208,10 @@ def test_clearing_the_guardians_opens_the_exit():
     runner.tick(1)  # DeathSystem clears the last guardian
     assert not exit_is_sealed()
 
-    runner.simulate_key(tcod.event.KeySym.UP)  # now the stairs accept the descent
+    runner.simulate_key(pygame.K_UP)  # now the stairs accept the descent
 
     assert esper.get_component(Modal)
-    runner.simulate_key(tcod.event.KeySym.RETURN)
+    runner.simulate_key(pygame.K_RETURN)
     assert runner.game_state.floor == 2
 
 

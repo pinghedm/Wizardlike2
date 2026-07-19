@@ -1,15 +1,10 @@
-import warnings
 from dataclasses import dataclass
 from enum import Enum, auto
 from functools import lru_cache
 from typing import NotRequired, TypedDict
 
-import numpy as np
-import numpy.typing as npt
 import pygame
-import tcod
 import yaml
-from PIL import Image
 
 from src.audio import MusicFiles, MusicTrack, SoundFile, SoundId, SoundSpecs, SynthSpec, Waveform
 from src.components import (
@@ -31,7 +26,7 @@ from src.components import (
     TileConfig,
     TileType,
 )
-from src.constants import DATA_DIR, FONT_FILE, FONT_TILE_PX, RGB, TILE_SCALE, UI_WHITE
+from src.constants import DATA_DIR, FONT_FILE, RGB, UI_WHITE
 from src.debug import debug_log
 
 
@@ -67,59 +62,6 @@ class SpriteDefinition:
     region: tuple[int, int, int, int] | None = None
     scale: float = 1.0
     codepoint: int | None = None
-    # The TILE_SCALE^2 sub-tile codepoints (row-major) when the sprite is also rasterized
-    # at block size, so the renderer can draw it filling a scaled tile. None for font
-    # glyphs and when TILE_SCALE == 1.
-    block_codepoints: list[int] | None = None
-
-
-# Identity of a rasterized sprite, so two definitions sharing one image/region/scale reuse the
-# same codepoints instead of re-rasterizing: (path, asset type, pixel region, scale).
-type _AssetKey = tuple[str | None, AssetType | None, tuple[int, int, int, int] | None, float]
-
-
-def _fit_sprite_to_tile(tile_pixels: npt.NDArray[np.uint8], tw: int, th: int, scale: float) -> npt.NDArray[np.uint8]:
-    """Normalize a sprite's pixels to RGBA and center it, scaled by `scale`, in a fresh
-    (th, tw, 4) tile. A grayscale sprite becomes an opacity mask over white; an RGB sprite
-    derives its alpha from its brightest channel. A sprite larger than the tile is clipped
-    to the tile bounds."""
-    # Transparency / RGBA normalization.
-    if tile_pixels.ndim == 2:
-        h, w = tile_pixels.shape
-        rgba = np.zeros((h, w, 4), dtype=np.uint8)
-        rgba[..., :3] = 255
-        rgba[..., 3] = tile_pixels
-        tile_pixels = rgba
-    elif tile_pixels.ndim == 3 and tile_pixels.shape[2] == 3:
-        h, w, _ = tile_pixels.shape
-        rgba = np.zeros((h, w, 4), dtype=np.uint8)
-        rgba[..., :3] = 255
-        rgba[..., 3] = np.max(tile_pixels, axis=2)
-        tile_pixels = rgba
-
-    # Resize to `scale` of the tile via nearest-neighbor (skip if already that size).
-    target_w = int(tw * scale)
-    target_h = int(th * scale)
-    if (target_w, target_h) != (tile_pixels.shape[1], tile_pixels.shape[0]):
-        row_indices = np.linspace(0, tile_pixels.shape[0] - 1, target_h, dtype=np.intp)
-        col_indices = np.linspace(0, tile_pixels.shape[1] - 1, target_w, dtype=np.intp)
-        resized = tile_pixels[np.ix_(row_indices, col_indices)]
-    else:
-        resized = tile_pixels
-
-    # Center the sprite in the tile, clipping the source when scale > 1.0.
-    final_tile = np.zeros((th, tw, 4), dtype=np.uint8)
-    start_x = max(0, (tw - target_w) // 2)
-    start_y = max(0, (th - target_h) // 2)
-    copy_w = min(target_w, tw - start_x)
-    copy_h = min(target_h, th - start_y)
-    src_start_x = max(0, (target_w - tw) // 2) if target_w > tw else 0
-    src_start_y = max(0, (target_h - th) // 2) if target_h > th else 0
-    final_tile[start_y : start_y + copy_h, start_x : start_x + copy_w] = resized[
-        src_start_y : src_start_y + copy_h,
-        src_start_x : src_start_x + copy_w,
-    ]
-    return final_tile
 
 
 def load_ingredients_config(
@@ -348,7 +290,6 @@ def get_game_configs(asset_loader: AssetLoader) -> GameConfigs:
 
 class AssetLoader:
     def __init__(self):
-        self._cache: dict[str, np.ndarray] = {}
         self._mapping: dict[str, SpriteDefinition] = {}
         # pygame render caches, populated lazily during rendering (once a display exists).
         self._images: dict[str, pygame.Surface] = {}
@@ -381,98 +322,6 @@ class AssetLoader:
             self.register_sprite(sprite_id, config['sprite'])
         else:
             self.register_char(sprite_id, config.get('char', default_char))
-
-    def build_tileset(self) -> tcod.tileset.Tileset:
-        # 1. Rasterize the base font at the native cell size, so glyphs are
-        # crisp at the display resolution instead of an upscaled bitmap.
-        self.tileset = tcod.tileset.load_truetype_font(FONT_FILE, FONT_TILE_PX, FONT_TILE_PX)
-
-        # Get base tile dimensions
-        # tile_shape is (height, width)
-        tw, th = self.tileset.tile_width, self.tileset.tile_height
-
-        # Add procedural blocks. tcod's procedural_block_elements assigns tiles through its own
-        # deprecated set_tile path (true as of tcod 21.2.0, the latest release, regardless of how
-        # it's called), so the resulting DeprecationWarning is not actionable from our side and is
-        # suppressed here. Upstream filters the same warning in its own test suite.
-        with warnings.catch_warnings():
-            warnings.simplefilter('ignore', DeprecationWarning)
-            self.tileset += tcod.tileset.procedural_block_elements(shape=self.tileset.tile_shape)
-
-        # 2. Map graphical sprites to new codepoints in the Private Use Area
-        current_codepoint = 0xE000
-        asset_to_codepoint: dict[_AssetKey, int] = {}
-        block_for_key: dict[_AssetKey, list[int]] = {}
-
-        for sprite_id, definition in self._mapping.items():
-            if definition.path is None:
-                continue
-
-            key = (
-                definition.path,
-                definition.type,
-                definition.region,
-                definition.scale,
-            )
-            if key in asset_to_codepoint:
-                definition.codepoint = asset_to_codepoint[key]
-                definition.block_codepoints = block_for_key.get(key)
-                continue
-
-            try:
-                if definition.path not in self._cache:
-                    self._cache[definition.path] = np.asarray(Image.open(definition.path).convert('RGBA'))
-
-                full_image = self._cache[definition.path]
-
-                if definition.region:
-                    x, y, w, h = definition.region
-                    tile_pixels = full_image[y : y + h, x : x + w]
-                else:
-                    tile_pixels = full_image
-
-                final_tile = _fit_sprite_to_tile(tile_pixels, tw, th, definition.scale)
-
-                self.tileset[current_codepoint] = final_tile
-                definition.codepoint = current_codepoint
-                asset_to_codepoint[key] = current_codepoint
-                current_codepoint += 1
-
-                # Also rasterize the sprite at block size and slice it into TILE_SCALE^2
-                # cell-sized sub-tiles, so it can be drawn filling a scaled tile crisply
-                # (rather than tiling the single small glyph). Skipped at 1x.
-                if TILE_SCALE > 1:
-                    block_tile = _fit_sprite_to_tile(tile_pixels, tw * TILE_SCALE, th * TILE_SCALE, definition.scale)
-                    grid: list[int] = []
-                    for row in range(TILE_SCALE):
-                        for col in range(TILE_SCALE):
-                            self.tileset[current_codepoint] = block_tile[
-                                row * th : (row + 1) * th, col * tw : (col + 1) * tw
-                            ]
-                            grid.append(current_codepoint)
-                            current_codepoint += 1
-                    definition.block_codepoints = grid
-                    block_for_key[key] = grid
-            except Exception as exc:
-                # Fall back to the block glyph so one bad sprite doesn't abort the boot,
-                # but log which sprite failed and why (silent otherwise: it just renders
-                # as a solid block with no hint).
-                debug_log(f'build_tileset: sprite {sprite_id!r} ({definition.path}) failed: {exc!r}')
-                definition.codepoint = ord('\u2588')
-                asset_to_codepoint[key] = definition.codepoint
-
-        return self.tileset
-
-    def get_codepoint(self, sprite_id: str) -> int:
-        if sprite_id not in self._mapping:
-            return ord('\u2588')
-        return self._mapping[sprite_id].codepoint or ord('\u2588')
-
-    def get_block_codepoints(self, sprite_id: str) -> list[int] | None:
-        """The TILE_SCALE^2 sub-tile codepoints (row-major) for a block-sized sprite, or
-        None for font glyphs / 1x \u2014 in which case the renderer fills the block itself."""
-        definition = self._mapping.get(sprite_id)
-        return definition.block_codepoints if definition else None
 
     def font(self, size: int) -> pygame.font.Font:
         """The game typeface at `size` px, cached per size."""

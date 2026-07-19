@@ -1,10 +1,8 @@
 import pytest
-import tcod.console
 
 from src.components import Effect, EffectType, ItemType
 from src.ui_helpers import (
     blend,
-    center_origin,
     compute_visible_slice,
     format_recipe,
     format_spell_effects,
@@ -97,11 +95,6 @@ def test_wrap_message_trims_leading_space_on_wrapped_line():
     lines = wrap_message([('aaaa', WHITE), (' bb', WHITE)], width=4)
     # The space that would lead the wrapped line is dropped.
     assert lines == [[('aaaa', WHITE)], [('bb', WHITE)]]
-
-
-def test_center_origin_returns_top_left_of_centered_box():
-    console = tcod.console.Console(80, 50)
-    assert center_origin(console, 20, 10) == (30, 20)
 
 
 def test_blend_returns_base_at_alpha_zero():

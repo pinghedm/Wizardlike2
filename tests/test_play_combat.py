@@ -1,5 +1,5 @@
 import esper
-import tcod.event
+import pygame
 
 from src.components import Enemy, Stats
 from tests.headless_runner import HeadlessRunner
@@ -10,7 +10,7 @@ def test_bump_into_enemy_deals_damage_and_logs():
     px, py = runner.player_pos
     enemy = runner.spawn_enemy(px, py - 1)
 
-    runner.simulate_key(tcod.event.KeySym.UP)
+    runner.simulate_key(pygame.K_UP)
 
     # bump_damage = damage // 2 = 5
     assert esper.component_for_entity(runner.player, Stats).hp == 95
@@ -26,7 +26,7 @@ def test_blocking_enemy_prevents_movement():
     enemy = runner.spawn_enemy(px, py - 1)
     esper.component_for_entity(enemy, Enemy).blocks_movement = True
 
-    runner.simulate_key(tcod.event.KeySym.UP)
+    runner.simulate_key(pygame.K_UP)
 
     assert runner.player_pos == (px, py)
     assert esper.component_for_entity(runner.player, Stats).hp < 100

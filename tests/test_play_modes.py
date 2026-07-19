@@ -1,5 +1,5 @@
+import pygame
 import pytest
-import tcod.event
 
 from src.main import update_pause_state
 from src.states import DisplayMode
@@ -7,9 +7,9 @@ from tests.headless_runner import HeadlessRunner
 
 # Modes reachable from EXPLORING by a single key press, and the key that opens them.
 OPENABLE_MODES = [
-    (tcod.event.KeySym.c, DisplayMode.COMBINING),
-    (tcod.event.KeySym.s, DisplayMode.CASTING),
-    (tcod.event.KeySym.ESCAPE, DisplayMode.MENU),
+    (pygame.K_c, DisplayMode.COMBINING),
+    (pygame.K_s, DisplayMode.CASTING),
+    (pygame.K_ESCAPE, DisplayMode.MENU),
 ]
 
 
@@ -39,5 +39,5 @@ def test_escape_closes_mode(open_key, mode):
     runner = HeadlessRunner(use_random_map=False)
     runner.simulate_key(open_key)
     assert runner.display_mode == mode
-    runner.simulate_key(tcod.event.KeySym.ESCAPE)
+    runner.simulate_key(pygame.K_ESCAPE)
     assert runner.display_mode == DisplayMode.EXPLORING

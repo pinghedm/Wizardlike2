@@ -64,6 +64,15 @@ from src.systems import (
     refill_basic_spells,
 )
 from src.targeting import CycleTargetSystem
+from src.ui_systems import (
+    EffectOverlaySystem,
+    HUDSystem,
+    MapViewSystem,
+    MenuSystem,
+    MinimapSystem,
+    ModalSystem,
+    TargetingOverlaySystem,
+)
 
 
 def init_game_world(asset_loader: AssetLoader):
@@ -117,6 +126,13 @@ def add_render_systems(surface: pygame.Surface, asset_loader: AssetLoader) -> Re
     later step; only the dungeon draws for now."""
     render_system = RenderSystem(surface, asset_loader)
     esper.add_processor(render_system)
+    esper.add_processor(TargetingOverlaySystem(surface, asset_loader))
+    esper.add_processor(EffectOverlaySystem(surface, asset_loader))
+    esper.add_processor(MinimapSystem(surface, asset_loader))
+    esper.add_processor(HUDSystem(surface, asset_loader))
+    esper.add_processor(MenuSystem(surface, asset_loader))
+    esper.add_processor(MapViewSystem(surface, asset_loader))
+    esper.add_processor(ModalSystem(surface, asset_loader))
     return render_system
 
 
@@ -320,9 +336,10 @@ def main():
     screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.RESIZABLE)
     pygame.display.set_caption('WizardLike')
     # Hold-to-repeat for keys, so holding a movement key keeps stepping. Normal movement isn't
-    # cooldown-gated (see can_act), so this interval sets the walking speed directly: 90ms ~= 11
-    # steps/sec. Lower = faster; the 200ms delay is the pause before a hold starts repeating.
-    pygame.key.set_repeat(200, 90)
+    # cooldown-gated (see can_act), so the interval sets the walking speed directly: 90ms ~= 11
+    # steps/sec (lower = faster). The 300ms delay is the pause before a hold starts repeating —
+    # long enough that a slightly-long tap stays a single step / a single menu move, not a repeat.
+    pygame.key.set_repeat(300, 90)
 
     asset_loader = AssetLoader()
     get_game_configs(asset_loader)  # register sprites/chars + load configs (memoized)
@@ -332,9 +349,8 @@ def main():
     add_logic_systems()
     render_system = add_render_systems(screen, asset_loader)
 
-    # Boot straight into a new game. (The title menu returns once menus are ported.)
-    init_game_world(asset_loader)
-    get_singleton(GameState).display_mode = DisplayMode.EXPLORING
+    # Boot into the title screen (New Game / Continue / Quit).
+    init_main_menu()
 
     # Open the audio device. main() holds the engine so it survives the clear_database()
     # on new game / load (update_audio re-attaches it); shutdown closes the device on exit.

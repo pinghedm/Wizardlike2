@@ -1,5 +1,5 @@
 import esper
-import tcod.event
+import pygame
 
 from src import main
 from src.components import (
@@ -15,6 +15,7 @@ from src.components import (
 from src.ecs_helpers import get_singleton
 from src.states import DisplayMode, GameState, PendingTransition
 from src.systems import cast_spell, deal_damage
+from src.ui_systems import MenuSystem
 from tests.headless_runner import HeadlessRunner
 
 
@@ -63,7 +64,7 @@ def test_picking_up_gold_increments_gold_collected():
     px, py = runner.player_pos
     esper.create_entity(Position(px, py - 1), Item(type=ItemType('gold'), count=25))
 
-    runner.simulate_key(tcod.event.KeySym.UP)  # step onto the gold
+    runner.simulate_key(pygame.K_UP)  # step onto the gold
 
     assert _run_stats().gold_collected == 25
 
@@ -73,7 +74,7 @@ def test_picking_up_an_ingredient_counts_per_type():
     px, py = runner.player_pos
     esper.create_entity(Position(px, py - 1), Item(type=ItemType('reagent_a'), count=3))
 
-    runner.simulate_key(tcod.event.KeySym.UP)  # step onto the reagent
+    runner.simulate_key(pygame.K_UP)  # step onto the reagent
 
     assert _run_stats().ingredients_collected[ItemType('reagent_a')] == 3
 
@@ -86,7 +87,7 @@ def test_discovering_a_recipe_increments_spells_discovered():
     ui_state.selected_for_crafting = {ItemType('reagent_a'): 1, ItemType('reagent_b'): 1}
     runner.game_state.display_mode = DisplayMode.COMBINING
 
-    runner.simulate_key(tcod.event.KeySym.RETURN)  # combine -> discover test_bolt
+    runner.simulate_key(pygame.K_RETURN)  # combine -> discover test_bolt
 
     assert _run_stats().spells_discovered == 1
 
@@ -106,23 +107,13 @@ def test_return_to_title_clears_the_world_and_boots_the_menu():
 # --- rendering --------------------------------------------------------------------
 
 
-def test_game_over_screen_renders_header_and_stat_breakdown():
+def test_game_over_lines_list_the_stats_and_run_breakdown():
     runner = HeadlessRunner(use_random_map=False)
     _run_stats().spells_cast[SpellType('test_bolt')] = 2
-    runner.game_state.display_mode = DisplayMode.GAME_OVER
+    menu = MenuSystem(runner.surface, runner.asset_loader)
 
-    text = '\n'.join(runner.get_console_text())
-
-    assert 'You Died' in text
+    lines = menu._game_over_lines(runner.game_state, _run_stats())
+    text = '\n'.join(''.join(seg for seg, _ in row) for row in lines)
     assert 'Floor reached' in text
-    assert 'TEST_BOLT x2' in text
-
-
-def test_game_over_screen_shows_victory_header_when_won():
-    runner = HeadlessRunner(use_random_map=False)
-    _run_stats().won = True
-    runner.game_state.display_mode = DisplayMode.GAME_OVER
-
-    text = '\n'.join(runner.get_console_text())
-
-    assert 'Victory!' in text
+    assert 'Spells discovered' in text
+    assert 'TEST_BOLT x2' in text  # the per-spell breakdown line

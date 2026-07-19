@@ -1,161 +1,104 @@
 """Explored-area maps: a small, translucent always-on corner minimap and a full-screen
-overview (DisplayMode.MAP_VIEW), both drawn by the same fill at different sizes.
+overview (DisplayMode.MAP_VIEW), both a downscaled render of the same explored open space.
 
-We render the explored open space (walkable floor) as the lit ink, leaving walls and the
-unknown dark — so a 1-wide corridor reads as a lit path rather than vanishing between two
-walls (rendering walls instead loses thin gaps at this resolution). To squeeze more detail
-out of a small panel, each cell packs a 2x2 grid of sub-cells via quadrant block glyphs,
-lit wherever the sampled region holds explored floor.
-
-The corner minimap is translucent: instead of an opaque box, it dims the dungeon already
-drawn behind it — both glyph (fg) and background (bg) — so the live view shows through in
-the gaps, then overlays the bright paths on top.
+We light the explored *walkable floor* and leave walls / the unknown dark, so a 1-wide
+corridor reads as a lit path rather than vanishing between two walls. The pixel renderer
+gets the sub-tile detail for free: the lit mask is built at map resolution (one pixel per
+tile) and scaled up to the panel, so thin corridors stay visible.
 """
 
-from typing import TYPE_CHECKING
-
 import esper
-import tcod.console
+import numpy as np
+import pygame
 
-from src.components import FieldOfView, Guardian, Position
+from src.components import Guardian, Position
 from src.constants import (
+    RGB,
     UI_BLACK,
+    UI_FONT_PX,
     UI_GRAY,
     UI_GRAY_DARK,
     UI_GRAY_MID,
     UI_GREEN_BRIGHT,
     UI_ORANGE,
     UI_YELLOW,
-    to_rgb,
 )
+from src.data_loaders import AssetLoader
 from src.ecs_helpers import exit_is_sealed, get_player_component, get_singleton, try_get_singleton
-from src.layout import Layout, LayoutProcessor
 from src.map_objects import Map
+from src.render import map_viewport_rect, minimap_rect
 from src.states import WORLD_VIEW_MODES, DisplayMode, GameState
-from src.systems import render_entities
-from src.ui_helpers import blend, draw_titled_frame
-
-if TYPE_CHECKING:
-    from src.data_loaders import AssetLoader
-
-# The 2x2 sub-cell offsets (top-left, top-right, bottom-left, bottom-right) and the block
-# glyph for each 4-bit fill mask built from them, so QUADRANTS[mask] fills exactly those cells.
-_SUBCELLS = ((0, 0), (1, 0), (0, 1), (1, 1))
-_QUADRANTS = ' ▘▝▀▖▌▞▛▗▚▐▜▄▙▟█'
+from src.ui_draw import blit_text, fill_alpha
 
 
-def _to_cell(map_x: int, map_y: int, cols: int, rows: int, game_map: Map) -> tuple[int, int]:
-    """Map-tile (map_x, map_y) to its column/row within a cols x rows minimap panel."""
-    return min(cols - 1, map_x * cols // game_map.width), min(rows - 1, map_y * rows // game_map.height)
+def _thicken(mask: np.ndarray) -> np.ndarray:
+    """Grow the lit mask by one tile in each direction (4-connected dilation), so 1-wide corridors
+    read as a slightly thicker path once the small mask is scaled up to the panel."""
+    out = mask.copy()
+    out[:-1, :] |= mask[1:, :]
+    out[1:, :] |= mask[:-1, :]
+    out[:, :-1] |= mask[:, 1:]
+    out[:, 1:] |= mask[:, :-1]
+    return out
 
 
-def _explored_mask_grid(cols: int, rows: int, game_map: Map) -> list[int]:
-    """The per-cell 4-bit quadrant fill masks (row-major, length cols*rows) for `game_map`'s
-    explored open space downsampled onto a cols x rows panel via 2x2 sub-cells. This is the
-    expensive part of drawing a minimap, so callers on the per-frame path cache the result."""
-    sub_cols, sub_rows = cols * 2, rows * 2
-    masks = [0] * (cols * rows)
-    for cy in range(rows):
-        for cx in range(cols):
-            mask = 0
-            for bit, (qx, qy) in enumerate(_SUBCELLS):
-                sx, sy = cx * 2 + qx, cy * 2 + qy
-                mx0 = sx * game_map.width // sub_cols
-                my0 = sy * game_map.height // sub_rows
-                # Keep the sampled region at least 1 tile wide even when sub-cells are finer
-                # than tiles (a small map in a big panel), so the slice is never empty.
-                mx1 = max(mx0 + 1, (sx + 1) * game_map.width // sub_cols)
-                my1 = max(my0 + 1, (sy + 1) * game_map.height // sub_rows)
-                if (game_map.explored[mx0:mx1, my0:my1] & game_map.walkable[mx0:mx1, my0:my1]).any():
-                    mask |= 1 << bit
-            masks[cy * cols + cx] = mask
-    return masks
+def _explored_surface(game_map: Map, color: RGB, alpha: int) -> pygame.Surface:
+    """A map-resolution SRCALPHA Surface (one pixel per tile): explored walkable tiles (dilated a
+    touch for visibility) filled `color` at `alpha`, everything else transparent. Scaled up by the
+    caller."""
+    lit = _thicken(np.asarray(game_map.explored) & np.asarray(game_map.walkable))  # (W, H) bool, [x][y]
+    surface = pygame.Surface(lit.shape, pygame.SRCALPHA)
+    rgb = pygame.surfarray.pixels3d(surface)
+    alpha_view = pygame.surfarray.pixels_alpha(surface)
+    rgb[lit] = color
+    alpha_view[lit] = alpha
+    del rgb, alpha_view  # release the surface locks
+    return surface
 
 
-def _draw_explored(
-    console: tcod.console.Console,
-    x0: int,
-    y0: int,
-    cols: int,
-    rows: int,
-    masks: list[int],
-    game_map: Map,
-    player_pos: Position | None,
-    path_opacity: float = 1.0,
-) -> None:
-    """Draw the explored-path quadrant glyphs from `masks`, then the live markers over them.
-    `path_opacity` < 1 blends the path ink over the cell behind it so the live view shows
-    through (the corner minimap); markers stay opaque so they remain legible."""
-    if cols < 1 or rows < 1:
-        return
-    for cy in range(rows):
-        for cx in range(cols):
-            mask = masks[cy * cols + cx]
-            if mask:
-                ink = blend(to_rgb(console.rgb[y0 + cy, x0 + cx]['bg']), UI_GRAY, path_opacity)
-                console.print(x0 + cx, y0 + cy, _QUADRANTS[mask], fg=ink)
+def _draw_markers(surface: pygame.Surface, rect: pygame.Rect, game_map: Map, player_pos: Position | None) -> None:
+    """Draw the live markers over the paths (only on explored tiles, so they don't reveal unseen
+    ground): living guardians, the exit (dim while sealed, bright once cleared), player on top."""
+    size = max(3, rect.width // 60)
 
-    # Markers, drawn over the paths but only on explored tiles so they don't reveal unseen
-    # ground: living guardians, then the exit (dim while they seal it, bright once cleared),
-    # and the player on top.
+    def at(map_x: int, map_y: int) -> tuple[int, int]:
+        return rect.x + map_x * rect.width // game_map.width, rect.y + map_y * rect.height // game_map.height
+
     for _ent, (pos, _guardian) in esper.get_components(Position, Guardian):
         if game_map.explored[pos.x, pos.y]:
-            gx, gy = _to_cell(pos.x, pos.y, cols, rows, game_map)
-            console.print(x0 + gx, y0 + gy, 'G', fg=UI_ORANGE)
+            pygame.draw.rect(surface, UI_ORANGE, (*at(pos.x, pos.y), size, size))
 
     if game_map.exit_pos is not None and game_map.explored[game_map.exit_pos]:
-        ex, ey = _to_cell(*game_map.exit_pos, cols, rows, game_map)
-        console.print(x0 + ex, y0 + ey, '>', fg=UI_GRAY_DARK if exit_is_sealed() else UI_YELLOW)
+        color = UI_GRAY_DARK if exit_is_sealed() else UI_YELLOW
+        pygame.draw.rect(surface, color, (*at(*game_map.exit_pos), size, size))
 
     if player_pos is not None:
-        px, py = _to_cell(player_pos.x, player_pos.y, cols, rows, game_map)
-        console.print(x0 + px, y0 + py, '@', fg=UI_GREEN_BRIGHT)
+        px, py = at(player_pos.x, player_pos.y)
+        pygame.draw.circle(surface, UI_GREEN_BRIGHT, (px + size // 2, py + size // 2), size)
 
 
-def _fill_explored(
-    console: tcod.console.Console, x0: int, y0: int, cols: int, rows: int, game_map: Map, player_pos: Position | None
-) -> None:
-    """Fill a cols x rows region at (x0, y0) with the explored open space of `game_map`, plus
-    markers, downsampling the map onto it via 2x2 quadrant sub-cells. Recomputes the masks each
-    call — for the full-screen map view, which opens infrequently."""
-    if cols < 1 or rows < 1:
-        return
-    masks = _explored_mask_grid(cols, rows, game_map)
-    _draw_explored(console, x0, y0, cols, rows, masks, game_map, player_pos)
-
-
-class MinimapSystem(LayoutProcessor):
+class MinimapSystem(esper.Processor):
     """The always-on corner minimap, drawn translucently over the world view."""
 
-    # How far to fade the dungeon behind the minimap toward black: 0 leaves the live view at
-    # full brightness, 1 is an opaque black panel. The explored paths draw over it at
-    # PATH_OPACITY, blended toward the cell behind them so the whole panel stays translucent.
-    BACKDROP_FADE = 0.3
-    PATH_OPACITY = 0.3
+    BACKDROP_FADE = 0.35  # how far to dim the dungeon behind the panel toward black
+    PATH_ALPHA = 150  # translucency of the explored paths, so the live view shows through
 
-    def __init__(self, layout: Layout, asset_loader: AssetLoader):
-        super().__init__(layout)
+    def __init__(self, surface: pygame.Surface, asset_loader: AssetLoader):
+        self.surface = surface
         self.asset_loader = asset_loader
-        # The explored-path fill costs several ms, but it only changes as the player explores.
-        # Cache it, recomputing when the floor's map, the panel size, or the explored-cell
-        # count changes; the markers and translucent backdrop still redraw every frame.
-        self._cached_map: Map | None = None
-        self._cached_size: tuple[int, int] = (0, 0)
-        self._cached_explored: int = -1
-        self._masks: list[int] = []
+        # The scaled path fill only changes as the player explores, so cache it (keyed by floor,
+        # explored-cell count, and panel size); the backdrop + markers still redraw every frame.
+        self._cache_key: tuple[int, int, int, int] | None = None
+        self._cache_surface: pygame.Surface | None = None
 
-    def _masks_for(self, game_map: Map, cols: int, rows: int) -> list[int]:
-        explored_count = int(game_map.explored.sum())
-        if (
-            game_map is not self._cached_map
-            or (cols, rows) != self._cached_size
-            or explored_count != self._cached_explored
-        ):
-            self._cached_map = game_map
-            self._cached_size = (cols, rows)
-            self._cached_explored = explored_count
-            self._masks = _explored_mask_grid(cols, rows, game_map)
-        return self._masks
+    def _path_surface(self, game_map: Map, rect: pygame.Rect) -> pygame.Surface:
+        key = (id(game_map), int(game_map.explored.sum()), rect.width, rect.height)
+        if key != self._cache_key:
+            small = _explored_surface(game_map, UI_GRAY, self.PATH_ALPHA)
+            self._cache_surface = pygame.transform.scale(small, (rect.width, rect.height))
+            self._cache_key = key
+        assert self._cache_surface is not None
+        return self._cache_surface
 
     def process(self):
         if get_singleton(GameState).display_mode not in WORLD_VIEW_MODES:
@@ -163,38 +106,25 @@ class MinimapSystem(LayoutProcessor):
         game_map = try_get_singleton(Map)
         if game_map is None:
             return
-        rect = self.layout.minimap_rect(game_map.width, game_map.height)
-        view = self.layout.map_viewport
-        if rect.width < 3 or rect.height < 3 or rect.y + rect.height > view.y + view.height:
+        _vx, _vy, vw, vh = map_viewport_rect(self.surface)
+        if vw < 3 or vh < 3:
             return
+        rect = minimap_rect(self.surface, game_map.width, game_map.height)
 
-        masks = self._masks_for(game_map, rect.width, rect.height)
-        player_pos = get_player_component(Position)
-
-        # Translucency: blend the dungeon already drawn here toward black in place (the same
-        # blend-over-the-console approach the combat overlays use), keeping its glyphs faintly
-        # visible, then overlay the explored paths on top.
-        for y in range(rect.y, rect.y + rect.height):
-            for x in range(rect.x, rect.x + rect.width):
-                cell = self.console.rgb[y, x]
-                cell['fg'] = blend(to_rgb(cell['fg']), UI_BLACK, self.BACKDROP_FADE)
-                cell['bg'] = blend(to_rgb(cell['bg']), UI_BLACK, self.BACKDROP_FADE)
-        _draw_explored(
-            self.console, rect.x, rect.y, rect.width, rect.height, masks, game_map, player_pos, self.PATH_OPACITY
-        )
-
-        # The path fill is opaque, so any creature standing under the panel would vanish. Redraw
-        # just the entities this rect covers on top of it, keeping them legible as their own glyph.
-        focus_x = player_pos.x if player_pos else game_map.width // 2
-        focus_y = player_pos.y if player_pos else game_map.height // 2
-        cam_x, cam_y = self.layout.camera_offset(focus_x, focus_y, game_map.width, game_map.height)
-        render_entities(
-            self.console, self.layout, self.asset_loader, cam_x, cam_y, get_player_component(FieldOfView), clip=rect
-        )
+        fill_alpha(self.surface, rect.x, rect.y, rect.width, rect.height, UI_BLACK, self.BACKDROP_FADE)
+        self.surface.blit(self._path_surface(game_map, rect), (rect.x, rect.y))
+        _draw_markers(self.surface, rect, game_map, get_player_component(Position))
+        pygame.draw.rect(self.surface, UI_GRAY_DARK, rect, width=1)  # subtle frame
 
 
-class MapViewSystem(LayoutProcessor):
+class MapViewSystem(esper.Processor):
     """The full-screen map overview (DisplayMode.MAP_VIEW), large enough to resolve corridors."""
+
+    MARGIN = 40
+
+    def __init__(self, surface: pygame.Surface, asset_loader: AssetLoader):
+        self.surface = surface
+        self.asset_loader = asset_loader
 
     def process(self):
         if get_singleton(GameState).display_mode != DisplayMode.MAP_VIEW:
@@ -202,16 +132,17 @@ class MapViewSystem(LayoutProcessor):
         game_map = try_get_singleton(Map)
         if game_map is None:
             return
-        area = self.layout.modal_area
-        draw_titled_frame(
-            self.console, area.x, area.y, area.width, area.height, title='Map', fg=UI_GRAY_MID, bg=UI_BLACK
-        )
-        _fill_explored(
-            self.console,
-            area.x + 1,
-            area.y + 1,
-            area.width - 2,
-            area.height - 2,
-            game_map,
-            get_player_component(Position),
-        )
+
+        width, height = self.surface.get_size()
+        self.surface.fill(UI_BLACK)
+        # Aspect-fit the whole level into the screen, centered, inside a margin.
+        scale = min((width - 2 * self.MARGIN) / game_map.width, (height - 2 * self.MARGIN) / game_map.height)
+        panel_w, panel_h = int(game_map.width * scale), int(game_map.height * scale)
+        rect = pygame.Rect((width - panel_w) // 2, (height - panel_h) // 2, panel_w, panel_h)
+
+        paths = pygame.transform.scale(_explored_surface(game_map, UI_GRAY, 255), (panel_w, panel_h))
+        self.surface.blit(paths, rect.topleft)
+        _draw_markers(self.surface, rect, game_map, get_player_component(Position))
+
+        font = self.asset_loader.font(UI_FONT_PX)
+        blit_text(self.surface, font, 'Map', (width - font.size('Map')[0]) // 2, 10, UI_GRAY_MID)

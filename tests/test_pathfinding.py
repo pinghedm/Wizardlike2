@@ -7,7 +7,7 @@ def _walkable(width: int, height: int) -> np.ndarray:
     return np.ones((width, height), dtype=bool)
 
 
-# --- get_path reproduces the tcod contract: goal-side first, goal excluded, start last ---
+# --- get_path ordering: goal-side first, goal excluded, start last ---
 
 
 def test_straight_corridor_path_is_ordered_from_goal_to_start_excluding_goal():

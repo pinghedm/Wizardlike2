@@ -1,13 +1,14 @@
 from collections import Counter
 
 import esper
-import tcod.event
-from tcod.sdl.joystick import ControllerAxis, ControllerButton
+import pygame
 
 from src import persistence
 from src.components import (
     AI,
     ChaseTag,
+    ControllerAxis,
+    ControllerButton,
     FieldOfView,
     InputAction,
     Inventory,
@@ -70,14 +71,14 @@ def test_meta_round_trips_settings():
     HeadlessRunner(use_random_map=False)
     settings = esper.get_component(Settings)[0][1]
     settings.post_cast = PostCastBehavior.EXPLORE
-    settings.keybindings.bindings[InputAction.CONFIRM] = tcod.event.KeySym.SPACE
+    settings.keybindings.bindings[InputAction.CONFIRM] = pygame.K_SPACE
     settings.keybindings.controller[InputAction.CONFIRM] = ControllerButton.Y
 
     persistence.save_meta()
     loaded = persistence.load_meta()['keybindings']
 
     assert persistence.load_meta()['post_cast'] == PostCastBehavior.EXPLORE
-    assert loaded.bindings[InputAction.CONFIRM] == tcod.event.KeySym.SPACE
+    assert loaded.bindings[InputAction.CONFIRM] == pygame.K_SPACE
     assert loaded.controller[InputAction.CONFIRM] == ControllerButton.Y
     # An axis binding (the trigger scroll) survives the button/axis-tagged round trip.
     assert loaded.controller[InputAction.SCROLL_UP] == ControllerAxis.TRIGGERLEFT
@@ -116,7 +117,7 @@ def test_gold_pickup_defers_meta_write_until_flush():
     px, py = runner.player_pos
     spawn_item_entity(ItemType('gold'), px + 1, py, count=5)
 
-    runner.simulate_key(tcod.event.KeySym.RIGHT)
+    runner.simulate_key(pygame.K_RIGHT)
 
     # The pickup only marks meta dirty; it must not touch the disk mid-step.
     assert get_singleton(MetaSaveState).dirty is True
@@ -132,7 +133,7 @@ def test_meta_save_system_flushes_pending_gold_when_paused():
     runner = HeadlessRunner(use_random_map=False)
     px, py = runner.player_pos
     spawn_item_entity(ItemType('gold'), px + 1, py, count=5)
-    runner.simulate_key(tcod.event.KeySym.RIGHT)
+    runner.simulate_key(pygame.K_RIGHT)
 
     # While exploring (unpaused) the MetaSaveSystem leaves the pending write alone.
     runner.tick()

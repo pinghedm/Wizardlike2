@@ -3,8 +3,8 @@
 from dataclasses import replace
 
 import esper
+import pygame
 import pytest
-import tcod.event
 
 from src.components import (
     Actor,
@@ -43,10 +43,10 @@ BASIC = 'test_wand'  # the always-castable basic attack in the fixtures
 GOLD = ItemType('gold')
 
 
-def _slot_key(spell_id: str) -> tcod.event.KeySym:
-    """The quick-cast number key (N1..) for a spell's slot in the available-spells list."""
+def _slot_key(spell_id: str) -> int:
+    """The quick-cast number key (1..) for a spell's slot in the available-spells list."""
     slot = available_spells().index(SpellType(spell_id))
-    return getattr(tcod.event.KeySym, f'N{slot + 1}')
+    return getattr(pygame, f'K_{slot + 1}')
 
 
 def _settings() -> Settings:
@@ -77,7 +77,7 @@ def _enter_targeting(runner: HeadlessRunner, spell_id: str = SPELL):
     _freeze_fov(runner, Point(px + 1, py))
     runner.game_state.display_mode = DisplayMode.CASTING
     _ui().casting_cursor = available_spells().index(SpellType(spell_id))
-    runner.simulate_key(tcod.event.KeySym.RETURN)
+    runner.simulate_key(pygame.K_RETURN)
     assert runner.display_mode == DisplayMode.TARGETING
 
 
@@ -103,7 +103,7 @@ def test_post_cast_behavior_routes_after_cast(behavior, charges, expected_mode):
     _settings().post_cast = behavior
 
     _enter_targeting(runner)
-    runner.simulate_key(tcod.event.KeySym.RETURN)  # confirm the cast
+    runner.simulate_key(pygame.K_RETURN)  # confirm the cast
 
     assert runner.display_mode == expected_mode
     # The cast always spends exactly one charge, whatever happens next.
@@ -128,7 +128,7 @@ def test_basic_spell_depletes_when_cast_then_refills_on_the_next_floor():
     _freeze_fov(runner, Point(px + 1, py))
 
     runner.simulate_key(_slot_key(BASIC))
-    runner.simulate_key(tcod.event.KeySym.RETURN)  # spend one charge
+    runner.simulate_key(pygame.K_RETURN)  # spend one charge
     assert runner.spell_charges(BASIC) == 1
 
     transition_to_next_floor()
@@ -143,7 +143,7 @@ def test_post_cast_stay_keeps_aiming_a_basic_spell_while_charges_remain():
     _settings().post_cast = PostCastBehavior.STAY
 
     _enter_targeting(runner, BASIC)
-    runner.simulate_key(tcod.event.KeySym.RETURN)
+    runner.simulate_key(pygame.K_RETURN)
 
     assert runner.display_mode == DisplayMode.TARGETING
     assert _ui().active_targeting_spell_id == BASIC
@@ -155,7 +155,7 @@ def test_post_cast_stay_keeps_the_reticle_up():
     _settings().post_cast = PostCastBehavior.STAY
 
     _enter_targeting(runner)
-    runner.simulate_key(tcod.event.KeySym.RETURN)
+    runner.simulate_key(pygame.K_RETURN)
 
     assert runner.display_mode == DisplayMode.TARGETING
     assert _ui().active_targeting_spell_id == SPELL
@@ -178,7 +178,7 @@ def test_quick_cast_empty_slot_is_a_noop():
     runner = HeadlessRunner(use_random_map=False)
     runner.give_spell(SPELL, 1)  # available is [basic, bolt], so slot 3 is empty
 
-    runner.simulate_key(tcod.event.KeySym.N3)
+    runner.simulate_key(pygame.K_3)
 
     assert runner.display_mode == DisplayMode.EXPLORING
 
@@ -192,7 +192,7 @@ def test_settings_toggle_cycles_and_persists_post_cast():
     options = list(PostCastBehavior)
     start = options.index(_settings().post_cast)
 
-    runner.simulate_key(tcod.event.KeySym.RIGHT)  # MOVE_RIGHT advances the toggle
+    runner.simulate_key(pygame.K_RIGHT)  # MOVE_RIGHT advances the toggle
 
     assert _settings().post_cast == options[(start + 1) % len(options)]
     assert persistence.load_meta()['post_cast'] == _settings().post_cast
@@ -204,7 +204,7 @@ def test_settings_confirm_on_keybinding_row_arms_remap():
     _ui().settings_cursor = len(SettingsPref)  # first keybinding row (preference toggles precede it)
     first_action = next(iter(_settings().keybindings.bindings))
 
-    runner.simulate_key(tcod.event.KeySym.RETURN)
+    runner.simulate_key(pygame.K_RETURN)
 
     assert _ui().remapping_action == first_action
 
@@ -337,7 +337,7 @@ def test_cycle_tabs_to_next_visible_enemy():
     _freeze_fov(runner, Point(px + 1, py), Point(px + 4, py))
     runner.simulate_key(_slot_key(SPELL))
 
-    runner.simulate_key(tcod.event.KeySym.TAB)  # cycle to the next target (distance order)
+    runner.simulate_key(pygame.K_TAB)  # cycle to the next target (distance order)
 
     reticle = esper.get_component(TargetingReticle)[0][1]
     assert reticle.target_ent == far
@@ -353,7 +353,7 @@ def test_can_walk_while_targeting():
     runner.simulate_key(_slot_key(SPELL))
     assert runner.display_mode == DisplayMode.TARGETING
 
-    runner.simulate_key(tcod.event.KeySym.DOWN)  # arrows walk the caster while aiming
+    runner.simulate_key(pygame.K_DOWN)  # arrows walk the caster while aiming
 
     assert runner.player_pos == Point(px, py + 1)
     assert runner.display_mode == DisplayMode.TARGETING
@@ -368,7 +368,7 @@ def test_cycle_cast_damages_locked_enemy():
     runner.simulate_key(_slot_key(SPELL))
     hp_before = esper.component_for_entity(enemy, Stats).hp
 
-    runner.simulate_key(tcod.event.KeySym.RETURN)
+    runner.simulate_key(pygame.K_RETURN)
 
     assert runner.spell_charges(SPELL) == 2
     assert esper.component_for_entity(enemy, Stats).hp < hp_before
@@ -448,7 +448,7 @@ def test_confirm_with_no_locked_target_waits_in_targeting_without_spending():
     # The enemy leaves view, so the next refresh finds nothing to lock onto.
     _freeze_fov(runner)
 
-    runner.simulate_key(tcod.event.KeySym.RETURN)
+    runner.simulate_key(pygame.K_RETURN)
 
     assert runner.display_mode == DisplayMode.TARGETING
     assert runner.spell_charges(SPELL) == 2  # no charge spent without a target

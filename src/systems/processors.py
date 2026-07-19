@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING
 import esper
 import numpy as np
 import pygame
-import tcod
 
 from src import persistence
 from src.audio import SoundId, play_sfx
@@ -30,7 +29,6 @@ from src.constants import (
     RGB,
     STATUS_PULSE_INTERVAL,
     TILE_PX,
-    TILE_SCALE,
     TRAP_DETECT_RADIUS,
     UI_BLACK,
     UI_YELLOW,
@@ -48,7 +46,6 @@ from src.ecs_helpers import (
     try_get_singleton,
 )
 from src.fov import compute_fov
-from src.layout import Rect
 from src.map_objects import Map, Tile
 from src.render import Viewport, compute_viewport
 from src.states import WORLD_VIEW_MODES, DisplayMode, GameState
@@ -60,7 +57,6 @@ from src.ui_helpers import blend
 
 if TYPE_CHECKING:
     from src.data_loaders import AssetLoader
-    from src.layout import Layout
 
 # When statuses stack, an entity's glyph tints to the most action-relevant one first.
 STATUS_TINT_PRIORITY = (
@@ -258,62 +254,12 @@ def _reveal_nearby_traps(game_map: Map, player_pos: Position, visible_tiles: set
             game_map.revealed[p.x, p.y] = True
 
 
-def draw_block(
-    console: tcod.console.Console, asset_loader: AssetLoader, sprite_id: str, x: int, y: int, fg: RGB, bg: RGB | None
-) -> None:
-    """Draw a sprite into its TILE_SCALE x TILE_SCALE block at console cell (x, y).
-    An image sprite rasterized at block size draws its sub-tiles one per cell; a font
-    glyph (no block form) just fills the block with the single glyph."""
-    block = asset_loader.get_block_codepoints(sprite_id)
-    if block is None:
-        codepoint = asset_loader.get_codepoint(sprite_id)
-        console.draw_rect(x, y, TILE_SCALE, TILE_SCALE, ch=codepoint, fg=fg, bg=bg)
-        return
-    for i, codepoint in enumerate(block):
-        console.print(x + i % TILE_SCALE, y + i // TILE_SCALE, chr(codepoint), fg=fg, bg=bg)
-
-
 def _status_tint(ent: int) -> RGB | None:
     """The tint of the entity's highest-priority active status, or None if it has none."""
     for status in STATUS_TINT_PRIORITY:
         if get_status(ent, status):
             return EFFECT_COLORS[EffectType(status)]
     return None
-
-
-def render_entities(
-    console: tcod.console.Console,
-    layout: Layout,
-    asset_loader: AssetLoader,
-    cam_x: int,
-    cam_y: int,
-    player_fov: FieldOfView | None,
-    clip: Rect | None = None,
-) -> None:
-    """Draw every visible entity with a Position and Renderable, filling the same TILE_SCALE
-    block so it reads at the scaled tile size. `clip` restricts drawing to entities whose block
-    overlaps that rect, so the minimap can redraw just the entities it covers on top of itself."""
-    view = layout.map_viewport
-    for ent, (pos, rend) in esper.get_components(Position, Renderable):
-        if player_fov is not None and pos.point not in player_fov.visible_tiles:
-            continue
-
-        block_x, block_y = layout.map_to_screen(map_x=pos.x, map_y=pos.y, cam_x=cam_x, cam_y=cam_y)
-        if not view.contains(block_x, block_y):
-            continue
-        if clip is not None and not (
-            block_x < clip.x + clip.width
-            and block_x + TILE_SCALE > clip.x
-            and block_y < clip.y + clip.height
-            and block_y + TILE_SCALE > clip.y
-        ):
-            continue
-
-        debug_log(f'render entity {ent} sprite={rend.sprite_id} at {(pos.x, pos.y)}')
-        # A statused entity keeps its glyph color over a tint of its active status.
-        tint = _status_tint(ent)
-        bg = blend(UI_BLACK, tint, 0.5) if tint is not None else None
-        draw_block(console, asset_loader, rend.sprite_id, block_x, block_y, fg=rend.color, bg=bg)
 
 
 class RenderSystem(esper.Processor):

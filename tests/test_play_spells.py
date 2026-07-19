@@ -1,6 +1,6 @@
 import esper
+import pygame
 import pytest
-import tcod.event
 
 from src.components import FieldOfView, Point, SpellInventory, SpellType, Stats, StatusEffects, StatusType, UIState
 from src.input_handlers import available_spells
@@ -22,14 +22,14 @@ def test_full_cast_cycle_applies_fixture_effects():
     enemy = runner.spawn_enemy(px + 2, py)
     _make_visible(runner, Point(px + 2, py))
 
-    runner.simulate_key(tcod.event.KeySym.s)  # EXPLORING -> CASTING
+    runner.simulate_key(pygame.K_s)  # EXPLORING -> CASTING
     assert runner.display_mode == DisplayMode.CASTING
 
     esper.get_component(UIState)[0][1].casting_cursor = available_spells().index(SpellType('test_bolt'))
-    runner.simulate_key(tcod.event.KeySym.RETURN)  # select test_bolt; locks the enemy -> TARGETING
+    runner.simulate_key(pygame.K_RETURN)  # select test_bolt; locks the enemy -> TARGETING
     assert runner.display_mode == DisplayMode.TARGETING
 
-    runner.simulate_key(tcod.event.KeySym.RETURN)  # cast at the locked enemy
+    runner.simulate_key(pygame.K_RETURN)  # cast at the locked enemy
 
     # The bolt's last charge is spent, so it falls back to the picker to ready another spell
     # (the always-castable basic attack means the picker is never empty).
@@ -39,7 +39,7 @@ def test_full_cast_cycle_applies_fixture_effects():
     assert esper.component_for_entity(enemy, StatusEffects).active[StatusType.SLOW].duration == 40
 
 
-@pytest.mark.parametrize('cancel_key', [tcod.event.KeySym.ESCAPE, tcod.event.KeySym.s])
+@pytest.mark.parametrize('cancel_key', [pygame.K_ESCAPE, pygame.K_s])
 def test_targeting_cancels_back_to_picker_without_casting(cancel_key):
     # Both Esc and the casting key (S) back out of targeting to the spell picker,
     # discarding the reticle and leaving the charge unspent.
@@ -49,8 +49,8 @@ def test_targeting_cancels_back_to_picker_without_casting(cancel_key):
     runner.spawn_enemy(px + 1, py)
     _make_visible(runner, Point(px + 1, py))
 
-    runner.simulate_key(tcod.event.KeySym.s)  # EXPLORING -> CASTING
-    runner.simulate_key(tcod.event.KeySym.RETURN)  # locks the enemy -> TARGETING
+    runner.simulate_key(pygame.K_s)  # EXPLORING -> CASTING
+    runner.simulate_key(pygame.K_RETURN)  # locks the enemy -> TARGETING
     assert runner.display_mode == DisplayMode.TARGETING
 
     runner.simulate_key(cancel_key)

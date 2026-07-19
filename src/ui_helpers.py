@@ -1,15 +1,13 @@
 """Pure presentation helpers for the UI systems.
 
 These functions hold display-formatting math only (no ECS access), which keeps
-them straightforward to unit-test independently of the tcod render pass.
+them straightforward to unit-test independently of the render pass.
 """
 
 from collections import Counter
 
-import tcod
-
 from src.components import Effect, EffectType, ItemType, Message
-from src.constants import RGB, TICKS_PER_SECOND, UI_WHITE
+from src.constants import RGB, TICKS_PER_SECOND
 
 
 def format_recipe(combo: tuple[ItemType, ...]) -> str:
@@ -52,81 +50,6 @@ def blend(base: RGB, color: RGB, alpha: float) -> RGB:
     return r, g, b
 
 
-def center_origin(console: tcod.console.Console, width: int, height: int) -> tuple[int, int]:
-    """Return the top-left (x, y) for a box of the given size centered on the console."""
-    return (console.width - width) // 2, (console.height - height) // 2
-
-
-# Block-element glyphs whose filled half/quadrants tile into one continuous border.
-# Each fills its cell, so adjacent border cells join seamlessly; box-drawing glyphs
-# (─│┌┐) instead leave gaps in fonts that render them at their narrow native width.
-_FRAME_TOP, _FRAME_BOTTOM, _FRAME_LEFT, _FRAME_RIGHT = '▀', '▄', '▌', '▐'
-_FRAME_TL, _FRAME_TR, _FRAME_BL, _FRAME_BR = '▛', '▜', '▙', '▟'
-
-
-def _draw_block_frame(
-    console: tcod.console.Console,
-    x: int,
-    y: int,
-    width: int,
-    height: int,
-    fg: tuple[int, int, int],
-    bg: tuple[int, int, int] | None,
-) -> None:
-    """Draw a solid rectangular border from block elements, clearing the interior.
-
-    Block half/quadrant glyphs fill their whole cell, so the border reads as an
-    unbroken line in any font — unlike box-drawing glyphs, which the font may render
-    too narrow to span the cell (leaving a dashed look).
-    """
-    console.draw_rect(x, y, width, height, ch=ord(' '), fg=fg, bg=bg)
-    right, bottom = x + width - 1, y + height - 1
-    for cx in range(x + 1, right):
-        console.print(cx, y, _FRAME_TOP, fg=fg, bg=bg)
-        console.print(cx, bottom, _FRAME_BOTTOM, fg=fg, bg=bg)
-    for cy in range(y + 1, bottom):
-        console.print(x, cy, _FRAME_LEFT, fg=fg, bg=bg)
-        console.print(right, cy, _FRAME_RIGHT, fg=fg, bg=bg)
-    console.print(x, y, _FRAME_TL, fg=fg, bg=bg)
-    console.print(right, y, _FRAME_TR, fg=fg, bg=bg)
-    console.print(x, bottom, _FRAME_BL, fg=fg, bg=bg)
-    console.print(right, bottom, _FRAME_BR, fg=fg, bg=bg)
-
-
-def draw_titled_frame(
-    console: tcod.console.Console,
-    x: int,
-    y: int,
-    width: int,
-    height: int,
-    title: str,
-    fg: tuple[int, int, int] = UI_WHITE,
-    bg: tuple[int, int, int] | None = None,
-) -> None:
-    """Draw a framed box with a title centered on its top border.
-
-    The frame is built from block elements (see `_draw_block_frame`) so its border
-    stays solid regardless of the font's box-drawing coverage. The title is printed
-    over the top border afterwards, interrupting it where the text sits.
-    """
-    _draw_block_frame(console, x, y, width, height, fg=fg, bg=bg)
-    console.print(x=x, y=y, width=width, height=1, text=f' {title} ', fg=fg, alignment=tcod.constants.CENTER)
-
-
-def draw_centered_frame(
-    console: tcod.console.Console,
-    width: int,
-    height: int,
-    title: str,
-    fg: tuple[int, int, int] = UI_WHITE,
-    bg: tuple[int, int, int] = (0, 0, 0),
-) -> tuple[int, int]:
-    """Draw a centered frame and return its top-left (x, y) so callers can offset from it."""
-    x, y = center_origin(console, width, height)
-    draw_titled_frame(console, x, y, width, height, title=title, fg=fg, bg=bg)
-    return x, y
-
-
 def compute_visible_slice(total_lines: int, scroll_index: int, visible_height: int) -> tuple[int, int, int]:
     """Resolve which lines of a scrollable log are visible.
 
@@ -152,24 +75,6 @@ def scroll_window(total: int, cursor: int, visible_height: int) -> tuple[int, in
         return 0, total
     start = max(0, min(cursor - visible_height // 2, total - visible_height))
     return start, start + visible_height
-
-
-def draw_scroll_indicators(
-    console: tcod.console.Console,
-    x: int,
-    top_y: int,
-    bottom_y: int,
-    start: int,
-    end: int,
-    total: int,
-    fg: tuple[int, int, int],
-) -> None:
-    """Mark a windowed list as scrollable: '▲' at (x, top_y) when items precede the
-    window and '▼' at (x, bottom_y) when items follow it. A no-op when nothing is clipped."""
-    if start > 0:
-        console.print(x, top_y, '▲', fg=fg)
-    if end < total:
-        console.print(x, bottom_y, '▼', fg=fg)
 
 
 def wrap_message(segments: Message, width: int) -> list[Message]:

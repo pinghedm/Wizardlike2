@@ -5,7 +5,7 @@ WizardLike is a 2D roguelike game inspired by *Chocobo's Mystery Dungeon*. It fe
 ## Project Overview
 
 - **Language:** Python 3.14
-- **Rendering:** `tcod` with a dual-purpose tileset (ASCII/Text + Procedural Blocks).
+- **Rendering & input:** `pygame-ce` — pixel-native drawing (Surface blits, `pygame.draw`) and keyboard + SDL2 game-controller input (no mouse). FOV (`src/fov.py`) and pathfinding (`src/pathfinding.py`) are hand-rolled; there is no `tcod` dependency.
 - **Architecture:** ECS (using `esper`).
 - **Data:** YAML-defined ingredients and spell recipes.
 
@@ -53,7 +53,7 @@ Static type checking is done with `pyright` in **strict** mode (configured under
 ```bash
 ./venv/bin/pyright
 ```
-Keep `src/` at zero errors. When a third-party stub is inaccurate (e.g. `tcod` types `ControllerAxis` event fields as `int` though it delivers the enum), normalize the value at the boundary (`ControllerAxis(event.axis)`) rather than reaching for `# type: ignore`.
+Keep `src/` at zero errors. When a value crosses an untyped boundary (e.g. pygame delivers `event.axis`/`event.button` as a bare `int`), normalize it into our own enum at the edge (`ControllerAxis(event.axis)`) rather than reaching for `# type: ignore`.
 
 ## Development Conventions
 
@@ -82,7 +82,10 @@ Keep `src/` at zero errors. When a third-party stub is inaccurate (e.g. `tcod` t
 - `src/systems/`: Game-logic package (re-exported via `__init__.py`; import as `from src.systems import X`). Submodules: `visuals.py` (effect color/glyph tables + `trigger_*`/particle helpers), `movement.py` (`move_entity`, `apply_knockback`, `get_action_cooldown`, `step_toward`), `combat.py` (damage math, `apply_effect`, `STATUS_APPLY`, loot), `processors.py` (Death/Action/Status/FOV/Render processors), `ai.py` (enemy behaviors + `AISystem`), `crafting.py` (`cast_spell`, `match_recipe`, spell config lookup), `utils.py` (`is_game_active`). One-way deps: `visuals`/`movement` → `combat` → `processors`; `ai`/`crafting` build on those.
 - `src/procgen.py`: Dungeon generation logic and level transition orchestration.
 - `src/input_handlers/`: Input package (re-exported via `__init__.py`; import as `from src.input_handlers import X`). Submodules: `controller.py` (device/event layer, SDL controller binding + remap) and `handlers.py` (per-state `handle_*` action routing, plus the `step_cursor` nav helper).
-- `src/ui_systems.py`: UI rendering processors, including the ModalSystem.
+- `src/ui_systems/`: UI rendering processors. Submodules: `hud.py` (HUDSystem + ModalSystem), `menus.py` (MenuSystem — main/pause, crafting, casting, shop, settings, game over; each screen has a pure `_*_rows`/`_*_lines` content method the tests assert on), `overlays.py` (TargetingOverlaySystem + EffectOverlaySystem), `minimap.py` (MinimapSystem + MapViewSystem).
+- `src/render.py`: Pixel geometry — `Viewport`, the map/HUD/minimap rects, and the camera transform (`compute_viewport`).
+- `src/ui_draw.py`: Pixel-native drawing primitives (`blit_text`, `blit_segments`, `bar`, `panel`, `fill_alpha`, `scroll_arrows`) shared by the UI systems.
+- `src/fov.py`: Recursive-shadowcasting `compute_fov`. `src/pathfinding.py`: grid `Dijkstra` (bounded/unbounded flood + `get_path`) driving `AISystem`.
 - `src/states.py`: Game state definitions and navigation enums.
 - `src/constants.py`: Project-wide constants, including `DATA_DIR` (override via `WIZARDLIKE_DATA_DIR`).
 - `src/ecs_helpers.py`: Leaf ECS-query helpers (`get_singleton`, `actor_name`, `spawn_item_entity`) shared without coupling systems.

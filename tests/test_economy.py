@@ -1,5 +1,5 @@
 import esper
-import tcod.event
+import pygame
 
 from src.components import Inventory, Item, ItemType, Loot, LootDrop, Position, Stats
 from src.ecs_helpers import spawn_item_entity
@@ -68,7 +68,7 @@ def test_pickup_leaves_items_on_other_tiles():
     px, py = runner.player_pos
     spawn_item_entity(GOLD, px + 2, py, count=1)  # two tiles off, not where we step
 
-    runner.simulate_key(tcod.event.KeySym.RIGHT)  # step to px+1; the scan skips the far pile
+    runner.simulate_key(pygame.K_RIGHT)  # step to px+1; the scan skips the far pile
 
     assert any(item.type == GOLD for _e, (_pos, item) in esper.get_components(Position, Item))
 
@@ -78,22 +78,10 @@ def test_pickup_credits_the_stack_count():
     px, py = runner.player_pos
     spawn_item_entity(GOLD, px + 1, py, count=7)
 
-    runner.simulate_key(tcod.event.KeySym.RIGHT)
+    runner.simulate_key(pygame.K_RIGHT)
 
     inv = esper.component_for_entity(runner.player, Inventory)
     assert inv.items.get(GOLD, 0) == 7
     # The pickup's delete is deferred; a tick flushes it and consumes the entity.
     runner.tick(1)
     assert not any(item.type == GOLD for _e, (_pos, item) in esper.get_components(Position, Item))
-
-
-# --- HUD ----------------------------------------------------------------------
-
-
-def test_hud_shows_gold_count():
-    runner = HeadlessRunner(use_random_map=False)
-    esper.component_for_entity(runner.player, Inventory).items[GOLD] = 42
-
-    text = runner.get_console_text()
-
-    assert any('Gold: 42' in row for row in text)

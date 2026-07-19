@@ -1,7 +1,6 @@
 """Audio service: background music + sound effects.
 
-Playback goes through PortAudio (the `sounddevice` library) rather than tcod's bundled SDL,
-whose wheel ships without a working audio driver on macOS/Linux. The engine owns one output
+Playback goes through PortAudio (the `sounddevice` library): the engine owns one output
 stream; its real-time callback mixes the active one-shot SFX voices and the looping music
 voice into the output buffer. Sound effects are numpy waveforms synthesized at startup (a
 sound may instead point at a WAV file); music is a looping WAV.

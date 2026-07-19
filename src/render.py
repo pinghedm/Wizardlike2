@@ -41,6 +41,27 @@ def map_viewport_rect(surface: pygame.Surface) -> tuple[int, int, int, int]:
     return 0, 0, width, max(0, height - HUD_PX)
 
 
+def hud_rect(surface: pygame.Surface) -> pygame.Rect:
+    """The HUD bar's pixel rect: the reserved HUD_PX strip along the bottom of the window."""
+    width, height = surface.get_size()
+    return pygame.Rect(0, height - HUD_PX, width, HUD_PX)
+
+
+# Corner minimap width as a fraction of the map viewport, clamped to this pixel range.
+MINIMAP_MIN_W = 160
+MINIMAP_MAX_W = 320
+
+
+def minimap_rect(surface: pygame.Surface, map_w: int, map_h: int) -> pygame.Rect:
+    """The corner minimap panel: top-right of the map viewport, its height tracking the map's
+    aspect ratio so the downscaled level isn't stretched."""
+    vx, vy, vw, _vh = map_viewport_rect(surface)
+    width = min(MINIMAP_MAX_W, max(MINIMAP_MIN_W, vw // 5))
+    height = round(width * map_h / map_w)
+    margin = 8
+    return pygame.Rect(vx + vw - width - margin, vy + margin, width, height)
+
+
 def compute_viewport(surface: pygame.Surface, focus_x: int, focus_y: int, map_w: int, map_h: int) -> Viewport:
     """Center the camera on (focus_x, focus_y), clamped so it never scrolls off the map."""
     px_x, px_y, width, height = map_viewport_rect(surface)

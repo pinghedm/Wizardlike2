@@ -1,6 +1,5 @@
 import esper
 import pygame
-import tcod.console
 
 from src.components import (
     Configuration,
@@ -14,10 +13,9 @@ from src.components import (
     SpellInventory,
     SpellType,
 )
-from src.constants import SCREEN_HEIGHT, SCREEN_WIDTH
+from src.constants import WINDOW_HEIGHT, WINDOW_WIDTH
 from src.data_loaders import AssetLoader, get_game_configs
 from src.input_handlers import ControllerInput
-from src.layout import Layout
 from src.main import (
     add_logic_systems,
     apply_pending_transition,
@@ -29,13 +27,6 @@ from src.map_objects import Map, Tile
 from src.procgen import spawn_enemy
 from src.states import DisplayMode, GameState
 from src.systems import refill_basic_spells
-from src.ui_systems import (
-    EffectOverlaySystem,
-    HUDSystem,
-    MenuSystem,
-    ModalSystem,
-    TargetingOverlaySystem,
-)
 
 
 def _reset_processors():
@@ -54,8 +45,6 @@ class HeadlessRunner:
         self.asset_loader = AssetLoader()
         # Pre-load configs to register sprites
         get_game_configs(self.asset_loader)
-        # Build tileset
-        self.asset_loader.build_tileset()
 
         if not use_random_map:
             self._inject_clean_room()
@@ -65,19 +54,10 @@ class HeadlessRunner:
             self.player = init_game_world(self.asset_loader)
             add_logic_systems()
 
-        # A real console for snapshot tests. The UI render processors are
-        # instantiated but deliberately NOT registered with esper, so the
-        # normal tick()/esper.process() path is unaffected.
-        self.console = tcod.console.Console(SCREEN_WIDTH, SCREEN_HEIGHT)
-        self.layout = Layout(self.console)
+        # A window-sized pygame Surface the render/UI tests draw into (constructed here,
+        # not registered with esper).
+        self.surface = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT))
         self._controller = ControllerInput()
-        self._ui_systems = [
-            MenuSystem(self.layout),
-            HUDSystem(self.layout),
-            ModalSystem(self.layout),
-            TargetingOverlaySystem(self.layout),
-            EffectOverlaySystem(self.layout),
-        ]
 
     def _inject_clean_room(self, width: int = 20, height: int = 20):
         """Replace the procedurally generated map with a simple open room."""
@@ -202,34 +182,6 @@ class HeadlessRunner:
         """Return all log lines as plain concatenated strings."""
         log = esper.get_component(MessageLog)[0][1]
         return [''.join(seg[0] for seg in msg) for msg in log.messages]
-
-    def render_ui(self):
-        """Clear the console and run the UI render processors once.
-
-        Does not advance game logic, so snapshots reflect the current ECS
-        state regardless of pause state.
-        """
-        self.console.clear()
-        for system in self._ui_systems:
-            system.process()
-
-    def get_console_text(self) -> list[str]:
-        """Render the UI and return the console as one string per row.
-
-        Empty cells read back as spaces (console.clear() fills with ' ').
-        """
-        self.render_ui()
-        return [''.join(chr(c) for c in row) for row in self.console.ch]
-
-    def get_console_fg(self, x: int, y: int) -> tuple[int, int, int]:
-        """Render the UI and return the foreground RGB at cell (x, y)."""
-        self.render_ui()
-        return tuple(int(c) for c in self.console.fg[y, x])
-
-    def get_console_bg(self, x: int, y: int) -> tuple[int, int, int]:
-        """Render the UI and return the background RGB at cell (x, y)."""
-        self.render_ui()
-        return tuple(int(c) for c in self.console.bg[y, x])
 
     def entity_at(self, x: int, y: int) -> int | None:
         """Return the first entity with a Position at (x, y), or None."""

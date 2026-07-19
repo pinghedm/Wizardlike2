@@ -1,8 +1,8 @@
 from dataclasses import replace
 
 import esper
+import pygame
 import pytest
-import tcod.event
 
 from src.components import Actor, Effect, EffectType, MessageLog, Point, Position, StatusEffects, StatusType
 from src.map_objects import Map
@@ -14,10 +14,10 @@ from tests.headless_runner import HeadlessRunner
 @pytest.mark.parametrize(
     'key, dx, dy',
     [
-        (tcod.event.KeySym.UP, 0, -1),
-        (tcod.event.KeySym.DOWN, 0, 1),
-        (tcod.event.KeySym.LEFT, -1, 0),
-        (tcod.event.KeySym.RIGHT, 1, 0),
+        (pygame.K_UP, 0, -1),
+        (pygame.K_DOWN, 0, 1),
+        (pygame.K_LEFT, -1, 0),
+        (pygame.K_RIGHT, 1, 0),
     ],
 )
 def test_player_movement(key, dx, dy):
@@ -39,7 +39,7 @@ def test_player_movement(key, dx, dy):
 
 @pytest.mark.parametrize(
     'key, delta',
-    [(tcod.event.KeySym.PAGEUP, 1), (tcod.event.KeySym.PAGEDOWN, -1)],
+    [(pygame.K_PAGEUP, 1), (pygame.K_PAGEDOWN, -1)],
 )
 def test_paging_scrolls_the_message_log(key, delta):
     runner = HeadlessRunner(use_random_map=False)
@@ -57,7 +57,7 @@ def test_walking_into_a_wall_does_not_move_the_player():
     game_map = esper.get_component(Map)[0][1]
     game_map.set_tile(px, py - 1, replace(game_map.tiles[px][py - 1], walkable=False))  # wall to the north
 
-    runner.simulate_key(tcod.event.KeySym.UP)
+    runner.simulate_key(pygame.K_UP)
 
     assert runner.player_pos == Point(px, py)
 
@@ -79,7 +79,7 @@ def test_movement_is_swallowed_while_slowed_and_on_cooldown():
     esper.component_for_entity(runner.player, Actor).cooldown = 5  # SLOW gates until this elapses
     before = runner.player_pos
 
-    runner.simulate_key(tcod.event.KeySym.UP)
+    runner.simulate_key(pygame.K_UP)
 
     assert runner.player_pos == before
     assert runner.display_mode == DisplayMode.EXPLORING
@@ -90,6 +90,6 @@ def test_movement_is_swallowed_while_stunned():
     esper.component_for_entity(runner.player, StatusEffects).active[StatusType.STUN] = Effect(type=EffectType.STUN)
     before = runner.player_pos
 
-    runner.simulate_key(tcod.event.KeySym.UP)
+    runner.simulate_key(pygame.K_UP)
 
     assert runner.player_pos == before  # a snare trap's stun roots the player in place

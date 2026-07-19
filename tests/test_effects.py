@@ -113,7 +113,7 @@ def test_projectile_arrives_and_spawns_the_impact_burst():
     tx, ty = px + 2, py
     cast_spell(spell_id='test_bolt', target_x=tx, target_y=ty)
 
-    overlay = EffectOverlaySystem(runner.layout)
+    overlay = EffectOverlaySystem(runner.surface, runner.asset_loader)
     # progress climbs SPEED/distance (0.5/2) per frame, so it lands on the 4th.
     for _ in range(4):
         overlay.process()
@@ -131,7 +131,7 @@ def test_projectile_is_frozen_while_the_game_is_paused():
     cast_spell(spell_id='test_bolt', target_x=px + 2, target_y=py)
     runner.game_state.time_paused = True
 
-    overlay = EffectOverlaySystem(runner.layout)
+    overlay = EffectOverlaySystem(runner.surface, runner.asset_loader)
     for _ in range(10):
         overlay.process()
 
@@ -149,7 +149,7 @@ def test_particle_does_not_age_while_the_game_is_paused():
     )
     runner.game_state.time_paused = True
 
-    EffectOverlaySystem(runner.layout).process()
+    EffectOverlaySystem(runner.surface, runner.asset_loader).process()
 
     assert esper.get_component(Particle)
 
@@ -161,7 +161,7 @@ def test_particle_ages_out():
         Particle(x=float(px), y=float(py), vx=0.0, vy=0.0, glyph='*', color=UI_ORANGE, ticks=1, max_ticks=1)
     )
 
-    EffectOverlaySystem(runner.layout).process()
+    EffectOverlaySystem(runner.surface, runner.asset_loader).process()
 
     assert not esper.get_component(Particle)
 
@@ -249,12 +249,12 @@ def test_effect_overlay_rises_and_ages_out_a_floating_number():
     px, py = runner.player_pos
     esper.create_entity(FloatingNumber(x=float(px), y=float(py), text='7', color=UI_RED, ticks=2, max_ticks=2))
 
-    EffectOverlaySystem(runner.layout).process()  # draws, rises, ticks to 1
+    EffectOverlaySystem(runner.surface, runner.asset_loader).process()  # draws, rises, ticks to 1
     risen = _floating_numbers()
     assert len(risen) == 1
     assert risen[0].y < py  # floated upward
 
-    EffectOverlaySystem(runner.layout).process()  # ticks to 0 and is removed
+    EffectOverlaySystem(runner.surface, runner.asset_loader).process()  # ticks to 0 and is removed
     assert not esper.get_component(FloatingNumber)
 
 
@@ -263,7 +263,7 @@ def test_effect_overlay_ages_out_screen_flash():
     esper.create_entity(ScreenFlash(color=UI_RED, ticks=1, max_ticks=1))
 
     # draws this frame, then ticks to 0
-    EffectOverlaySystem(runner.layout).process()
+    EffectOverlaySystem(runner.surface, runner.asset_loader).process()
 
     assert not esper.get_component(ScreenFlash)
 
@@ -273,7 +273,7 @@ def test_effect_overlay_ages_out_cast_visual():
     px, py = runner.player_pos
     esper.create_entity(CastVisual(center=Point(px, py), radius=0, color=UI_ORANGE, ticks=1, max_ticks=1))
 
-    EffectOverlaySystem(runner.layout).process()
+    EffectOverlaySystem(runner.surface, runner.asset_loader).process()
 
     assert not esper.get_component(CastVisual)
 

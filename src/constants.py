@@ -1,7 +1,7 @@
 import os
 from collections.abc import Sequence
 
-# An (r, g, b) color, the form tcod consoles consume directly.
+# An (r, g, b) color.
 type RGB = tuple[int, int, int]
 
 
@@ -15,14 +15,7 @@ def to_rgb(color: Sequence[int]) -> RGB:
 # viewport so the camera scrolls to follow the player rather than showing it all.
 MAP_WIDTH = 140
 MAP_HEIGHT = 90
-SCREEN_WIDTH = 80
-SCREEN_HEIGHT = 50
 TICKS_PER_SECOND = 30
-
-# Console cells per map tile, per axis. At 2 each dungeon tile is drawn as a 2x2
-# block (4 cells), so the world reads larger and closer-up while the HUD and menus —
-# which draw one cell each — keep their normal size. 1 is the old 1-cell-per-tile view.
-TILE_SCALE = 2
 
 # A map tile is drawn TILE_PX square. UI_FONT_PX is the base HUD/menu text height. WINDOW_WIDTH/HEIGHT are
 # the default window size; the viewport shows more map when the window is enlarged.
@@ -42,22 +35,9 @@ ROOM_MAX_SIZE = 16
 # depth (see transition_to_next_floor).
 MAX_ITEMS_PER_ROOM = 4
 
-# Native pixel size of a console cell. FONT_FILE is rasterized to a square tile this
-# size in AssetLoader.build_tileset, so glyphs are drawn crisp at the display
-# resolution rather than upscaled from a tiny bitmap. Square cells keep the dungeon
-# and sprites unsquashed.
-FONT_TILE_PX = 20
-
-# The font rasterized into the tileset. Any .ttf/.otf works (swap the filename);
-# bitmap formats (.bdf/.png tilesheet) would need a different loader.
+# The UI/glyph typeface, loaded by AssetLoader.font() at each size it's asked for. Any
+# .ttf/.otf works (swap the filename).
 FONT_FILE = 'data/fonts/incite.ttf'
-
-# Each logical console cell is presented at this multiple of the tileset's native
-# tile size. At 1 the font renders 1:1 (sharp); a higher value would upscale cells
-# to be chunkier. The console is sized to window_pixels / (FONT_TILE_PX *
-# DISPLAY_SCALE), so enlarging the window shows more cells (more map and HUD room)
-# rather than just zooming in.
-DISPLAY_SCALE = 1
 
 # Number of floors in a full run. Reaching the exit on this floor wins the game;
 # earlier floors descend deeper. Tune for run length / difficulty.
@@ -84,8 +64,8 @@ PLAYER_MOVE_COST = 5
 # Casting is rate-limited (movement is not): each cast sets a cooldown that must elapse before the
 # next. The base cost shrinks by LEVEL_CAST_SPEEDUP per player level and MASTERY_CAST_SPEEDUP per
 # spell-mastery rank — investment makes a wizard cast faster — floored at MIN_CAST_COST (~move
-# speed), then modulated by SLOW/HASTE. At TICKS_PER_SECOND=30, 30 ticks ≈ 1s between casts.
-PLAYER_CAST_COST = 30
+# speed), then modulated by SLOW/HASTE. At TICKS_PER_SECOND=30, 27 ticks ≈ 0.9s between casts.
+PLAYER_CAST_COST = 27
 MIN_CAST_COST = 10
 LEVEL_CAST_SPEEDUP = 1
 MASTERY_CAST_SPEEDUP = 1

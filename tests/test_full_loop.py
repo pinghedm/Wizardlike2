@@ -1,5 +1,5 @@
 import esper
-import tcod
+import pygame
 
 from src.components import Configuration, EffectType, FieldOfView, Point, SpellInventory, SpellType, Stats, UIState
 from src.input_handlers import available_spells
@@ -24,16 +24,16 @@ def test_full_gameplay_loop():
     fov.dirty = False
 
     # 3. Enter Crafting Mode
-    runner.simulate_key(tcod.event.KeySym.c)
+    runner.simulate_key(pygame.K_c)
     assert runner.display_mode == DisplayMode.COMBINING
 
     # 4. Select ingredients (Right selects, Down moves cursor)
-    runner.simulate_key(tcod.event.KeySym.RIGHT)  # select reagent A
-    runner.simulate_key(tcod.event.KeySym.DOWN)  # move cursor to reagent B
-    runner.simulate_key(tcod.event.KeySym.RIGHT)  # select reagent B
+    runner.simulate_key(pygame.K_RIGHT)  # select reagent A
+    runner.simulate_key(pygame.K_DOWN)  # move cursor to reagent B
+    runner.simulate_key(pygame.K_RIGHT)  # select reagent B
 
     # 5. Craft
-    runner.simulate_key(tcod.event.KeySym.RETURN)  # Confirm craft
+    runner.simulate_key(pygame.K_RETURN)  # Confirm craft
     assert runner.display_mode == DisplayMode.EXPLORING
 
     # 6. Check Inventory
@@ -42,14 +42,14 @@ def test_full_gameplay_loop():
     assert player_spell_inv.spells[SpellType('test_bolt')] == 3
 
     # 7. Cast
-    runner.simulate_key(tcod.event.KeySym.s)
+    runner.simulate_key(pygame.K_s)
     assert runner.display_mode == DisplayMode.CASTING
     esper.get_component(UIState)[0][1].casting_cursor = available_spells().index(SpellType('test_bolt'))
-    runner.simulate_key(tcod.event.KeySym.RETURN)  # select the spell; locks onto the foe
+    runner.simulate_key(pygame.K_RETURN)  # select the spell; locks onto the foe
     assert runner.display_mode == DisplayMode.TARGETING
 
     # 8. Fire at the locked enemy.
-    runner.simulate_key(tcod.event.KeySym.RETURN)  # Confirm targeting
+    runner.simulate_key(pygame.K_RETURN)  # Confirm targeting
     # Default post-cast behavior keeps the spell readied (charges remain) for a re-cast.
     assert runner.display_mode == DisplayMode.TARGETING
 
