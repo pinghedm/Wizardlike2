@@ -77,6 +77,27 @@ def test_message_log_frame_is_drawn():
     assert _px(surface, HUDSystem.STATS_W, HUD_TOP + HUDSystem.LINE_H) == UI_GRAY_DARK
 
 
+def test_message_log_wrap_cache_reused_until_a_message_arrives():
+    # The log's per-word wrap is cached across frames and rebuilt only when the message count
+    # (or width) changes, so a fresh message must show up on the next pass -- not a stale cache.
+    runner = HeadlessRunner(use_random_map=False)
+    log = esper.get_component(MessageLog)[0][1]
+    log.add_simple_message('first')
+    surface = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT))
+    runner.game_state.display_mode = DisplayMode.EXPLORING
+    hud = HUDSystem(surface, runner.asset_loader)
+
+    hud.process()
+    sig_after_first = hud._log_sig
+    hud.process()
+    assert hud._log_sig == sig_after_first  # no change -> cache reused, not rebuilt
+
+    log.add_simple_message('second')
+    hud.process()
+    assert hud._log_sig != sig_after_first  # new message invalidates the cache
+    assert len(hud._log_lines) == 2  # both messages now wrapped in
+
+
 # --- boss HP bar (centered across the top of the map viewport) ----------------
 
 

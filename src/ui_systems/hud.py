@@ -1,3 +1,5 @@
+from typing import TYPE_CHECKING
+
 import esper
 import pygame
 
@@ -38,6 +40,9 @@ from src.states import WORLD_VIEW_MODES, GameState
 from src.ui_draw import LINE_H, bar, blit_segments, blit_text, panel
 from src.ui_helpers import compute_visible_slice, wrap_message
 
+if TYPE_CHECKING:
+    from src.data_loaders import AssetLoader
+
 
 class ModalSystem(RenderProcessor):
     """Draws an open Modal (NPC dialogue / notices): a centered box with the current page's
@@ -74,6 +79,15 @@ class HUDSystem(RenderProcessor):
     BAR_Y_OFFSET = 1
     MSG_TEXT_PAD = 5  # breathing room between the message-log frame's top border and the first line
     BOSS_BAR_W = 360  # boss HP bar, centered across the top of the map viewport
+
+    def __init__(self, surface: pygame.Surface, asset_loader: AssetLoader) -> None:
+        super().__init__(surface, asset_loader)
+        # The message log is wrapped word-by-word in the proportional font, which is costly and
+        # would repeat every frame over an ever-growing history. Cache the wrapped lines and
+        # rebuild only when the message count or the log width changes. Messages are append-only,
+        # so the count is a sufficient change signal (mirrors RenderSystem's terrain-cache signature).
+        self._log_lines: list[Message] = []
+        self._log_sig: tuple[int, int] | None = None
 
     def process(self):
         game_state = get_singleton(GameState)
@@ -132,9 +146,11 @@ class HUDSystem(RenderProcessor):
 
         # Wrap to the log's pixel width, measuring each word in the actual (proportional) font.
         usable_px = max(1, log_w - 2 * self.PAD)
-        all_lines: list[Message] = []
-        for msg in log.messages:
-            all_lines.extend(wrap_message(msg, usable_px, self.measure))
+        sig = (len(log.messages), usable_px)
+        if sig != self._log_sig:
+            self._log_lines = [line for msg in log.messages for line in wrap_message(msg, usable_px, self.measure)]
+            self._log_sig = sig
+        all_lines = self._log_lines
 
         text_top = hud.y + self.LINE_H + self.MSG_TEXT_PAD
         visible_rows = max(1, (hud.height - self.LINE_H - self.MSG_TEXT_PAD - self.PAD) // self.LINE_H)
