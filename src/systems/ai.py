@@ -35,8 +35,9 @@ from src.systems.movement import get_action_cooldown, move_entity
 from src.systems.utils import step_toward
 from src.systems.visuals import trigger_projectile
 
-# Memoized Dijkstra maps, keyed by goal tile, so each target's map is built once per AI tick.
-type PathContext = dict[Point, Dijkstra]
+# Per-tick distance fields, keyed by goal tile. A value of None means "the field for this goal was
+# deferred by the per-tick build budget this tick" — the entity holds rather than re-flooding.
+type PathContext = dict[Point, Dijkstra | None]
 
 # Cap on how far the pure-Python Dijkstra floods from a goal. A little larger than the on-screen
 # radius (viewport ~40 tiles wide, player centered, so ~20 to an edge), so a chase in view still
@@ -45,13 +46,36 @@ type PathContext = dict[Point, Dijkstra]
 # further than this from its goal just idles until the player comes closer.
 _MAX_PATH_DIST = 30.0
 
+# Reuse a cached chase/flee field whose goal sits within this many tiles of the one we need,
+# instead of re-flooding. Chase goals shift one tile per player step, so without this every step
+# rebuilt the whole field from scratch — the recurring in-combat hitch — and several chasers whose
+# goals cluster around the player each flooded separately. A tile or two of field staleness is
+# invisible for a pursuer descending the gradient toward roughly the player's position.
+_CHASE_FIELD_REUSE_TOL = 2
+
+# Fresh unbounded patrol-waypoint floods to build per tick. Each is a whole-map flood (~15ms on a
+# large floor); on floor entry every patrol's field is cold at once, so building them all in one
+# tick froze that frame (~200ms for a dozen patrols). Spread them over the first fraction of a
+# second instead — a patrol whose field isn't built yet simply holds for a tick (it's ambient, not
+# a threat closing on the player, which paths on the cheap bounded field above).
+_MAX_FRESH_PATROL_FLOODS_PER_TICK = 1
+
 
 def _ai_target(ent: int) -> Point | None:
     """The tile an AI entity is currently pathing toward, by behavior tag."""
     if esper.has_component(ent, PatrolTag):
-        patrol = esper.component_for_entity(ent, PatrolTag)
-        return patrol.path[patrol.index]
+        return _patrol_target(ent, esper.component_for_entity(ent, PatrolTag))
     return esper.component_for_entity(ent, AI).last_known_player_position
+
+
+def _patrol_target(ent: int, patrol: PatrolTag) -> Point:
+    """The one waypoint a patrol will path toward this tick: the next one if it's standing on its
+    current waypoint (mirroring _process_patrol's arrival advance), otherwise the current one. Used
+    so the precompute builds exactly the field the patrol needs rather than speculating on both."""
+    index = patrol.index
+    if esper.component_for_entity(ent, Position).point == patrol.path[index]:
+        index = (index + 1) % len(patrol.path)
+    return patrol.path[index]
 
 
 def _compute_path(ent: int, target: Point | None, pathfinding_context: PathContext) -> list[tuple[int, int]] | None:
@@ -96,6 +120,12 @@ def _process_patrol(ent: int, pos: Position, pathfinding_context: PathContext):
     if pos.point == patrol.path[patrol.index]:
         patrol.index = (patrol.index + 1) % len(patrol.path)
     target = patrol.path[patrol.index]
+
+    # Its field was deferred by the per-tick build budget (see AISystem.process) — hold this tick
+    # rather than falling through to an inline flood. A present None marks a deferred goal; a truly
+    # absent goal (standalone _process_patrol calls) still builds inline via _compute_path.
+    if target in pathfinding_context and pathfinding_context[target] is None:
+        return
 
     before = (pos.x, pos.y)
     path = _compute_path(ent, target, pathfinding_context)
@@ -231,6 +261,19 @@ class AISystem(esper.Processor):
             self._path_cache[key] = pf
         return pf
 
+    def _chase_field(self, game_map: Map, target: Point) -> Dijkstra:
+        """A bounded distance field to a chase/flee goal, reusing a cached field whose goal is
+        within _CHASE_FIELD_REUSE_TOL tiles so a one-tile player move (or several chasers whose
+        goals cluster near the player) don't each force a fresh flood."""
+        key = (target, _MAX_PATH_DIST)
+        pf = self._path_cache.get(key)
+        if pf is not None:
+            return pf
+        for (goal, bound), cached in self._path_cache.items():
+            if bound == _MAX_PATH_DIST and abs(goal.x - target.x) + abs(goal.y - target.y) <= _CHASE_FIELD_REUSE_TOL:
+                return cached
+        return self._field_for(game_map, target, _MAX_PATH_DIST)
+
     def process(self):
         game_state = get_singleton(GameState)
         if game_state.time_paused:
@@ -266,20 +309,30 @@ class AISystem(esper.Processor):
         for ent, _ai in esper.get_component(AI):
             patrol = esper.try_component(ent, PatrolTag)
             if patrol is not None:
-                # The current waypoint and the next one, since _process_patrol may advance on arrival
-                # within this same tick; both are static, so they build once and then cache.
-                patrol_targets.add(patrol.path[patrol.index])
-                patrol_targets.add(patrol.path[(patrol.index + 1) % len(patrol.path)])
+                patrol_targets.add(_patrol_target(ent, patrol))
             else:
                 target = _ai_target(ent)
                 if target is not None:
                     near_targets.add(target)
 
         pathfinding_context: PathContext = {}
-        for target in patrol_targets:
-            pathfinding_context[target] = self._field_for(game_map, target, None)
+        # Chase/flee goals: bounded, cheap, and gameplay-critical, so always available — reusing a
+        # near-identical cached field so a single player step doesn't re-flood.
         for target in near_targets:
-            pathfinding_context.setdefault(target, self._field_for(game_map, target, _MAX_PATH_DIST))
+            pathfinding_context[target] = self._chase_field(game_map, target)
+        # Patrol goals: each an unbounded whole-map flood. Building a floor's worth cold in one tick
+        # froze the frame, so build a few per tick and defer the rest (those patrols hold — see
+        # _process_patrol). Already-cached goals are free, so they never count against the budget.
+        fresh = 0
+        for target in patrol_targets:
+            cached = self._path_cache.get((target, None))
+            if cached is not None:
+                pathfinding_context[target] = cached
+            elif fresh < _MAX_FRESH_PATROL_FLOODS_PER_TICK:
+                pathfinding_context[target] = self._field_for(game_map, target, None)
+                fresh += 1
+            else:
+                pathfinding_context[target] = None  # deferred this tick
 
         # 2. Dispatch behavior by tag.
         for ent, (pos, _ai) in esper.get_components(Position, AI):

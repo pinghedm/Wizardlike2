@@ -2,8 +2,10 @@ import esper
 
 from src.components import AI, Actor, FieldOfView, PatrolTag, Point, Position
 from src.map_objects import Map
+from src.pathfinding import Dijkstra
 from src.procgen import RectangularRoom
 from src.systems.ai import (
+    _MAX_FRESH_PATROL_FLOODS_PER_TICK,
     _MAX_PATH_DIST,
     AISystem,
     _process_chase,
@@ -205,3 +207,59 @@ def test_aisystem_dispatches_each_movement_behavior_by_tag():
     assert (patrol_pos.x, patrol_pos.y) == (4, 3)  # PATROL stepped toward its waypoint
     assert (chaser_pos.x, chaser_pos.y) == (px, py - 4)  # CHASE stepped toward the player
     assert max(abs(px - fleer_pos.x), abs(py - fleer_pos.y)) > flee_before  # FLEE stepped away
+
+
+# --- pathfinding caching (perf: avoid re-flooding the same field) ---------------
+
+
+def _spy_on_floods(monkeypatch) -> list[float | None]:
+    """Record the max_dist of every Dijkstra flood as it happens (None == unbounded)."""
+    floods: list[float | None] = []
+    original = Dijkstra.set_goal
+
+    def spy(self, x, y, max_dist=None):
+        floods.append(max_dist)
+        original(self, x, y, max_dist)
+
+    monkeypatch.setattr(Dijkstra, 'set_goal', spy)
+    return floods
+
+
+def test_chase_field_is_reused_after_a_one_tile_player_move(monkeypatch):
+    # A moving player shifts a chaser's goal one tile per step. Re-flooding every step was the
+    # recurring in-combat hitch; a field for a goal within tolerance is reused instead.
+    runner = HeadlessRunner(use_random_map=False)
+    px, py = runner.player_pos
+    enemy = runner.spawn_enemy(px, py - 6)
+    _pin_target(enemy, Point(px, py))
+    floods = _spy_on_floods(monkeypatch)
+
+    ai = AISystem()
+    ai.process()
+    assert len(floods) == 1  # one flood to build the chase field
+
+    _pin_target(enemy, Point(px + 1, py))  # player stepped one tile over
+    ai.process()
+    assert len(floods) == 1  # cached field is within tolerance, so no fresh flood
+
+
+def test_patrol_field_builds_are_capped_per_tick(monkeypatch):
+    # Every patrol's waypoint field is an unbounded whole-map flood; a floor's worth going cold at
+    # once froze the frame. Only a budgeted few are built per tick, and the rest hold.
+    runner = HeadlessRunner(use_random_map=False)
+    game_map = esper.get_component(Map)[0][1]
+    # Two patrols with distinct current waypoints (3, 3) and (10, 3): two cold goals at once.
+    rooms_a = [RectangularRoom(2, 2, 2, 2, game_map), RectangularRoom(2, 7, 2, 2, game_map)]
+    rooms_b = [RectangularRoom(9, 2, 2, 2, game_map), RectangularRoom(9, 7, 2, 2, game_map)]
+    a = runner.spawn_enemy(6, 3, {**runner.enemy_config(), 'behavior': 'PATROL'}, rooms=rooms_a)
+    b = runner.spawn_enemy(13, 3, {**runner.enemy_config(), 'behavior': 'PATROL'}, rooms=rooms_b)
+    floods = _spy_on_floods(monkeypatch)
+
+    AISystem().process()
+
+    unbounded = [d for d in floods if d is None]
+    assert len(unbounded) == _MAX_FRESH_PATROL_FLOODS_PER_TICK  # only the budget built this tick
+    a_pos = esper.component_for_entity(a, Position)
+    b_pos = esper.component_for_entity(b, Position)
+    moved = [(a_pos.x, a_pos.y) != (6, 3), (b_pos.x, b_pos.y) != (13, 3)]
+    assert sum(moved) == 1  # exactly one patrol advanced; the other held for its deferred field
