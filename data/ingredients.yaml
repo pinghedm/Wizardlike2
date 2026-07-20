@@ -1,35 +1,56 @@
 ingredients:
   - id: fire_crystal
     name: Fire Crystal
-    char: "\u2588"
+    char: "█"
     color: [255, 0, 0]
     price: 8
+    sprite:
+      path: data/images/items/fire_crystal.png
+      type: FILE
   - id: ice_shard
     name: Ice Shard
-    char: "\u2588"
+    char: "█"
     color: [0, 255, 255]
     price: 8
+    sprite:
+      path: data/images/items/ice_shard.png
+      type: FILE
   - id: mystic_herb
     name: Mystic Herb
-    char: "\u2588"
+    char: "█"
     color: [0, 255, 0]
     price: 10
+    sprite:
+      path: data/images/items/mystic_herb.png
+      type: FILE
   - id: storm_shard
     name: Storm Shard
-    char: "\u2588"
+    char: "█"
     color: [255, 230, 60]
     price: 9
+    sprite:
+      path: data/images/items/storm_shard.png
+      type: FILE
   - id: earth_stone
     name: Earth Stone
-    char: "\u2588"
+    char: "█"
     color: [150, 100, 50]
     price: 8
+    sprite:
+      path: data/images/items/earth_stone.png
+      type: FILE
   - id: gale_feather
     name: Gale Feather
-    char: "\u2588"
+    char: "█"
     color: [200, 230, 255]
     price: 9
+    sprite:
+      path: data/images/items/gale_feather.png
+      type: FILE
   - id: gold
     name: Gold
     char: "$"
     color: [255, 215, 0]
+    sprite:
+      path: data/images/items/gold.png
+      type: FILE

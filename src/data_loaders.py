@@ -335,10 +335,11 @@ class AssetLoader:
         return self._images[path]
 
     def get_sprite(self, sprite_id: str, size: int, fg: RGB | None = None) -> pygame.Surface:
-        """A `size`x`size` px Surface for `sprite_id`. An image sprite blits its source PNG
-        region scaled to fit (tinted by `fg` when it isn't white, matching the old fg multiply);
-        a font/char sprite renders the glyph in `fg` (white by default), centered on a
-        transparent tile. Cached per (sprite_id, size, fg)."""
+        """A `size`x`size` px Surface for `sprite_id`. A REGION sprite (a spritesheet cell) is
+        recolorable art blitted scaled to fit and tinted by `fg` when it isn't white; a FILE
+        sprite is finished standalone artwork shown as authored (never tinted). A font/char
+        sprite renders the glyph in `fg` (white by default), centered on a transparent tile.
+        Cached per (sprite_id, size, fg)."""
         key = (sprite_id, size, fg)
         cached = self._sprites.get(key)
         if cached is not None:
@@ -351,7 +352,7 @@ class AssetLoader:
                 x, y, w, h = definition.region
                 source = source.subsurface(pygame.Rect(x, y, w, h))
             surface = pygame.transform.smoothscale(source, (size, size))
-            if fg is not None and fg != UI_WHITE:
+            if definition.type == AssetType.REGION and fg is not None and fg != UI_WHITE:
                 surface = surface.copy()
                 surface.fill((*fg, 255), special_flags=pygame.BLEND_RGBA_MULT)
         else:
