@@ -40,6 +40,12 @@ sounds:
     duration: 0.2
     decay: 7
     volume: 0.4
+  step:
+    waveform: noise
+    freq: 0
+    duration: 0.05
+    decay: 34
+    volume: 0.18
   impact:
     waveform: noise
     freq: 0

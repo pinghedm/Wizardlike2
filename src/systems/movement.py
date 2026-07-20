@@ -1,5 +1,6 @@
 import esper
 
+from src.audio import SoundId, play_sfx
 from src.components import (
     Actor,
     Enemy,
@@ -66,6 +67,7 @@ def move_entity(entity: int, dx: int, dy: int):
     if is_player(entity):
         actor = esper.component_for_entity(entity, Actor)
         actor.cooldown = get_action_cooldown(entity, PLAYER_MOVE_COST)
+        play_sfx(SoundId.STEP)
 
 
 def apply_knockback(target_ent: int, origin: Point, distance: int):

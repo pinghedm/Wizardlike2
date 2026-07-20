@@ -47,6 +47,7 @@ class SoundId(enum.StrEnum):
     CAST_HEAL = 'cast_heal'
     CAST_BUFF = 'cast_buff'
     CAST_DEBUFF = 'cast_debuff'
+    STEP = 'step'
     IMPACT = 'impact'
     HIT = 'hit'
     STATUS = 'status'

@@ -2,8 +2,10 @@ import esper
 import pytest
 
 from src.components import FieldOfView, Item, ItemType, Point, Position
+from src.map_objects import Map, Tile
 from src.procgen import (
     RectangularRoom,
+    _carve_corridor,
     _guardian_count,
     _select_exit_room,
     transition_to_next_floor,
@@ -78,6 +80,26 @@ def test_tunnel_vertical_first_connects_endpoints_contiguously(monkeypatch):
     monkeypatch.setattr('random.random', lambda: 0.9)
     start, end = Point(2, 3), Point(18, 11)
     _assert_contiguous_path(list(tunnel_between(start, end)), start, end)
+
+
+def _blank_tile(walkable: bool) -> Tile:
+    return Tile(walkable=walkable, transparent=walkable, sprite_id='t', fg=(255, 255, 255), bg=(0, 0, 0))
+
+
+def test_carved_corridor_is_never_one_tile_wide(monkeypatch):
+    # Every spine cell is carved alongside its +x/+y neighbors, so no passage is a one-wide
+    # chokepoint. Pin the branch so the re-walked spine matches the one that was carved.
+    monkeypatch.setattr('random.random', lambda: 0.0)
+    floor, wall = _blank_tile(True), _blank_tile(False)
+    dungeon = Map(40, 40, wall)
+    start, end = Point(2, 3), Point(18, 11)
+
+    _carve_corridor(dungeon, start, end, floor)
+
+    for p in tunnel_between(start, end):
+        assert dungeon.walkable[p.x, p.y]
+        assert dungeon.walkable[p.x + 1, p.y]
+        assert dungeon.walkable[p.x, p.y + 1]
 
 
 # --- Floor transition: deterministic structural behavior ----------------------

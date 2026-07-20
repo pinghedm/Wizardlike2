@@ -280,6 +280,23 @@ def tunnel_between(start: Point, end: Point):
             yield Point(x, y2)
 
 
+# Corridors are carved this many tiles wide. A one-wide passage is a forced chokepoint — you
+# can't sidestep a trap, hazard, or blocking enemy in it — and long single-file halls make the
+# map monotonous. tunnel_between traces the corridor's spine; the brush extends it down/right.
+CORRIDOR_WIDTH = 2
+
+
+def _carve_corridor(dungeon: Map, start: Point, end: Point, floor_tile: Tile) -> None:
+    """Carve a CORRIDOR_WIDTH-wide corridor along the L-shaped spine from `start` to `end`,
+    leaving the map's outer border wall intact so the edge stays sealed."""
+    for p in tunnel_between(start, end):
+        for dx in range(CORRIDOR_WIDTH):
+            for dy in range(CORRIDOR_WIDTH):
+                x, y = p.x + dx, p.y + dy
+                if 0 < x < dungeon.width - 1 and 0 < y < dungeon.height - 1:
+                    dungeon.set_tile(x, y, floor_tile)
+
+
 EXIT_MIN_ROOM_DISTANCE = 2
 
 # Gate guardians per floor: a base count, plus one more for every few floors of depth.
@@ -473,8 +490,7 @@ def generate_dungeon(
             if not rooms:
                 player_start = new_room.center
             else:
-                for p in tunnel_between(rooms[-1].center, new_room.center):
-                    dungeon.set_tile(p.x, p.y, floor_tile)
+                _carve_corridor(dungeon, rooms[-1].center, new_room.center, floor_tile)
 
                 num_items = random.randint(0, max_items_per_room)
                 for _ in range(num_items):
