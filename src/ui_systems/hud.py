@@ -15,7 +15,6 @@ from src.components import (
 )
 from src.constants import (
     RGB,
-    UI_FONT_PX,
     UI_GRAY,
     UI_GRAY_DARK,
     UI_ORANGE,
@@ -26,7 +25,6 @@ from src.constants import (
     UI_WHITE,
     UI_YELLOW,
 )
-from src.data_loaders import AssetLoader
 from src.ecs_helpers import (
     get_display_name,
     get_player,
@@ -35,38 +33,30 @@ from src.ecs_helpers import (
     get_status,
     try_get_singleton,
 )
-from src.render import hud_rect, map_viewport_rect
+from src.render import RenderProcessor, hud_rect, map_viewport_rect
 from src.states import WORLD_VIEW_MODES, GameState
-from src.ui_draw import MENU_COL_W, MENU_ROW_H, bar, blit_segments, blit_text, cell, panel
+from src.ui_draw import LINE_H, bar, blit_segments, blit_text, panel
 from src.ui_helpers import compute_visible_slice, wrap_message
 
 
-class ModalSystem(esper.Processor):
+class ModalSystem(RenderProcessor):
     """Draws an open Modal (NPC dialogue / notices): a centered box with the current page's
     wrapped text and a footer, pixel-native into the window Surface."""
 
-    def __init__(self, surface: pygame.Surface, asset_loader: AssetLoader):
-        self.surface = surface
-        self.asset_loader = asset_loader
-
-    @property
-    def font(self) -> pygame.font.Font:
-        return self.asset_loader.font(UI_FONT_PX)
-
     def process(self):
         for _ent, modal in esper.get_component(Modal):
-            origin = panel(self.surface, self.font, modal.width, modal.height, modal.title)
-            for i, line in enumerate(wrap_message([(modal.pages[modal.page], UI_WHITE)], modal.width - 4)):
-                cx, cy = cell(origin, 2, 2 + i)
-                blit_segments(self.surface, self.font, line, cx, cy + MENU_ROW_H // 2)  # extra top padding
+            content = panel(self.surface, self.font, modal.width, modal.height, modal.title)
+            lines = wrap_message([(modal.pages[modal.page], UI_WHITE)], content.width, self.measure)
+            for i, line in enumerate(lines):
+                blit_segments(self.surface, self.font, line, content.x, content.y + i * LINE_H)
 
             more = modal.page + 1 < len(modal.pages)
             footer = '(More - Press Enter)' if more else 'Press Enter to close'
-            footer_x = origin[0] + (modal.width * MENU_COL_W - self.font.size(footer)[0]) // 2
-            blit_text(self.surface, self.font, footer, footer_x, origin[1] + (modal.height - 2) * MENU_ROW_H, UI_GRAY)
+            footer_x = content.x + (content.width - self.measure(footer)) // 2
+            blit_text(self.surface, self.font, footer, footer_x, content.bottom - LINE_H, UI_GRAY)
 
 
-class HUDSystem(esper.Processor):
+class HUDSystem(RenderProcessor):
     """Draws the bottom HUD bar (stats + message log) and a discovered boss's HP bar,
     pixel-native into the window Surface."""
 
@@ -84,14 +74,6 @@ class HUDSystem(esper.Processor):
     BAR_Y_OFFSET = 1
     MSG_TEXT_PAD = 5  # breathing room between the message-log frame's top border and the first line
     BOSS_BAR_W = 360  # boss HP bar, centered across the top of the map viewport
-
-    def __init__(self, surface: pygame.Surface, asset_loader: AssetLoader):
-        self.surface = surface
-        self.asset_loader = asset_loader
-
-    @property
-    def font(self) -> pygame.font.Font:
-        return self.asset_loader.font(UI_FONT_PX)
 
     def process(self):
         game_state = get_singleton(GameState)
@@ -148,12 +130,11 @@ class HUDSystem(esper.Processor):
         )
         blit_text(self.surface, self.font, 'Messages', log_x + self.PAD, hud.y, UI_WHITE)
 
-        # Wrap by an approximate character budget (the font isn't monospace, so estimate off 'M').
-        char_px = max(1, self.font.size('M')[0])
-        usable_chars = max(1, (log_w - 2 * self.PAD) // char_px)
+        # Wrap to the log's pixel width, measuring each word in the actual (proportional) font.
+        usable_px = max(1, log_w - 2 * self.PAD)
         all_lines: list[Message] = []
         for msg in log.messages:
-            all_lines.extend(wrap_message(msg, usable_chars))
+            all_lines.extend(wrap_message(msg, usable_px, self.measure))
 
         text_top = hud.y + self.LINE_H + self.MSG_TEXT_PAD
         visible_rows = max(1, (hud.height - self.LINE_H - self.MSG_TEXT_PAD - self.PAD) // self.LINE_H)

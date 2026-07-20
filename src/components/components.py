@@ -270,8 +270,8 @@ class Modal:
 
     pages: list[str]
     title: str = 'Message'
-    width: int = 40
-    height: int = 10
+    width: int = 460  # pixel dimensions of the centered box
+    height: int = 240
     on_close: Callable[[], None] | None = None
     page: int = 0
 

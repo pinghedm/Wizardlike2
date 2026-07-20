@@ -28,10 +28,9 @@ from src.constants import (
     UI_YELLOW,
     to_rgb,
 )
-from src.data_loaders import AssetLoader
 from src.ecs_helpers import get_player_component, get_singleton, try_get_singleton
 from src.map_objects import Map
-from src.render import Viewport, compute_viewport, map_viewport_rect
+from src.render import RenderProcessor, Viewport, compute_viewport, map_viewport_rect
 from src.states import DisplayMode, GameState
 from src.systems import spawn_particle_burst, trigger_cast_visual
 from src.ui_draw import blit_text, fill_alpha
@@ -54,15 +53,7 @@ def _tiles_in_radius(center_x: int, center_y: int, radius: int) -> Iterator[tupl
             yield map_x, map_y
 
 
-class TargetingOverlaySystem(esper.Processor):
-    def __init__(self, surface: pygame.Surface, asset_loader: AssetLoader):
-        self.surface = surface
-        self.asset_loader = asset_loader
-
-    @property
-    def font(self) -> pygame.font.Font:
-        return self.asset_loader.font(UI_FONT_PX)
-
+class TargetingOverlaySystem(RenderProcessor):
     def process(self):
         if get_singleton(GameState).display_mode != DisplayMode.TARGETING:
             return
@@ -134,7 +125,7 @@ def _cooldown_bar_fill(remaining: int, total: int, width: int) -> int:
     return max(1, round(fill * width))
 
 
-class EffectOverlaySystem(esper.Processor):
+class EffectOverlaySystem(RenderProcessor):
     """Renders and ages out transient combat visuals: the damage flash, cast burst,
     projectiles, particles, and floating numbers, drawn pixel-native over the map.
 
@@ -144,14 +135,6 @@ class EffectOverlaySystem(esper.Processor):
     """
 
     VISUAL_MODES = (DisplayMode.EXPLORING, DisplayMode.CASTING, DisplayMode.COMBINING, DisplayMode.TARGETING)
-
-    def __init__(self, surface: pygame.Surface, asset_loader: AssetLoader):
-        self.surface = surface
-        self.asset_loader = asset_loader
-
-    @property
-    def font(self) -> pygame.font.Font:
-        return self.asset_loader.font(UI_FONT_PX)
 
     def process(self):
         if get_singleton(GameState).display_mode not in self.VISUAL_MODES:

@@ -6,6 +6,7 @@ import pygame
 import pytest
 
 from src import main, persistence
+from src.audio import MusicTrack
 from src.components import UIState
 from src.constants import SAVE_DIR
 from src.data_loaders import AssetLoader
@@ -60,6 +61,22 @@ def test_add_logic_systems_registers_processors():
 def test_add_render_systems_registers_the_world_renderer():
     main.add_render_systems(pygame.Surface((320, 200)), AssetLoader())
     assert esper.get_processor(RenderSystem) is not None
+
+
+# Every display mode maps to the looping track its screen should play.
+@pytest.mark.parametrize(
+    'mode, track',
+    [
+        (DisplayMode.MENU, MusicTrack.MENU),
+        (DisplayMode.GAME_OVER, MusicTrack.MENU),
+        (DisplayMode.SHOPPING, MusicTrack.SHOP),
+        (DisplayMode.EXPLORING, MusicTrack.DUNGEON),
+        (DisplayMode.TARGETING, MusicTrack.DUNGEON),
+        (DisplayMode.COMBINING, MusicTrack.DUNGEON),
+    ],
+)
+def test_track_for_mode_selects_music(mode, track):
+    assert main._track_for_mode(mode) == track
 
 
 # Every display_mode that dispatch_input routes to an input handler. A benign,

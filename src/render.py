@@ -7,10 +7,15 @@ top-left pixel of its TILE_PX square.
 """
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
+import esper
 import pygame
 
-from src.constants import TILE_PX
+from src.constants import TILE_PX, UI_FONT_PX
+
+if TYPE_CHECKING:
+    from src.data_loaders import AssetLoader
 
 # Pixels reserved at the bottom of the window for the HUD bar; the map fills the rest.
 HUD_PX = 140
@@ -70,3 +75,21 @@ def compute_viewport(surface: pygame.Surface, focus_x: int, focus_y: int, map_w:
     cam_x = min(max(focus_x - tiles_x // 2, 0), max(0, map_w - tiles_x))
     cam_y = min(max(focus_y - tiles_y // 2, 0), max(0, map_h - tiles_y))
     return Viewport(px_x, px_y, width, height, cam_x, cam_y)
+
+
+class RenderProcessor(esper.Processor):
+    """Base for the pixel-drawing processors: holds the target window Surface and the AssetLoader,
+    and exposes the shared UI font. Subclasses draw into `self.surface` in their `process`."""
+
+    def __init__(self, surface: pygame.Surface, asset_loader: AssetLoader) -> None:
+        super().__init__()
+        self.surface = surface
+        self.asset_loader = asset_loader
+
+    @property
+    def font(self) -> pygame.font.Font:
+        return self.asset_loader.font(UI_FONT_PX)
+
+    def measure(self, text: str) -> int:
+        """Rendered pixel width of `text` in the UI font — for pixel-based wrapping / right-align."""
+        return self.font.size(text)[0]

@@ -15,7 +15,6 @@ from src.components import Guardian, Position
 from src.constants import (
     RGB,
     UI_BLACK,
-    UI_FONT_PX,
     UI_GRAY,
     UI_GRAY_DARK,
     UI_GRAY_MID,
@@ -26,7 +25,7 @@ from src.constants import (
 from src.data_loaders import AssetLoader
 from src.ecs_helpers import exit_is_sealed, get_player_component, get_singleton, try_get_singleton
 from src.map_objects import Map
-from src.render import map_viewport_rect, minimap_rect
+from src.render import RenderProcessor, map_viewport_rect, minimap_rect
 from src.states import WORLD_VIEW_MODES, DisplayMode, GameState
 from src.ui_draw import blit_text, fill_alpha
 
@@ -77,15 +76,14 @@ def _draw_markers(surface: pygame.Surface, rect: pygame.Rect, game_map: Map, pla
         pygame.draw.circle(surface, UI_GREEN_BRIGHT, (px + size // 2, py + size // 2), size)
 
 
-class MinimapSystem(esper.Processor):
+class MinimapSystem(RenderProcessor):
     """The always-on corner minimap, drawn translucently over the world view."""
 
     BACKDROP_FADE = 0.35  # how far to dim the dungeon behind the panel toward black
     PATH_ALPHA = 150  # translucency of the explored paths, so the live view shows through
 
     def __init__(self, surface: pygame.Surface, asset_loader: AssetLoader):
-        self.surface = surface
-        self.asset_loader = asset_loader
+        super().__init__(surface, asset_loader)
         # The scaled path fill only changes as the player explores, so cache it (keyed by floor,
         # explored-cell count, and panel size); the backdrop + markers still redraw every frame.
         self._cache_key: tuple[int, int, int, int] | None = None
@@ -117,14 +115,10 @@ class MinimapSystem(esper.Processor):
         pygame.draw.rect(self.surface, UI_GRAY_DARK, rect, width=1)  # subtle frame
 
 
-class MapViewSystem(esper.Processor):
+class MapViewSystem(RenderProcessor):
     """The full-screen map overview (DisplayMode.MAP_VIEW), large enough to resolve corridors."""
 
     MARGIN = 40
-
-    def __init__(self, surface: pygame.Surface, asset_loader: AssetLoader):
-        self.surface = surface
-        self.asset_loader = asset_loader
 
     def process(self):
         if get_singleton(GameState).display_mode != DisplayMode.MAP_VIEW:
@@ -144,5 +138,4 @@ class MapViewSystem(esper.Processor):
         self.surface.blit(paths, rect.topleft)
         _draw_markers(self.surface, rect, game_map, get_player_component(Position))
 
-        font = self.asset_loader.font(UI_FONT_PX)
-        blit_text(self.surface, font, 'Map', (width - font.size('Map')[0]) // 2, 10, UI_GRAY_MID)
+        blit_text(self.surface, self.font, 'Map', (width - self.font.size('Map')[0]) // 2, 10, UI_GRAY_MID)

@@ -80,19 +80,20 @@ def test_scroll_window(total, cursor, height, expected):
         assert start <= cursor < end
 
 
+# wrap_message is width-agnostic: pass `len` as the measure to wrap by character count.
 def test_wrap_message_breaks_at_width():
-    lines = wrap_message([('aaa bbb ccc', WHITE)], width=3)
+    lines = wrap_message([('aaa bbb ccc', WHITE)], 3, measure=len)
     assert len(lines) == 3
 
 
 def test_wrap_message_preserves_per_segment_color():
-    lines = wrap_message([('hi ', RED), ('there', BLUE)], width=80)
+    lines = wrap_message([('hi ', RED), ('there', BLUE)], 80, measure=len)
     # Whole message fits on one line; both colored segments are kept intact.
     assert lines == [[('hi ', RED), ('there', BLUE)]]
 
 
 def test_wrap_message_trims_leading_space_on_wrapped_line():
-    lines = wrap_message([('aaaa', WHITE), (' bb', WHITE)], width=4)
+    lines = wrap_message([('aaaa', WHITE), (' bb', WHITE)], 4, measure=len)
     # The space that would lead the wrapped line is dropped.
     assert lines == [[('aaaa', WHITE)], [('bb', WHITE)]]
 

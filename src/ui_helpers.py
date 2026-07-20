@@ -5,6 +5,7 @@ them straightforward to unit-test independently of the render pass.
 """
 
 from collections import Counter
+from collections.abc import Callable
 
 from src.components import Effect, EffectType, ItemType, Message
 from src.constants import RGB, TICKS_PER_SECOND
@@ -77,11 +78,15 @@ def scroll_window(total: int, cursor: int, visible_height: int) -> tuple[int, in
     return start, start + visible_height
 
 
-def wrap_message(segments: Message, width: int) -> list[Message]:
-    """Wrap a segmented (multi-color) message into multiple lines of at most `width`."""
+def wrap_message(segments: Message, max_width: int, measure: Callable[[str], int]) -> list[Message]:
+    """Wrap a segmented (multi-color) message so each line's measured width stays within `max_width`.
+
+    `measure` maps a string to its width, so this stays free of any font/render dependency: real
+    callers pass `lambda s: font.size(s)[0]` for pixels; tests pass `len` for characters.
+    """
     lines: list[Message] = []
     current_line: Message = []
-    current_line_len = 0
+    current_width = 0
 
     for text, color in segments:
         words = text.split(' ')
@@ -91,19 +96,19 @@ def wrap_message(segments: Message, width: int) -> list[Message]:
             if not full_word:
                 continue
 
-            if current_line_len + len(full_word) > width:
+            if current_width + measure(full_word) > max_width:
                 if current_line:
                     lines.append(current_line)
                 current_line = []
-                current_line_len = 0
+                current_width = 0
 
             # Check if we should trim leading space on new line
-            if current_line_len == 0 and full_word.startswith(' '):
+            if current_width == 0 and full_word.startswith(' '):
                 full_word = full_word[1:]
 
             if full_word:
                 current_line.append((full_word, color))
-                current_line_len += len(full_word)
+                current_width += measure(full_word)
 
     if current_line:
         lines.append(current_line)

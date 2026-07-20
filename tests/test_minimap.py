@@ -6,7 +6,8 @@ the harness tick loop, so the tests drive them directly.
 import esper
 import pygame
 
-from src.constants import UI_GREEN_BRIGHT
+from src.components import Guardian, Position, Stats
+from src.constants import UI_GRAY_DARK, UI_GREEN_BRIGHT, UI_ORANGE, UI_YELLOW
 from src.map_objects import Map
 from src.render import minimap_rect
 from src.states import DisplayMode
@@ -104,6 +105,43 @@ def test_corner_minimap_hidden_outside_world_view():
     surface = _draw_corner(runner, DisplayMode.SETTINGS)
     rect = minimap_rect(runner.surface, _game_map().width, _game_map().height)
     assert _px(surface, rect.x + 5, rect.y + 5) == SENTINEL  # not a world view, so not drawn
+
+
+def _marker_px(rect: pygame.Rect, game_map: Map, tile: tuple[int, int]) -> tuple[int, int]:
+    """A pixel inside the marker square drawn for map `tile` (mirrors _draw_markers' `at`)."""
+    tx, ty = tile
+    return rect.x + tx * rect.width // game_map.width + 1, rect.y + ty * rect.height // game_map.height + 1
+
+
+def test_corner_minimap_marks_a_living_guardian():
+    runner = HeadlessRunner(use_random_map=False)
+    runner.tick()
+    game_map = _game_map()
+    game_map.explored[:, :] = True
+    esper.create_entity(Guardian(), Stats(hp=10, max_hp=10), Position(1, 1))  # far from the centered player
+
+    surface = _draw_corner(runner)
+    rect = minimap_rect(runner.surface, game_map.width, game_map.height)
+    assert _px(surface, *_marker_px(rect, game_map, (1, 1))) == UI_ORANGE
+
+
+def test_corner_minimap_marks_a_sealed_exit_dim_and_a_cleared_exit_bright():
+    runner = HeadlessRunner(use_random_map=False)
+    runner.tick()
+    game_map = _game_map()
+    game_map.explored[:, :] = True
+    exit_tile = (game_map.width - 2, game_map.height - 2)
+    game_map.exit_pos = exit_tile
+
+    # No guardians: exit is cleared, so its marker is bright yellow.
+    surface = _draw_corner(runner)
+    rect = minimap_rect(runner.surface, game_map.width, game_map.height)
+    assert _px(surface, *_marker_px(rect, game_map, exit_tile)) == UI_YELLOW
+
+    # A living guardian seals the exit, dimming its marker.
+    esper.create_entity(Guardian(), Stats(hp=10, max_hp=10), Position(1, 1))
+    surface = _draw_corner(runner)
+    assert _px(surface, *_marker_px(rect, game_map, exit_tile)) == UI_GRAY_DARK
 
 
 # --- full-screen map (DisplayMode.MAP_VIEW) ---------------------------------

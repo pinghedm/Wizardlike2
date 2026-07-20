@@ -1,5 +1,4 @@
 from dataclasses import replace
-from typing import TYPE_CHECKING
 
 import esper
 import numpy as np
@@ -47,16 +46,13 @@ from src.ecs_helpers import (
 )
 from src.fov import compute_fov
 from src.map_objects import Map, Tile
-from src.render import Viewport, compute_viewport
+from src.render import RenderProcessor, Viewport, compute_viewport
 from src.states import WORLD_VIEW_MODES, DisplayMode, GameState
 from src.systems.combat import apply_effect, apply_status_pulse, roll_loot
 from src.systems.momentum import build_momentum
 from src.systems.progression import grant_xp
 from src.systems.visuals import EFFECT_COLORS
 from src.ui_helpers import blend
-
-if TYPE_CHECKING:
-    from src.data_loaders import AssetLoader
 
 # When statuses stack, an entity's glyph tints to the most action-relevant one first.
 STATUS_TINT_PRIORITY = (
@@ -262,12 +258,8 @@ def _status_tint(ent: int) -> RGB | None:
     return None
 
 
-class RenderSystem(esper.Processor):
+class RenderSystem(RenderProcessor):
     """Draws the dungeon — tiles then entities — into the pygame window surface."""
-
-    def __init__(self, surface: pygame.Surface, asset_loader: AssetLoader):
-        self.surface = surface
-        self.asset_loader = asset_loader
 
     def process(self):
         game_state = get_singleton(GameState)

@@ -7,9 +7,9 @@ logic is covered by test_ui_helpers.py.
 import esper
 import pygame
 
-from src.components import MessageLog, Stats
+from src.components import Boss, MessageLog, Position, Renderable, Stats
 from src.constants import UI_GRAY_DARK, UI_RED, UI_RED_DARK, WINDOW_HEIGHT, WINDOW_WIDTH
-from src.render import HUD_PX
+from src.render import HUD_PX, map_viewport_rect
 from src.states import DisplayMode
 from src.ui_systems import HUDSystem
 from tests.headless_runner import HeadlessRunner
@@ -75,3 +75,53 @@ def test_message_log_frame_is_drawn():
     surface = _draw_hud(runner)
     # The log panel's 1px border is drawn in UI_GRAY_DARK at the top-left of the log column.
     assert _px(surface, HUDSystem.STATS_W, HUD_TOP + HUDSystem.LINE_H) == UI_GRAY_DARK
+
+
+# --- boss HP bar (centered across the top of the map viewport) ----------------
+
+
+def _spawn_boss(hp: int, max_hp: int, discovered: bool) -> int:
+    return esper.create_entity(
+        Boss(abilities=[], discovered=discovered),
+        Stats(hp=hp, max_hp=max_hp),
+        Renderable(sprite_id='Overlord'),
+        Position(4, 4),
+    )
+
+
+def _boss_bar_probe(surface: pygame.Surface) -> tuple[int, int, int]:
+    """(left-fill x, right-tail x, mid y) of the boss bar drawn for this surface."""
+    vx, _vy, vw, _vh = map_viewport_rect(surface)
+    bar_w = min(HUDSystem.BOSS_BAR_W, max(0, vw - 8))
+    bar_x = vx + (vw - bar_w) // 2
+    y = HUDSystem.PAD + HUDSystem.LINE_H + HUDSystem.BAR_H // 2
+    return bar_x + 2, bar_x + bar_w - 2, y
+
+
+def test_boss_bar_full_hp_is_all_red():
+    runner = HeadlessRunner(use_random_map=False)
+    _spawn_boss(100, 100, discovered=True)
+
+    surface = _draw_hud(runner)
+    left_x, right_x, y = _boss_bar_probe(surface)
+    assert _px(surface, left_x, y) == UI_RED
+    assert _px(surface, right_x, y) == UI_RED  # full: red end to end
+
+
+def test_boss_bar_partial_hp_splits_fill_and_track():
+    runner = HeadlessRunner(use_random_map=False)
+    _spawn_boss(10, 100, discovered=True)  # ratio 0.1
+
+    surface = _draw_hud(runner)
+    left_x, right_x, y = _boss_bar_probe(surface)
+    assert _px(surface, left_x, y) == UI_RED  # filled head
+    assert _px(surface, right_x, y) == UI_RED_DARK  # empty tail is the track
+
+
+def test_boss_bar_hidden_until_discovered():
+    runner = HeadlessRunner(use_random_map=False)
+    _spawn_boss(100, 100, discovered=False)
+
+    surface = _draw_hud(runner)
+    left_x, _right_x, y = _boss_bar_probe(surface)
+    assert _px(surface, left_x, y) == SENTINEL  # undiscovered boss draws no bar

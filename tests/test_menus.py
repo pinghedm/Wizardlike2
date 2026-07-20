@@ -163,7 +163,7 @@ def test_spell_detail_shows_name_description_stats_and_recipe():
     recipes = esper.component_for_entity(runner.player, KnownRecipes)
     recipes.recipes[SpellType('test_bolt')] = {(ItemType('reagent_a'), ItemType('reagent_b'))}
 
-    lines = _menu(runner)._spell_detail_lines(SpellType('test_bolt'), recipes, try_get_singleton(Inventory), 40)
+    lines = _menu(runner)._spell_detail_lines(SpellType('test_bolt'), recipes, try_get_singleton(Inventory), 1000)
     text = '\n'.join(_texts(lines))
     assert 'Test Bolt' in text  # display name
     assert 'zaps and slows' in text  # description
@@ -177,7 +177,7 @@ def test_spell_detail_collapses_duplicate_ingredients():
     recipes = esper.component_for_entity(runner.player, KnownRecipes)
     recipes.recipes[SpellType('test_blast')] = {(ItemType('reagent_a'), ItemType('reagent_a'))}
 
-    lines = _menu(runner)._spell_detail_lines(SpellType('test_blast'), recipes, try_get_singleton(Inventory), 40)
+    lines = _menu(runner)._spell_detail_lines(SpellType('test_blast'), recipes, try_get_singleton(Inventory), 1000)
     assert '2x REAGENT_A' in '\n'.join(_texts(lines))
 
 

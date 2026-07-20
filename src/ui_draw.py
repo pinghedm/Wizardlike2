@@ -10,10 +10,9 @@ import pygame
 from src.components import Message
 from src.constants import RGB, UI_BLACK, UI_WHITE
 
-# A menu lays out on a logical character grid; these convert a (col, row) cell to pixels. The
-# text itself is proportional, so columns are approximate gutters, not hard cell boundaries.
-MENU_COL_W = 11
-MENU_ROW_H = 22
+# Vertical stride between text rows in a panel, and the inner padding from its border to content.
+LINE_H = 22
+PANEL_PAD = 12
 
 
 def blit_text(surface: pygame.Surface, font: pygame.font.Font, text: str, x: int, y: int, fg: RGB) -> int:
@@ -21,6 +20,11 @@ def blit_text(surface: pygame.Surface, font: pygame.font.Font, text: str, x: int
     glyph = font.render(text, True, fg)
     surface.blit(glyph, (x, y))
     return glyph.get_width()
+
+
+def blit_text_right(surface: pygame.Surface, font: pygame.font.Font, text: str, right: int, y: int, fg: RGB) -> None:
+    """Blit `text` so its right edge lands at pixel x=`right` — for right-aligned value columns."""
+    surface.blit(font.render(text, True, fg), (right - font.size(text)[0], y))
 
 
 def blit_segments(surface: pygame.Surface, font: pygame.font.Font, segments: Message, x: int, y: int) -> None:
@@ -38,31 +42,40 @@ def bar(surface: pygame.Surface, x: int, y: int, width: int, height: int, ratio:
         pygame.draw.rect(surface, fill, (x, y, filled, height))
 
 
+# Reusable overlay surfaces for fill_alpha, keyed by size. AoE shading / cast bursts call it once
+# per tile, so a per-call allocation would churn radius**2 surfaces a frame; we fill and reblit one.
+_alpha_overlays: dict[tuple[int, int], pygame.Surface] = {}
+
+
 def fill_alpha(surface: pygame.Surface, x: int, y: int, width: int, height: int, color: RGB, alpha: float) -> None:
     """Blit a translucent `color` rect (alpha 0..1) over the surface — for AoE shading, cast
     bursts, and the damage flash, which tint what's already drawn rather than covering it."""
-    overlay = pygame.Surface((width, height), pygame.SRCALPHA)
+    overlay = _alpha_overlays.get((width, height))
+    if overlay is None:
+        overlay = pygame.Surface((width, height), pygame.SRCALPHA)
+        _alpha_overlays[(width, height)] = overlay
     overlay.fill((color[0], color[1], color[2], max(0, min(255, int(alpha * 255)))))
     surface.blit(overlay, (x, y))
 
 
-def panel(surface: pygame.Surface, font: pygame.font.Font, cols: int, rows: int, title: str) -> tuple[int, int]:
-    """Draw a filled, bordered menu box `cols` x `rows` grid cells, centered on the surface, with
-    a centered `title` near the top. Returns the pixel origin of its top-left cell, so callers
-    place content with `cell(origin, col, row)`."""
-    width, height = cols * MENU_COL_W, rows * MENU_ROW_H
+def panel_height(body_rows: int) -> int:
+    """The pixel height of a `panel` with `body_rows` content rows: the title line plus that many
+    rows, framed by the top/bottom padding."""
+    return PANEL_PAD + LINE_H + body_rows * LINE_H + PANEL_PAD
+
+
+def panel(surface: pygame.Surface, font: pygame.font.Font, width: int, height: int, title: str) -> pygame.Rect:
+    """Draw a filled, bordered box `width` x `height` pixels, centered on the surface, with a
+    centered `title` near the top. Returns the inner content rect (below the title, inset by the
+    padding); callers lay out rows at `content.y + row * LINE_H` and columns at `content.x + dx`."""
     sw, sh = surface.get_size()
     x, y = (sw - width) // 2, (sh - height) // 2
     pygame.draw.rect(surface, UI_BLACK, (x, y, width, height))
     pygame.draw.rect(surface, UI_WHITE, (x, y, width, height), width=1)
     if title:
-        blit_text(surface, font, title, x + (width - font.size(title)[0]) // 2, y + 2, UI_WHITE)
-    return x, y
-
-
-def cell(origin: tuple[int, int], col: int, row: int) -> tuple[int, int]:
-    """The pixel position of grid cell (col, row) within a panel whose top-left is `origin`."""
-    return origin[0] + col * MENU_COL_W, origin[1] + row * MENU_ROW_H
+        blit_text(surface, font, title, x + (width - font.size(title)[0]) // 2, y + PANEL_PAD, UI_WHITE)
+    top = y + PANEL_PAD + LINE_H
+    return pygame.Rect(x + PANEL_PAD, top, width - 2 * PANEL_PAD, y + height - PANEL_PAD - top)
 
 
 def scroll_arrows(surface: pygame.Surface, x: int, top_y: int, bottom_y: int, up: bool, down: bool, color: RGB) -> None:

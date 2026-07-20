@@ -120,12 +120,11 @@ def add_logic_systems():
     esper.add_processor(MetaSaveSystem())
 
 
-def add_render_systems(surface: pygame.Surface, asset_loader: AssetLoader) -> RenderSystem:
-    """Register the pygame world renderer, returned so the loop can repoint its surface on
-    a window resize. HUD, overlays, menus, minimap, map view, and modals are ported in a
-    later step; only the dungeon draws for now."""
-    render_system = RenderSystem(surface, asset_loader)
-    esper.add_processor(render_system)
+def add_render_systems(surface: pygame.Surface, asset_loader: AssetLoader) -> None:
+    """Register the pygame draw processors: the world renderer, then the overlays, minimap,
+    HUD, menus, map view, and modals over it. They all draw into `surface` — the display
+    Surface, which pygame mutates in place across resizes, so it never needs repointing."""
+    esper.add_processor(RenderSystem(surface, asset_loader))
     esper.add_processor(TargetingOverlaySystem(surface, asset_loader))
     esper.add_processor(EffectOverlaySystem(surface, asset_loader))
     esper.add_processor(MinimapSystem(surface, asset_loader))
@@ -133,7 +132,6 @@ def add_render_systems(surface: pygame.Surface, asset_loader: AssetLoader) -> Re
     esper.add_processor(MenuSystem(surface, asset_loader))
     esper.add_processor(MapViewSystem(surface, asset_loader))
     esper.add_processor(ModalSystem(surface, asset_loader))
-    return render_system
 
 
 def init_main_menu():
@@ -347,7 +345,7 @@ def main():
     # Register processors once. They are stateless and survive the clear_database()
     # done on load / new game, so they are never re-added.
     add_logic_systems()
-    render_system = add_render_systems(screen, asset_loader)
+    add_render_systems(screen, asset_loader)
 
     # Boot into the title screen (New Game / Continue / Quit).
     init_main_menu()
@@ -372,10 +370,8 @@ def main():
     controller = ControllerInput()
 
     clock = pygame.time.Clock()
-    frame = 0
     while True:
         frame_start = time.perf_counter()
-        frame += 1
 
         game_state = get_singleton(GameState)
         update_pause_state(game_state)
@@ -389,8 +385,9 @@ def main():
             if event.type == pygame.QUIT:
                 sys.exit()
             if event.type == pygame.VIDEORESIZE:
-                screen = pygame.display.set_mode((event.w, event.h), pygame.RESIZABLE)
-                render_system.surface = screen
+                # pygame resizes the existing display Surface in place and returns the same
+                # object, so every processor's reference stays valid — no repointing needed.
+                pygame.display.set_mode((event.w, event.h), pygame.RESIZABLE)
                 continue
             if event.type in (pygame.CONTROLLERDEVICEADDED, pygame.CONTROLLERDEVICEREMOVED):
                 controllers = connected_controllers()

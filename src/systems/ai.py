@@ -38,10 +38,12 @@ from src.systems.visuals import trigger_projectile
 # Memoized Dijkstra maps, keyed by goal tile, so each target's map is built once per AI tick.
 type PathContext = dict[Point, Dijkstra]
 
-# Cap on how far the pure-Python Dijkstra floods from a goal. Comfortably larger than the on-screen
-# radius (viewport ~40 tiles, player centered), so a chase in view still finds its path, but it keeps
-# a fresh flood cheap when the goal churns as the player runs — a foe further than this just idles.
-_MAX_PATH_DIST = 45.0
+# Cap on how far the pure-Python Dijkstra floods from a goal. A little larger than the on-screen
+# radius (viewport ~40 tiles wide, player centered, so ~20 to an edge), so a chase in view still
+# finds its path, while keeping a fresh flood cheap when the goal churns as the player runs — cost
+# grows with the square of this bound (bound 45 ~16ms, bound 30 ~7ms on a large open map). A foe
+# further than this from its goal just idles until the player comes closer.
+_MAX_PATH_DIST = 30.0
 
 
 def _ai_target(ent: int) -> Point | None:
@@ -82,7 +84,6 @@ def _remember_player_if_seen(ent: int):
 
 
 def _process_chase(ent: int, pos: Position, pathfinding_context: PathContext):
-    _remember_player_if_seen(ent)
     target = esper.component_for_entity(ent, AI).last_known_player_position
     path = _compute_path(ent, target, pathfinding_context)
     if path and len(path) > 1:
@@ -115,7 +116,6 @@ def _process_guard(ent: int, pos: Position, pathfinding_context: PathContext):
 
 
 def _process_flee(ent: int, pos: Position, pathfinding_context: PathContext):
-    _remember_player_if_seen(ent)
     target = esper.component_for_entity(ent, AI).last_known_player_position
     path = _compute_path(ent, target, pathfinding_context)
     if path and len(path) > 1:
@@ -248,6 +248,15 @@ class AISystem(esper.Processor):
         if player_ent is None:
             return
         player_pos = esper.component_for_entity(player_ent, Position)
+
+        # Refresh every chaser/fleer's last-known player position up front, before goals are
+        # collected — so a foe that spots the player this tick contributes its up-to-date goal
+        # tile to the precompute below. Otherwise its target would miss the cached set and force
+        # an uncached fresh flood during dispatch (and several such foes around a moving player
+        # stack into a multi-flood frame stall).
+        for ent, _ai in esper.get_component(AI):
+            if esper.has_component(ent, FieldOfView) and not esper.has_component(ent, PatrolTag):
+                _remember_player_if_seen(ent)
 
         # 1. Collect unique goals, split by whether the flood should be distance-bounded. Patrol
         # waypoints are far and static (flood the whole map, then cache), while chase and flee goals
