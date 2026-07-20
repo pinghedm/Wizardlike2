@@ -5,8 +5,11 @@ this drives it directly against a window-sized Surface. A 20x20 map keeps the ca
 clamped to (0, 0), so map tile (x, y) draws into the TILE_PX square at pixel
 (x*TILE_PX, y*TILE_PX). Each tile fills that square with its bg color first (then a
 centered glyph / sprite on top), so the square's top-left pixel is a reliable read of
-the tile's bg — undrawn tiles keep the sentinel fill.
+the tile's bg. The map draws as one opaque layer (black where a tile is unexplored/skipped),
+mirroring the black map background the game clears each frame before RenderSystem runs.
 """
+
+from dataclasses import replace
 
 import esper
 import pygame
@@ -56,7 +59,28 @@ def test_render_draws_visible_tiles_and_skips_unseen():
 
     vx, vy = VISIBLE_FLOOR
     assert _corner(surface, vx, vy) == _game_map().tiles[vx][vy].bg  # visible tile drawn
-    assert _corner(surface, *UNEXPLORED_CORNER) == SENTINEL  # unseen tile skipped
+    assert _corner(surface, *UNEXPLORED_CORNER) == UI_BLACK  # unseen tile skipped -> opaque black layer
+
+
+def test_render_cache_reflects_terrain_change_on_reprocess():
+    # RenderSystem caches the terrain layer and only redraws it when the map changes. A set_tile
+    # bumps Map.revision, which must invalidate that cache so the same (persistent) instance shows
+    # the new tile on its next pass -- not a stale one.
+    runner = HeadlessRunner(use_random_map=False)
+    runner.tick()
+    game_map = _game_map()
+    surface = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT))
+    surface.fill(SENTINEL)
+    runner.game_state.display_mode = DisplayMode.EXPLORING
+    render_system = RenderSystem(surface, runner.asset_loader)
+    render_system.process()  # builds the terrain cache
+
+    vx, vy = VISIBLE_FLOOR
+    recolored = (7, 9, 11)  # a bg no default tile uses
+    game_map.set_tile(vx, vy, replace(game_map.tiles[vx][vy], bg=recolored))
+    render_system.process()
+
+    assert _corner(surface, vx, vy) == recolored
 
 
 def test_render_dims_explored_but_unseen_tiles():

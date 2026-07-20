@@ -1,4 +1,5 @@
 from dataclasses import replace
+from typing import TYPE_CHECKING
 
 import esper
 import numpy as np
@@ -53,6 +54,9 @@ from src.systems.momentum import build_momentum
 from src.systems.progression import grant_xp
 from src.systems.visuals import EFFECT_COLORS
 from src.ui_helpers import blend
+
+if TYPE_CHECKING:
+    from src.data_loaders import AssetLoader
 
 # When statuses stack, an entity's glyph tints to the most action-relevant one first.
 STATUS_TINT_PRIORITY = (
@@ -259,7 +263,22 @@ def _status_tint(ent: int) -> RGB | None:
 
 
 class RenderSystem(RenderProcessor):
-    """Draws the dungeon — tiles then entities — into the pygame window surface."""
+    """Draws the dungeon — tiles then entities — into the pygame window surface.
+
+    Terrain is ~900 tile draws (`pygame.draw.rect` + a sprite blit each), which dominates the
+    render loop's cost. It only changes when the camera scrolls, the FOV/exploration shifts, a
+    trap springs or is revealed, the exit unseals, or the window resizes — so we render it into a
+    cached layer, redraw that layer only when what it depicts changes, and blit it each frame.
+    Entities move every step and are cheap, so they redraw straight to the window on top.
+    """
+
+    def __init__(self, surface: pygame.Surface, asset_loader: AssetLoader) -> None:
+        super().__init__(surface, asset_loader)
+        self._terrain: pygame.Surface | None = None
+        self._terrain_sig: tuple[object, ...] | None = None
+        # The visible-tile set the cache was rendered for, held so its id() can't be recycled onto
+        # a different set while the signature still references it.
+        self._terrain_visible: set[Point] | None = None
 
     def process(self):
         game_state = get_singleton(GameState)
@@ -276,13 +295,40 @@ class RenderSystem(RenderProcessor):
         focus_y = player_pos.y if player_pos else game_map.height // 2
         viewport = compute_viewport(self.surface, focus_x, focus_y, game_map.width, game_map.height)
 
-        self._render_map(game_map, viewport, player_fov)
+        self._blit_terrain(game_map, viewport, player_fov)
         self._render_entities(viewport, player_fov)
 
-    def _render_map(self, game_map: Map, viewport: Viewport, player_fov: FieldOfView | None) -> None:
-        """Draw the explored/visible tiles under the viewport: a bg rect, then the tile's sprite
-        (a glyph for terrain, an image for the exit). Explored-but-unseen tiles are dimmed; a
-        still-sealed exit is dimmed until its guardians are cleared."""
+    def _blit_terrain(self, game_map: Map, viewport: Viewport, player_fov: FieldOfView | None) -> None:
+        """Blit the cached terrain layer, re-rendering it first only when the signature of what it
+        depicts has changed. FOV recompute reassigns `visible_tiles` (and updates explored/revealed
+        in the same tick), so its identity tracks visibility changes; `revision` tracks sprung and
+        revealed traps; the rest are direct camera/seal/size inputs."""
+        size = self.surface.get_size()
+        visible = player_fov.visible_tiles if player_fov is not None else None
+        sig: tuple[object, ...] = (
+            id(game_map),
+            game_map.revision,
+            viewport.cam_x,
+            viewport.cam_y,
+            size,
+            exit_is_sealed(),
+            id(visible),
+        )
+        if self._terrain is None or sig != self._terrain_sig:
+            if self._terrain is None or self._terrain.get_size() != size:
+                self._terrain = pygame.Surface(size)
+            self._terrain.fill(UI_BLACK)
+            self._render_map(self._terrain, game_map, viewport, player_fov)
+            self._terrain_sig = sig
+            self._terrain_visible = visible
+        self.surface.blit(self._terrain, (0, 0))
+
+    def _render_map(
+        self, target: pygame.Surface, game_map: Map, viewport: Viewport, player_fov: FieldOfView | None
+    ) -> None:
+        """Draw the explored/visible tiles under the viewport into `target`: a bg rect, then the
+        tile's sprite (a glyph for terrain, an image for the exit). Explored-but-unseen tiles are
+        dimmed; a still-sealed exit is dimmed until its guardians are cleared."""
         tiles_x = viewport.width // TILE_PX + 1
         tiles_y = viewport.height // TILE_PX + 1
         sealed = exit_is_sealed()
@@ -304,8 +350,8 @@ class RenderSystem(RenderProcessor):
                     bg = to_rgb([int(c * 0.3) for c in bg])
 
                 px, py = viewport.tile_to_px(x, y)
-                pygame.draw.rect(self.surface, bg, (px, py, TILE_PX, TILE_PX))
-                self.surface.blit(self.asset_loader.get_sprite(tile.sprite_id, TILE_PX, fg), (px, py))
+                pygame.draw.rect(target, bg, (px, py, TILE_PX, TILE_PX))
+                target.blit(self.asset_loader.get_sprite(tile.sprite_id, TILE_PX, fg), (px, py))
 
     def _render_entities(self, viewport: Viewport, player_fov: FieldOfView | None) -> None:
         """Blit each visible entity's sprite at its tile, over a tint of its highest-priority

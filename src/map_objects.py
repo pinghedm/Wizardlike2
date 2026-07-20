@@ -25,6 +25,11 @@ class Map:
     # full brightness once they're cleared, signaling the way down is open.
     SEALED_EXIT_DIM = 0.35
 
+    # Bumped on every terrain-visual mutation (set_tile / reveal_all_traps) so the renderer's
+    # cached terrain layer knows when to redraw. A class-attribute default keeps it pickle-safe:
+    # a suspend-save from before this field loads with revision 0 rather than AttributeError.
+    revision: int = 0
+
     def __init__(self, width: int, height: int, default_tile: Tile):
         self.width = width
         self.height = height
@@ -56,6 +61,7 @@ class Map:
         self.tiles[x][y] = tile
         self.transparent[x, y] = tile.transparent
         self.walkable[x, y] = tile.walkable
+        self.revision += 1
         if tile.is_exit:
             self.exit_pos = (x, y)
 
@@ -69,4 +75,6 @@ class Map:
                 if self.tiles[x][y].hidden and not self.revealed[x, y]:
                     self.revealed[x, y] = True
                     count += 1
+        if count:
+            self.revision += 1
         return count
