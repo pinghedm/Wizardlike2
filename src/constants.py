@@ -56,6 +56,11 @@ SHOP_HEAL_BASE_AMOUNT = 50
 # ~10% at the first shop, ~20% at the second, ~30% at the third.
 SHOP_RARE_SPELL_CHANCE = 0.1
 
+# The town merchant offers a charge top-up for every known spell plus this many random
+# ingredients, all at this premium over the base dungeon-shop price for the convenience.
+TOWN_PRICE_MULTIPLIER = 2
+TOWN_INGREDIENT_COUNT = 3
+
 # Cooldown (in ticks) the player incurs per move, before status modifiers.
 # At TICKS_PER_SECOND this caps the player's action rate; SLOW doubles it and
 # HASTE halves it (see get_action_cooldown). Lower = more responsive movement.

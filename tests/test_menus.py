@@ -59,7 +59,7 @@ def _color(row):
 def test_title_menu_lists_the_title_options():
     runner = HeadlessRunner(use_random_map=False)
     esper.clear_database()  # strip to the startup title state (no player)
-    create_game_state()
+    create_game_state(is_town=True, floor=None)
     create_ui_state()
 
     texts = _texts(_menu(runner)._main_menu_rows())

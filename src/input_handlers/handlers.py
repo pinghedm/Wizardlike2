@@ -44,7 +44,7 @@ from src.ecs_helpers import (
 )
 from src.input_handlers.controller import move_delta
 from src.map_objects import Map
-from src.procgen import transition_to_next_floor
+from src.procgen import leave_town, transition_to_next_floor
 from src.shop import purchase_offer
 from src.states import (
     PAUSE_MENU_OPTIONS,
@@ -215,12 +215,18 @@ def _try_descend(game_state: GameState) -> DisplayMode:
     if not maps[0][1].tiles[player_pos.x][player_pos.y].is_exit:
         return DisplayMode.EXPLORING
 
+    # Leaving the hub enters floor 1 — the hub is not a numbered floor and is never sealed.
+    if game_state.is_town:
+        esper.create_entity(Modal(pages=['You leave town and enter the dungeon...'], on_close=leave_town))
+        return DisplayMode.EXPLORING
+
     if exit_is_sealed():
         get_singleton(MessageLog).add_simple_message(
             'The stairs are sealed — vanquish the gate guardians!', color=UI_YELLOW
         )
         return DisplayMode.EXPLORING
 
+    assert game_state.floor is not None  # not in town, so we are on a numbered floor
     if game_state.floor >= MAX_FLOORS:
         get_singleton(MessageLog).add_simple_message('Level Complete!', color=UI_YELLOW)
         run_stats = try_get_singleton(RunStats)

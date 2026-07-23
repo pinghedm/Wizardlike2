@@ -55,6 +55,9 @@ spells:
     recipes:
       - ingredients: [ice_shard, ice_shard]
         charges: 5
+    shop:
+      price: 40
+      charges: 5
     momentum_damage_per_stack: 0.06
     mastery:
       casts_per_rank: 5
@@ -93,6 +96,9 @@ spells:
         charges: 4
       - ingredients: [fire_crystal, ice_shard, mystic_herb]
         charges: 10
+    shop:
+      price: 35
+      charges: 4
     mastery:
       casts_per_rank: 5
       max_rank: 5
@@ -112,6 +118,9 @@ spells:
     recipes:
       - ingredients: [ice_shard, mystic_herb]
         charges: 4
+    shop:
+      price: 35
+      charges: 4
     mastery:
       casts_per_rank: 5
       max_rank: 5
@@ -129,6 +138,9 @@ spells:
     recipes:
       - ingredients: [mystic_herb, mystic_herb, mystic_herb]
         charges: 3
+    shop:
+      price: 35
+      charges: 3
     mastery:
       casts_per_rank: 5
       max_rank: 5
@@ -145,6 +157,9 @@ spells:
     recipes:
       - ingredients: [fire_crystal, mystic_herb]
         charges: 3
+    shop:
+      price: 35
+      charges: 3
     mastery:
       casts_per_rank: 5
       max_rank: 5
@@ -183,6 +198,9 @@ spells:
     recipes:
       - ingredients: [fire_crystal, gale_feather]
         charges: 4
+    shop:
+      price: 35
+      charges: 4
     mastery:
       casts_per_rank: 5
       max_rank: 5
@@ -201,6 +219,9 @@ spells:
     recipes:
       - ingredients: [ice_shard, earth_stone]
         charges: 3
+    shop:
+      price: 40
+      charges: 3
     mastery:
       casts_per_rank: 5
       max_rank: 5
@@ -218,6 +239,9 @@ spells:
     recipes:
       - ingredients: [earth_stone, mystic_herb]
         charges: 3
+    shop:
+      price: 35
+      charges: 3
     mastery:
       casts_per_rank: 5
       max_rank: 5
@@ -235,6 +259,9 @@ spells:
     recipes:
       - ingredients: [storm_shard, mystic_herb]
         charges: 3
+    shop:
+      price: 40
+      charges: 3
     mastery:
       casts_per_rank: 5
       max_rank: 5
@@ -253,6 +280,9 @@ spells:
     recipes:
       - ingredients: [gale_feather, ice_shard]
         charges: 4
+    shop:
+      price: 25
+      charges: 4
     mastery:
       casts_per_rank: 5
       max_rank: 5
@@ -272,14 +302,15 @@ spells:
     recipes:
       - ingredients: [storm_shard, storm_shard]
         charges: 4
+    shop:
+      price: 40
+      charges: 4
     momentum_damage_per_stack: 0.1
     mastery:
       casts_per_rank: 5
       max_rank: 5
       charge_bonus_per_rank: 1
       power_per_rank: 0.12
-  # Rare (shop-learned): a utility buy that lights up every hidden trap on the floor. Rare spells
-  # are hidden from crafting discovery, so a shop purchase is how you learn the recipe.
   - id: clairvoyance
     name: Clairvoyance
     description: Reveals every hidden trap on the floor.

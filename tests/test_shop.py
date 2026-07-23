@@ -3,6 +3,7 @@ import pygame
 
 from src import persistence, shop
 from src.components import (
+    Configuration,
     Enemy,
     InputAction,
     Inventory,
@@ -17,11 +18,11 @@ from src.components import (
     Stats,
     UIState,
 )
-from src.constants import SHOP_FLOOR_INTERVAL
-from src.ecs_helpers import adjacent_component
+from src.constants import SHOP_FLOOR_INTERVAL, TOWN_PRICE_MULTIPLIER
+from src.ecs_helpers import adjacent_component, get_player_component
 from src.input_handlers import handle_shop_input
 from src.procgen import generate_shop_floor, is_shop_floor, spawn_shopkeeper, transition_to_next_floor
-from src.shop import build_shop_offers, purchase_offer
+from src.shop import build_shop_offers, build_town_offers, purchase_offer
 from src.states import DisplayMode
 from src.systems import craft_known_spell, match_recipe
 from tests.headless_runner import HeadlessRunner
@@ -43,18 +44,50 @@ def _ingredient_offer(price: int = 5) -> ShopOffer:
     )
 
 
+# --- build_town_offers ---------------------------------------------------------
+
+
+def test_town_shop_omits_heal_and_prices_ingredients_at_a_premium():
+    HeadlessRunner()  # clean room; the player exists so the sheet can read known recipes
+    configs = esper.get_component(Configuration)[0][1]
+
+    offers = build_town_offers()
+
+    assert offers  # the fixtures have priced ingredients
+    assert all(o.kind is not ShopOfferKind.HEAL for o in offers)  # full HP on departure, no heal
+    for o in offers:
+        if o.kind is ShopOfferKind.INGREDIENT:
+            base = configs.ingredients[o.purchaseable.value]['price']
+            assert o.price == base * TOWN_PRICE_MULTIPLIER
+
+
+def test_town_shop_tops_up_every_known_spell():
+    HeadlessRunner()  # creates the player, whose known recipes the town sheet reads
+    configs = esper.get_component(Configuration)[0][1]
+    shop_spell = next(s for s in configs.spells if 'shop' in s)  # a spell sold with charges
+    stype = SpellType(shop_spell['id'])
+    get_player_component(KnownRecipes).recipes[stype] = {shop_spell['recipes'][0]['ingredients']}
+
+    targets = [o.purchaseable for o in build_town_offers() if o.kind is ShopOfferKind.SPELL]
+
+    assert stype in targets
+
+
 # --- build_shop_offers ---------------------------------------------------------
 
 
 def test_shop_always_offers_heal_one_ingredient_and_one_spell(monkeypatch):
     HeadlessRunner()
+    configs = esper.get_component(Configuration)[0][1]
+    bolt = configs.spells_by_id['test_bolt']  # the shop only tops up spells the player knows
+    get_player_component(KnownRecipes).recipes[SpellType('test_bolt')] = {bolt['recipes'][0]['ingredients']}
     _force_shop_rng(monkeypatch)
 
     kinds = [o.kind for o in build_shop_offers()]
 
     assert kinds.count(ShopOfferKind.HEAL) == 1
     assert kinds.count(ShopOfferKind.INGREDIENT) == 1
-    assert kinds.count(ShopOfferKind.SPELL) == 1  # no rare at floor 1 (chance is 0)
+    assert kinds.count(ShopOfferKind.SPELL) == 1  # the one known top-up; no rare at floor 1
 
 
 def test_shop_includes_rare_spell_when_the_roll_succeeds(monkeypatch):
@@ -239,7 +272,7 @@ def test_shop_ignores_unrelated_actions():
 def test_pressing_confirm_next_to_a_shopkeeper_opens_the_shop():
     runner = HeadlessRunner()
     px, py = runner.player_pos
-    spawn_shopkeeper(px + 1, py)
+    spawn_shopkeeper(x=px + 1, y=py, offers=build_shop_offers())
 
     runner.simulate_key(pygame.K_RETURN)
 

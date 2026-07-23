@@ -94,7 +94,7 @@ class HUDSystem(RenderProcessor):
         if game_state.display_mode not in WORLD_VIEW_MODES:
             return
         hud = hud_rect(self.surface)
-        self._render_stats(hud, game_state.floor)
+        self._render_stats(hud, game_state)
         self._render_message_log(hud)
         self._render_boss_bar()
 
@@ -105,7 +105,7 @@ class HUDSystem(RenderProcessor):
         blit_text(self.surface, self.font, label, x, y, UI_WHITE)
         bar(self.surface, x + self.LABEL_W, y + self.BAR_Y_OFFSET, self.BAR_W, self.BAR_H, ratio, fill, track)
 
-    def _render_stats(self, hud: pygame.Rect, floor: int) -> None:
+    def _render_stats(self, hud: pygame.Rect, game_state: GameState) -> None:
         x = hud.x + self.PAD
         stats = get_player_component(Stats)
         if stats is not None:
@@ -117,7 +117,8 @@ class HUDSystem(RenderProcessor):
             ratio = exp.xp / exp.next_level_xp if exp.next_level_xp else 0.0
             self._stat_bar(x, self._row_y(hud, 1), f'Lv {exp.level}', ratio, UI_PERIWINKLE, UI_GRAY_DARK)
 
-        blit_text(self.surface, self.font, f'Floor: {floor}', x, self._row_y(hud, 2), UI_WHITE)
+        floor_label = 'Town' if game_state.is_town else f'Floor: {game_state.floor}'
+        blit_text(self.surface, self.font, floor_label, x, self._row_y(hud, 2), UI_WHITE)
         inv = try_get_singleton(Inventory)
         if inv is not None:
             gold_text = f'Gold: {inv.items.get(ItemType.GOLD, 0)}'

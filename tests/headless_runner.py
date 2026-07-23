@@ -79,7 +79,7 @@ class HeadlessRunner:
 
         configs = get_game_configs(self.asset_loader)
 
-        create_game_state(floor=1)
+        create_game_state(is_town=False, floor=1)
         create_message_log()
         create_configuration(configs)
         create_ui_state()

@@ -42,7 +42,7 @@ MENU_CONFIRM_CASES = [
 @pytest.mark.parametrize(('game_active', 'option', 'has_save', 'expected'), MENU_CONFIRM_CASES)
 def test_menu_confirm_routes_each_option(game_active, option, has_save, expected, monkeypatch):
     esper.clear_database()
-    create_game_state(floor=1)
+    create_game_state(is_town=False, floor=1)
     create_ui_state()
     if game_active:
         esper.create_entity(PlayerTag())
@@ -56,7 +56,7 @@ def test_menu_confirm_routes_each_option(game_active, option, has_save, expected
 
 def test_menu_movement_steps_the_cursor():
     esper.clear_database()
-    create_game_state(floor=1)
+    create_game_state(is_town=False, floor=1)
     create_ui_state()
     ui_state = esper.get_component(UIState)[0][1]
 

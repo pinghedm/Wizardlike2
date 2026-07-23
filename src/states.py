@@ -100,5 +100,6 @@ PAUSE_MENU_OPTIONS = [
 @dataclass
 class GameState:
     display_mode: DisplayMode = DisplayMode.EXPLORING
-    floor: int = 1
+    is_town: bool = False
+    floor: int | None = None  # None until a dungeon floor is entered
     time_paused: bool = False

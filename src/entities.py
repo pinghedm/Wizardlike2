@@ -27,9 +27,9 @@ from src.persistence import MetaData, load_meta
 from src.states import GameState
 
 
-def create_game_state(floor: int = 1):
+def create_game_state(is_town: bool, floor: int | None):
     """Create the singleton GameState entity."""
-    return esper.create_entity(GameState(floor=floor))
+    return esper.create_entity(GameState(is_town=is_town, floor=floor))
 
 
 def create_message_log():

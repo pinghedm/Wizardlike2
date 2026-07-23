@@ -14,7 +14,14 @@ from src.components import (
     SpellType,
     Stats,
 )
-from src.constants import SHOP_FLOOR_INTERVAL, SHOP_HEAL_BASE_AMOUNT, SHOP_HEAL_BASE_PRICE, SHOP_RARE_SPELL_CHANCE
+from src.constants import (
+    SHOP_FLOOR_INTERVAL,
+    SHOP_HEAL_BASE_AMOUNT,
+    SHOP_HEAL_BASE_PRICE,
+    SHOP_RARE_SPELL_CHANCE,
+    TOWN_INGREDIENT_COUNT,
+    TOWN_PRICE_MULTIPLIER,
+)
 from src.ecs_helpers import get_player_component, get_singleton, try_get_singleton
 from src.states import GameState
 
@@ -54,6 +61,7 @@ def build_shop_offers() -> list[ShopOffer]:
     if configs is None or known is None:
         return []
     floor = game_state.floor
+    assert floor is not None, 'the dungeon shop only exists on numbered floors'
 
     heal = shop_heal(floor)
     offers = [
@@ -79,13 +87,55 @@ def build_shop_offers() -> list[ShopOffer]:
         )
 
     shop_spells = [s for s in configs.spells if 'shop' in s]
-    ordinary = [s for s in shop_spells if not s.get('rare')]
+    # A charge top-up for one spell the player already knows; learning new spells is the
+    # rare slot's job (below).
+    ordinary = [s for s in shop_spells if not s.get('rare') and SpellType(s['id']) in known.recipes]
     if ordinary:
         offers.append(_spell_offer(random.choice(ordinary), known))
 
     rare = [s for s in shop_spells if s.get('rare')]
     if rare and random.random() < SHOP_RARE_SPELL_CHANCE * (floor // SHOP_FLOOR_INTERVAL):
         offers.append(_spell_offer(random.choice(rare), known))
+
+    return offers
+
+
+def build_town_offers() -> list[ShopOffer]:
+    """The town merchant's between-run stock-up sheet: a charge top-up for every spell the
+    player already knows plus TOWN_INGREDIENT_COUNT random ingredients, at a TOWN_PRICE_MULTIPLIER
+    premium. Distinct from the dungeon shop — no heal (the player sets out at full HP)."""
+    configs = try_get_singleton(Configuration)
+    known = try_get_singleton(KnownRecipes)
+    if configs is None or known is None:
+        return []
+
+    offers: list[ShopOffer] = []
+    priced = [(iid, cfg) for iid, cfg in configs.ingredients.items() if 'price' in cfg]
+    for iid, cfg in random.sample(priced, k=min(TOWN_INGREDIENT_COUNT, len(priced))):
+        offers.append(
+            ShopOffer(
+                kind=ShopOfferKind.INGREDIENT,
+                price=cfg['price'] * TOWN_PRICE_MULTIPLIER,
+                label=cfg['name'],
+                purchaseable=ItemType(iid),
+                amount=1,
+            )
+        )
+
+    for s_conf in configs.spells:
+        stype = SpellType(s_conf['id'])
+        shop = s_conf.get('shop')
+        if shop is None or stype not in known.recipes:
+            continue
+        offers.append(
+            ShopOffer(
+                kind=ShopOfferKind.SPELL,
+                price=shop['price'] * TOWN_PRICE_MULTIPLIER,
+                label=f'{s_conf["name"]} (+{shop["charges"]} charges)',
+                purchaseable=stype,
+                amount=shop['charges'],
+            )
+        )
 
     return offers
 

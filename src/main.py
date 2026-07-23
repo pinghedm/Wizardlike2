@@ -8,12 +8,8 @@ import pygame
 
 from src import audio, persistence
 from src.audio import AudioEngine, MusicTrack, SoundId
-from src.components import ControllerButton, InputAction, MessageLog, MetaSaveState, Modal, Settings
+from src.components import ControllerButton, InputAction, MessageLog, MetaSaveState, Modal, Position, Settings
 from src.constants import (
-    MAX_ITEMS_PER_ROOM,
-    MAX_ROOMS,
-    ROOM_MAX_SIZE,
-    ROOM_MIN_SIZE,
     TICKS_PER_SECOND,
     UI_BLACK,
     WINDOW_HEIGHT,
@@ -49,7 +45,7 @@ from src.input_handlers import (
     resolve_action,
     try_capture_remap_event,
 )
-from src.procgen import generate_dungeon
+from src.procgen import generate_hub_floor
 from src.states import DisplayMode, GameState, HandlerResult, PendingTransition
 from src.systems import (
     ActionSystem,
@@ -82,8 +78,8 @@ def init_game_world(asset_loader: AssetLoader):
     # Load Configs (memoized)
     configs = get_game_configs(asset_loader)
 
-    # State
-    create_game_state(floor=1)
+    # State. A run starts in the hub town; leaving it enters floor 1.
+    create_game_state(is_town=True, floor=None)
     create_message_log()
     create_configuration(configs)
     create_ui_state()
@@ -91,18 +87,16 @@ def init_game_world(asset_loader: AssetLoader):
     create_run_stats()
     create_meta_save_state()
 
-    # Generate Dungeon & Spawns
-    game_map, player_start = generate_dungeon(
-        max_rooms=MAX_ROOMS,
-        room_min_size=ROOM_MIN_SIZE,
-        room_max_size=ROOM_MAX_SIZE,
-        max_items_per_room=MAX_ITEMS_PER_ROOM,
-    )
+    # The player must exist before the town is generated: the hub merchant's sale sheet reads
+    # the player's known recipes as it's stocked. So create the player first, then generate the
+    # town and move the player to its entrance — as a floor transition repositions the player.
+    player = create_player(x=0, y=0, meta=meta)
+    game_map, player_start = generate_hub_floor()
     esper.create_entity(game_map)
+    player_pos = esper.component_for_entity(player, Position)
+    player_pos.x, player_pos.y = player_start.x, player_start.y
 
-    # ECS Entities
-    player = create_player(x=player_start.x, y=player_start.y, meta=meta)
-    refill_basic_spells()  # stock the always-known basic attacks for floor 1
+    refill_basic_spells()  # stock the always-known basic attacks
     return player
 
 
@@ -142,7 +136,7 @@ def init_main_menu():
     resolve input through the same action layer as the game, honoring any saved
     remaps. New Game / Continue build the full world from here.
     """
-    create_game_state()
+    create_game_state(is_town=False, floor=None)
     create_ui_state()
     create_settings()
     create_meta_save_state()

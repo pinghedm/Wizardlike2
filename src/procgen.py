@@ -27,6 +27,7 @@ from src.components import (
     Position,
     Renderable,
     Shopkeeper,
+    ShopOffer,
     Stats,
     StatusEffects,
     TileConfig,
@@ -47,7 +48,7 @@ from src.constants import (
 )
 from src.ecs_helpers import get_player, get_singleton, mark_fov_dirty, spawn_item_entity
 from src.map_objects import Map, Tile
-from src.shop import build_shop_offers
+from src.shop import build_shop_offers, build_town_offers
 from src.states import GameState
 from src.systems import refill_basic_spells
 
@@ -69,22 +70,22 @@ def _delete_all(*component_types: type[object]):
             esper.delete_entity(ent, immediate=True)
 
 
-def transition_to_next_floor():
-    # 1. Increment Floor
-    game_state = get_singleton(GameState)
-    game_state.floor += 1
+def _generate_floor():
+    """Build the world for the floor named by game_state.floor: clear the old floor's
+    non-persistent entities, generate the new map (a shop floor every SHOP_FLOOR_INTERVAL
+    levels), reposition the player at its start, and restock the basic attacks. Shared by
+    descending a level and leaving the hub."""
+    floor = _current_floor()
     play_sfx(SoundId.DESCEND)
 
-    # 2. Calculate floor-dependent parameters. Deeper floors are bigger and richer: one
-    # more room attempt every 2 floors, and the per-room item cap rises by 1 every 5 floors.
-    max_rooms = MAX_ROOMS + (game_state.floor // 2)
-    max_items = MAX_ITEMS_PER_ROOM + (game_state.floor // 5)
+    # Deeper floors are bigger and richer: one more room attempt every 2 floors, and the
+    # per-room item cap rises by 1 every 5 floors.
+    max_rooms = MAX_ROOMS + (floor // 2)
+    max_items = MAX_ITEMS_PER_ROOM + (floor // 5)
 
-    # 3. Clear existing non-persistent entities (Items/Enemies/Shopkeeper/NPCs).
     _delete_all(Item, Enemy, Shopkeeper, NPC)
 
-    # 4. Generate the new floor (a shop floor on every third level).
-    if is_shop_floor(game_state.floor):
+    if is_shop_floor(floor):
         new_map, player_start = generate_shop_floor()
     else:
         new_map, player_start = generate_dungeon(
@@ -94,11 +95,9 @@ def transition_to_next_floor():
             max_items_per_room=max_items,
         )
 
-    # 5. Replace the Map entity.
     _delete_all(Map)
     esper.create_entity(new_map)
 
-    # 6. Update Player Position
     player = get_player()
     if player is not None:
         pos = esper.component_for_entity(player, Position)
@@ -106,8 +105,24 @@ def transition_to_next_floor():
         pos.y = player_start.y
         mark_fov_dirty(player)
 
-    # 7. Replenish the always-known basic attacks for the new floor.
     refill_basic_spells()
+
+
+def transition_to_next_floor():
+    """Descend one level deeper into the dungeon."""
+    game_state = get_singleton(GameState)
+    assert game_state.floor is not None, 'cannot descend while outside the dungeon'
+    game_state.floor += 1
+    _generate_floor()
+
+
+def leave_town():
+    """Leave the hub for the dungeon's first floor. The hub is not a numbered floor, so this
+    enters floor 1 rather than descending — floor goes from None to 1."""
+    game_state = get_singleton(GameState)
+    game_state.is_town = False
+    game_state.floor = 1
+    _generate_floor()
 
 
 class RectangularRoom:
@@ -139,8 +154,7 @@ class RectangularRoom:
 
         # Enemies
         if spawn_enemies:
-            game_state = get_singleton(GameState)
-            floor = game_state.floor
+            floor = _current_floor()
 
             # Filter enemies valid for current floor. Guardians and the boss are reserved for
             # the floor exit (spawned by generate_dungeon), so exclude them here.
@@ -255,13 +269,13 @@ def _spawn_floor_npcs(rooms: list[RectangularRoom], floor: int):
         spawn_npc(npc_cfg, x, y)
 
 
-def spawn_shopkeeper(x: int, y: int) -> int:
-    """Create the vendor at (x, y) with freshly rolled stock. Open the shop by
-    pressing Confirm while standing next to it."""
+def spawn_shopkeeper(x: int, y: int, offers: list[ShopOffer]) -> int:
+    """Place a vendor at (x, y) selling `offers`. Open the shop by pressing Confirm while
+    standing next to it. Callers supply the sheet (the dungeon and town shops differ)."""
     return esper.create_entity(
         Position(x, y),
         Renderable(sprite_id='shopkeeper', color=(255, 215, 0)),
-        Shopkeeper(offers=build_shop_offers()),
+        Shopkeeper(offers=offers),
     )
 
 
@@ -371,7 +385,9 @@ def _spawn_boss(dungeon: Map, exit_room: RectangularRoom, rooms: list[Rectangula
 
 
 def _current_floor() -> int:
-    return get_singleton(GameState).floor
+    floor = get_singleton(GameState).floor
+    assert floor is not None, 'floor is only defined inside the dungeon'
+    return floor
 
 
 def _build_tile(cfg: TileConfig, walkable: bool, transparent: bool, is_exit: bool = False) -> Tile:
@@ -535,6 +551,36 @@ def generate_dungeon(
     return dungeon, player_start
 
 
+# The hub room's interior size. Roomier than a shop floor — it's a town to walk around, not a
+# single-vendor stop. Floor 0 has no tile band of its own, so the hub borrows floor 1's look.
+HUB_ROOM_WIDTH = 24
+HUB_ROOM_HEIGHT = 14
+
+
+def generate_hub_floor() -> tuple[Map, Point]:
+    """The hub: a safe walled town the player starts in, with a walk-up merchant and
+    an exit that descends to floor 1. No items, enemies, hazards, or guardians."""
+    wall_tile, floor_tile, exit_tile = _select_floor_tiles(1)
+
+    dungeon = Map(MAP_WIDTH, MAP_HEIGHT, wall_tile)
+    w, h = HUB_ROOM_WIDTH, HUB_ROOM_HEIGHT
+    room = RectangularRoom((MAP_WIDTH - w) // 2, (MAP_HEIGHT - h) // 2, w, h, dungeon)
+    for rx in range(room.x1 + 1, room.x2):
+        for ry in range(room.y1 + 1, room.y2):
+            dungeon.set_tile(rx, ry, floor_tile)
+    dungeon.floor_look = floor_tile
+
+    cy = room.center.y
+    player_start = Point(room.x1 + 2, cy)
+    spawn_shopkeeper(x=room.x1 + 6, y=cy, offers=build_town_offers())
+    dungeon.set_tile(room.x2 - 2, cy, exit_tile)
+
+    logs = esper.get_component(MessageLog)
+    if logs:
+        logs[0][1].add_simple_message('Welcome to town. The stairs down lie east.', color=UI_WHITE)
+    return dungeon, player_start
+
+
 def generate_shop_floor() -> tuple[Map, Point]:
     """A safe single-room shop: the player enters beside the shopkeeper, with an
     exit across the room to descend. No items, enemies, or guardians."""
@@ -550,7 +596,7 @@ def generate_shop_floor() -> tuple[Map, Point]:
 
     cy = room.center.y
     player_start = Point(room.x1 + 2, cy)
-    spawn_shopkeeper(player_start.x + 1, cy)
+    spawn_shopkeeper(x=player_start.x + 1, y=cy, offers=build_shop_offers())
     dungeon.set_tile(room.x2 - 2, cy, exit_tile)
 
     _announce_floor(floor_number)

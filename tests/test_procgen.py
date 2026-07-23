@@ -8,6 +8,7 @@ from src.procgen import (
     _carve_corridor,
     _guardian_count,
     _select_exit_room,
+    leave_town,
     transition_to_next_floor,
     tunnel_between,
 )
@@ -105,8 +106,25 @@ def test_carved_corridor_is_never_one_tile_wide(monkeypatch):
 # --- Floor transition: deterministic structural behavior ----------------------
 
 
+def test_new_run_starts_in_the_hub_town():
+    runner = HeadlessRunner(use_random_map=True)  # the New Game path (init_game_world)
+
+    assert runner.game_state.is_town
+    assert runner.game_state.floor is None
+
+
+def test_leaving_town_enters_floor_one_without_descending():
+    runner = HeadlessRunner(use_random_map=True)
+
+    leave_town()
+
+    assert not runner.game_state.is_town
+    assert runner.game_state.floor == 1  # entered floor 1, not incremented past it
+
+
 def test_transition_increments_floor():
     runner = HeadlessRunner(use_random_map=True)
+    leave_town()  # a run starts in the hub; enter floor 1 before descending
     start_floor = runner.game_state.floor
 
     transition_to_next_floor()
@@ -116,6 +134,7 @@ def test_transition_increments_floor():
 
 def test_transition_clears_previous_floor_entities():
     runner = HeadlessRunner(use_random_map=True)
+    leave_town()  # enter floor 1 out of the hub
     stale_enemy = runner.spawn_enemy(1, 1)
     stale_item = esper.create_entity(Position(1, 2), Item(next(iter(ItemType))))
 
@@ -127,6 +146,7 @@ def test_transition_clears_previous_floor_entities():
 
 def test_transition_marks_player_fov_dirty():
     runner = HeadlessRunner(use_random_map=True)
+    leave_town()  # enter floor 1 out of the hub
     esper.component_for_entity(runner.player, FieldOfView).dirty = False
 
     transition_to_next_floor()
