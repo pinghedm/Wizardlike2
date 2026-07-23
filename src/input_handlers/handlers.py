@@ -33,6 +33,7 @@ from src.constants import (
     UI_WHITE,
     UI_YELLOW,
 )
+from src.debug import debug_log
 from src.ecs_helpers import (
     adjacent_component,
     exit_is_sealed,
@@ -103,8 +104,12 @@ def handle_modal_input(action: InputAction | None):
 
 
 def handle_game_over_input(action: InputAction | None) -> HandlerResult:
-    """The run-summary screen: Confirm returns to the title menu, nothing else acts."""
+    """The run-summary screen. Confirm starts the next run back in the town (a fresh run seeded
+    from persisted gold/recipes/mastery — the between-run home loop); Cancel/Menu bails out to
+    the title. Nothing else acts."""
     if action == InputAction.CONFIRM:
+        return PendingTransition.NEW_GAME  # a run always begins in the town, so this is the way home
+    if action in (InputAction.CANCEL, InputAction.OPEN_MENU):
         return PendingTransition.RETURN_TO_TITLE
     return DisplayMode.GAME_OVER
 
@@ -164,8 +169,10 @@ def _bump_adjacent_enemy(player: int, target_x: int, target_y: int):
     Combat is decoupled from movement: this only applies the bump hit. move_entity then
     walks the player onto a non-blocking enemy, or is stopped by a blocking one.
     """
+    near: list[str] = []
     for ent, (epos, enemy) in esper.get_components(Position, Enemy):
         if epos.x == target_x and epos.y == target_y:
+            debug_log(f'bump: hit {get_display_name(ent)} at {(target_x, target_y)} for {enemy.bump_damage}')
             deal_damage(
                 player,
                 enemy.bump_damage,
@@ -173,6 +180,12 @@ def _bump_adjacent_enemy(player: int, target_x: int, target_y: int):
                 color=UI_RED,
             )
             return
+        if abs(epos.x - target_x) <= 1 and abs(epos.y - target_y) <= 1:
+            near.append(f'{get_display_name(ent)}@{(epos.x, epos.y)}')
+    # A near miss: an enemy was next to the tile stepped into but not on it (e.g. it took its
+    # own real-time tick and stepped away). Silent when no enemy is anywhere near (a plain walk).
+    if near:
+        debug_log(f'bump: stepped into {(target_x, target_y)}, no enemy on it; nearby={near}')
 
 
 def _record_pickup(item: Item, run_stats: RunStats | None):

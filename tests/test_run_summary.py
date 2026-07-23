@@ -3,6 +3,7 @@ import pygame
 
 from src import main
 from src.components import (
+    InputAction,
     Item,
     ItemType,
     PlayerTag,
@@ -13,6 +14,7 @@ from src.components import (
     UIState,
 )
 from src.ecs_helpers import get_singleton
+from src.input_handlers import handle_game_over_input
 from src.states import DisplayMode, GameState, PendingTransition
 from src.systems import cast_spell, deal_damage
 from src.ui_systems import MenuSystem
@@ -102,6 +104,13 @@ def test_return_to_title_clears_the_world_and_boots_the_menu():
 
     assert not esper.get_components(PlayerTag)
     assert get_singleton(GameState).display_mode == DisplayMode.MENU
+
+
+def test_game_over_confirm_returns_to_town_and_cancel_quits_to_title():
+    # Confirm starts the next run (which begins in the town); Cancel/Menu bails to the title.
+    assert handle_game_over_input(InputAction.CONFIRM) == PendingTransition.NEW_GAME
+    assert handle_game_over_input(InputAction.CANCEL) == PendingTransition.RETURN_TO_TITLE
+    assert handle_game_over_input(InputAction.OPEN_MENU) == PendingTransition.RETURN_TO_TITLE
 
 
 # --- rendering --------------------------------------------------------------------

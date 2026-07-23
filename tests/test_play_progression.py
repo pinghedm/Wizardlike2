@@ -61,7 +61,7 @@ def test_descend_modal_ignores_non_enter_keys():
     assert runner.game_state.floor == 2
 
 
-def test_player_death_shows_the_game_over_screen_and_enter_returns_to_title():
+def test_player_death_shows_the_game_over_screen_and_enter_returns_to_town():
     runner = HeadlessRunner(use_random_map=False)
     esper.component_for_entity(runner.player, Stats).hp = 0
 
@@ -72,9 +72,10 @@ def test_player_death_shows_the_game_over_screen_and_enter_returns_to_title():
     runner.simulate_key(pygame.K_LEFT)  # a stray key stays on the summary
     assert runner.display_mode == DisplayMode.GAME_OVER
 
-    runner.simulate_key(pygame.K_RETURN)  # Confirm carries out the return to the title menu
-    assert runner.display_mode == DisplayMode.MENU
-    assert not esper.get_components(PlayerTag)
+    runner.simulate_key(pygame.K_RETURN)  # Confirm starts the next run back in the town
+    assert runner.display_mode == DisplayMode.EXPLORING
+    assert runner.game_state.is_town
+    assert esper.get_components(PlayerTag)  # a fresh player exists for the next run
 
 
 def test_enemy_death_removes_the_entity_and_logs_a_death_message():

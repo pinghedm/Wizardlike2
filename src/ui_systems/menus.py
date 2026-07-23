@@ -436,4 +436,4 @@ class MenuSystem(RenderProcessor):
         )
         for i, line in enumerate(lines):
             self._row(content, 0, i, line)
-        self._row(content, 0, len(lines) + 1, [('Enter: Title', UI_GRAY)])
+        self._row(content, 0, len(lines) + 1, [('Enter: Return to town   |   Esc: Title', UI_GRAY)])
