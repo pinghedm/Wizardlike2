@@ -10,6 +10,7 @@ class DisplayMode(enum.Enum):
     MENU = enum.auto()
     COMBINING = enum.auto()
     CASTING = enum.auto()
+    SPELL_WHEEL = enum.auto()
     TARGETING = enum.auto()
     SHOPPING = enum.auto()
     SETTINGS = enum.auto()
@@ -39,6 +40,7 @@ HandlerResult = DisplayMode | PendingTransition
 WORLD_VIEW_MODES = (
     DisplayMode.EXPLORING,
     DisplayMode.CASTING,
+    DisplayMode.SPELL_WHEEL,
     DisplayMode.COMBINING,
     DisplayMode.TARGETING,
     DisplayMode.SHOPPING,

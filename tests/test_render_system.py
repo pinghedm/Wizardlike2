@@ -18,7 +18,7 @@ import pytest
 from src.components import Effect, EffectType, Position, StatusEffects, StatusType
 from src.constants import TILE_PX, UI_BLACK, WINDOW_HEIGHT, WINDOW_WIDTH
 from src.map_objects import Map
-from src.states import DisplayMode
+from src.states import WORLD_VIEW_MODES, DisplayMode
 from src.systems import RenderSystem
 from src.systems.processors import STATUS_TINT_PRIORITY
 from src.systems.visuals import EFFECT_COLORS
@@ -138,13 +138,8 @@ def test_render_leaves_unstatused_entity_untinted():
     assert _corner(surface, epos.x, epos.y) == _game_map().tiles[epos.x][epos.y].bg
 
 
-RENDER_MODES = {
-    DisplayMode.EXPLORING,
-    DisplayMode.CASTING,
-    DisplayMode.COMBINING,
-    DisplayMode.TARGETING,
-    DisplayMode.SHOPPING,
-}
+# The modes that draw the world behind their overlay (the source of truth, so this can't drift).
+RENDER_MODES = set(WORLD_VIEW_MODES)
 
 
 @pytest.mark.parametrize('mode', [m for m in DisplayMode if m not in RENDER_MODES])

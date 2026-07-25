@@ -137,6 +137,8 @@ def handle_exploring_input(action: InputAction | None):
         return DisplayMode.COMBINING
     elif action == InputAction.OPEN_CASTING:
         return DisplayMode.CASTING
+    elif action == InputAction.OPEN_WHEEL:
+        return DisplayMode.SPELL_WHEEL
     elif action == InputAction.OPEN_MAP:
         return DisplayMode.MAP_VIEW
     elif action == InputAction.CONFIRM:
@@ -450,10 +452,18 @@ def _handle_spellbook_input(action: InputAction | None, ui_state: UIState):
     return DisplayMode.COMBINING
 
 
+def _spell_group_key(stype: SpellType) -> tuple[str, str]:
+    """Sort key that clusters spells by their primary effect type, then name — so the wheel and
+    list group like spells together (all damage, all heals, ...)."""
+    s_conf = get_spell_config(stype.value)
+    primary = s_conf['effects'][0].type.value if s_conf and s_conf['effects'] else ''
+    return (primary, stype.name)
+
+
 def available_spells() -> list[SpellType]:
     """The player's castable spells (those with charges), in the order they're listed and
     quick-cast slots are numbered. Basic spells anchor the low slots — they refill each floor,
-    so they're the reliable fallback — followed by the discovered spells, each name-sorted."""
+    so they're the reliable fallback — followed by the discovered spells grouped by effect type."""
     spell_inv = get_player_component(SpellInventory)
     if spell_inv is None:
         return []
@@ -461,24 +471,45 @@ def available_spells() -> list[SpellType]:
     basic_ids = {c['id'] for c in configs.spells if c.get('basic')} if configs else set[str]()
     charged = [s for s, n in spell_inv.spells.items() if n > 0]
     basics = sorted((s for s in charged if s.value in basic_ids), key=lambda s: s.name)
-    rest = sorted((s for s in charged if s.value not in basic_ids), key=lambda s: s.name)
+    rest = sorted((s for s in charged if s.value not in basic_ids), key=_spell_group_key)
     return basics + rest
 
 
+def known_spells() -> list[SpellType]:
+    """Every spell the player can cast — the always-known basics plus discovered recipes —
+    charged or not, ordered like available_spells. The wheel shows all of these, greying out the
+    depleted ones; the basics never grey out (they refill each floor)."""
+    recipes = get_player_component(KnownRecipes)
+    configs = try_get_singleton(Configuration)
+    if recipes is None or configs is None:
+        return []
+    basics = {SpellType(c['id']) for c in configs.spells if c.get('basic')}
+    known = basics | set(recipes.recipes.keys())
+    ordered_basics = sorted((s for s in known if s in basics), key=lambda s: s.name)
+    rest = sorted((s for s in known if s not in basics), key=_spell_group_key)
+    return ordered_basics + rest
+
+
 def enter_targeting_for_slot(slot: int) -> DisplayMode:
-    """Ready the spell in `slot` of the available list, skipping the picker.
+    """Ready the spell in `slot` of the available (charged) list, skipping the picker."""
+    spells = available_spells()
+    if slot >= len(spells):
+        return get_singleton(GameState).display_mode
+    return enter_targeting_for_spell(spells[slot])
+
+
+def enter_targeting_for_spell(stype: SpellType) -> DisplayMode:
+    """Ready `stype` for casting.
 
     Self-cast spells (target: self, e.g. heals/buffs) resolve on the caster immediately,
     with no targeting step. Otherwise the reticle locks onto the nearest visible enemy
     (replacing any reticle already up, so quick-cast works mid-aim), or no-ops with a
-    message when none are in view. Returns the current mode when the slot is empty.
+    message when none are in view.
     """
-    spells = available_spells()
     player = get_player()
-    if slot >= len(spells) or player is None:
+    if player is None:
         return get_singleton(GameState).display_mode
 
-    stype = spells[slot]
     s_conf = get_spell_config(stype.value)
     if s_conf is None:
         return get_singleton(GameState).display_mode
@@ -553,6 +584,34 @@ def handle_casting_input(action: InputAction | None):
         return enter_targeting_for_slot(ui_state.casting_cursor)
 
     return DisplayMode.CASTING
+
+
+def handle_wheel_input(action: InputAction | None):
+    """The radial spell wheel: an alternative to the list picker, on its own button. It shows
+    every known spell (depleted ones greyed out); Left/right (or up/down) rotate, Confirm fires
+    the selected spell if it has charges, and the wheel key / Cancel / Menu close it."""
+    ui_state = get_singleton(UIState)
+    spell_inv = get_player_component(SpellInventory)
+    if spell_inv is None:
+        return DisplayMode.EXPLORING
+
+    if action in (InputAction.CANCEL, InputAction.OPEN_WHEEL, InputAction.OPEN_MENU):
+        return DisplayMode.EXPLORING
+
+    spells = known_spells()
+    if spells:
+        cursor = ui_state.wheel_cursor % len(spells)
+        if action in (InputAction.MOVE_RIGHT, InputAction.MOVE_DOWN):
+            ui_state.wheel_cursor = (cursor + 1) % len(spells)
+        elif action in (InputAction.MOVE_LEFT, InputAction.MOVE_UP):
+            ui_state.wheel_cursor = (cursor - 1) % len(spells)
+        elif action == InputAction.CONFIRM:
+            stype = spells[cursor]
+            if spell_inv.spells.get(stype, 0) > 0:
+                return enter_targeting_for_spell(stype)
+            play_sfx(SoundId.MENU_CANCEL)  # a depleted spell can't be cast
+
+    return DisplayMode.SPELL_WHEEL
 
 
 def handle_targeting_input(action: InputAction | None):

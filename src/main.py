@@ -1,3 +1,7 @@
+import os
+
+os.environ.setdefault('PYGAME_HIDE_SUPPORT_PROMPT', '1')  # silence pygame's import banner
+
 import atexit
 import sys
 import time
@@ -41,6 +45,7 @@ from src.input_handlers import (
     handle_settings_input,
     handle_shop_input,
     handle_targeting_input,
+    handle_wheel_input,
     note_controller_button,
     resolve_action,
     try_capture_remap_event,
@@ -211,6 +216,7 @@ _MENU_MODES = (
     DisplayMode.MENU,
     DisplayMode.COMBINING,
     DisplayMode.CASTING,
+    DisplayMode.SPELL_WHEEL,
     DisplayMode.SHOPPING,
     DisplayMode.SETTINGS,
     DisplayMode.GAME_OVER,
@@ -245,6 +251,7 @@ _MODE_HANDLERS: dict[DisplayMode, Callable[[InputAction | None], HandlerResult]]
     DisplayMode.MENU: handle_menu_input,
     DisplayMode.COMBINING: handle_combining_input,
     DisplayMode.CASTING: handle_casting_input,
+    DisplayMode.SPELL_WHEEL: handle_wheel_input,
     DisplayMode.TARGETING: handle_targeting_input,
     DisplayMode.SHOPPING: handle_shop_input,
     DisplayMode.SETTINGS: handle_settings_input,

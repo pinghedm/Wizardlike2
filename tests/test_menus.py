@@ -22,7 +22,7 @@ from src.components import (
 from src.constants import UI_GRAY, UI_GRAY_DARK, UI_WHITE, UI_YELLOW
 from src.ecs_helpers import try_get_singleton
 from src.entities import create_game_state, create_ui_state
-from src.input_handlers import available_spells
+from src.input_handlers import available_spells, known_spells
 from src.states import PAUSE_MENU_OPTIONS, TITLE_MENU_OPTIONS, DisplayMode, MenuOption
 from src.ui_systems import MenuSystem
 from tests.headless_runner import HeadlessRunner
@@ -229,6 +229,32 @@ def test_casting_menu_ignores_zero_charge_spells():
     text = '\n'.join(_texts(_casting_rows(runner)[0]))
     assert 'TEST_BOLT' not in text  # a depleted spell drops out
     assert 'TEST_WAND' in text  # the basic attack remains
+
+
+# --- spell wheel ------------------------------------------------------------
+
+
+def _wheel_center(runner):
+    return _menu(runner)._wheel_center_lines(_ui_state(runner), try_get_singleton(SpellInventory))
+
+
+def test_wheel_center_shows_the_selected_spell():
+    runner = HeadlessRunner(use_random_map=False)
+    runner.learn_spell('test_bolt')
+    runner.give_spell('test_bolt', 2)
+    _ui_state(runner).wheel_cursor = known_spells().index(SpellType('test_bolt'))
+
+    text = '\n'.join(_texts(_wheel_center(runner)))
+    assert 'TEST_BOLT' in text
+    assert '2 charges' in text
+
+
+def test_wheel_center_reports_no_charges_for_a_depleted_but_known_spell():
+    runner = HeadlessRunner(use_random_map=False)
+    esper.component_for_entity(runner.player, SpellInventory).spells[SpellType('test_wand')] = 0
+    _ui_state(runner).wheel_cursor = known_spells().index(SpellType('test_wand'))  # the basic, always known
+
+    assert any('No charges' in t for t in _texts(_wheel_center(runner)))
 
 
 # --- shop -------------------------------------------------------------------

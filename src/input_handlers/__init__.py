@@ -32,6 +32,8 @@ from src.input_handlers.handlers import (
     handle_settings_input,
     handle_shop_input,
     handle_targeting_input,
+    handle_wheel_input,
+    known_spells,
 )
 
 __all__ = [
@@ -52,6 +54,8 @@ __all__ = [
     'handle_modal_input',
     'handle_settings_input',
     'handle_shop_input',
+    'handle_wheel_input',
+    'known_spells',
     'handle_targeting_input',
     'note_controller_button',
     'resolve_action',

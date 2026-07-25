@@ -1,3 +1,4 @@
+import math
 from collections import Counter
 from collections.abc import Sequence
 
@@ -6,6 +7,7 @@ import pygame
 
 from src import persistence
 from src.components import (
+    EffectType,
     Inventory,
     ItemType,
     KnownRecipes,
@@ -19,6 +21,8 @@ from src.components import (
     UIState,
 )
 from src.constants import (
+    RGB,
+    UI_BLACK,
     UI_CYAN_DARK,
     UI_GRAY,
     UI_GRAY_DARK,
@@ -34,6 +38,7 @@ from src.input_handlers import (
     available_spells,
     connected_controller_name,
     controller_binding_label,
+    known_spells,
 )
 from src.render import RenderProcessor
 from src.states import (
@@ -46,13 +51,14 @@ from src.states import (
     SettingsPref,
 )
 from src.systems import (
+    EFFECT_COLORS,
     can_craft_known_spell,
     get_spell_config,
     is_game_active,
     is_reagent,
     spell_rank,
 )
-from src.ui_draw import LINE_H, blit_text, blit_text_right, panel, panel_height, scroll_arrows
+from src.ui_draw import LINE_H, blit_text, blit_text_right, fill_alpha, panel, panel_height, scroll_arrows
 from src.ui_helpers import format_recipe, format_spell_effects, scroll_window, wrap_message
 
 # A drawn row: its segments (each a (text, color)) and whether the list scrolls past it above/below.
@@ -67,6 +73,46 @@ def _quick_cast_label(slot: int, has_controller: bool) -> str:
     if has_controller and slot < len(QUICK_CAST_FACE_BUTTONS):
         return f'{slot + 1}/{QUICK_CAST_FACE_BUTTONS[slot].name}) '
     return f'{slot + 1}) '
+
+
+# The spell wheel's wedges are drawn at this supersample factor and downscaled, so their arc
+# edges come out smooth (pygame's polygon fill has no anti-aliasing).
+WHEEL_SUPERSAMPLE = 3
+# Each wedge is at most 1/WHEEL_MIN_SLOTS of the circle; with fewer spells the ring is padded
+# with blank slots (so a 3-spell wheel isn't three giant wedges).
+WHEEL_MIN_SLOTS = 8
+WHEEL_LABEL_PX = 16  # wedge labels use a smaller font than the UI so long spell names fit
+WHEEL_BLANK_COLOR: RGB = (34, 34, 40)
+WHEEL_DEPLETED_COLOR: RGB = (52, 52, 58)  # a known spell with no charges left
+WHEEL_HUB_COLOR: RGB = (28, 28, 34)
+
+
+def _lighten(color: RGB, t: float) -> RGB:
+    """Blend `color` toward white by `t` (0..1) — the selected wedge's brighter highlight."""
+    return (
+        int(color[0] + (255 - color[0]) * t),
+        int(color[1] + (255 - color[1]) * t),
+        int(color[2] + (255 - color[2]) * t),
+    )
+
+
+def _contrast_text(bg: RGB) -> RGB:
+    """Black or white, whichever reads better on `bg` (so a label never sits white-on-yellow)."""
+    luminance = 0.299 * bg[0] + 0.587 * bg[1] + 0.114 * bg[2]
+    return UI_BLACK if luminance > 140 else UI_WHITE
+
+
+def _ring_wedge_points(
+    cx: float, cy: float, r_in: float, r_out: float, a0: float, a1: float, steps: int = 20
+) -> list[tuple[float, float]]:
+    """A ring-sector (donut wedge) polygon: the outer arc from a0 to a1, then the inner arc back."""
+    outer = [(cx + r_out * math.cos(a), cy + r_out * math.sin(a)) for a in _arc_angles(a0, a1, steps)]
+    inner = [(cx + r_in * math.cos(a), cy + r_in * math.sin(a)) for a in reversed(_arc_angles(a0, a1, steps))]
+    return outer + inner
+
+
+def _arc_angles(a0: float, a1: float, steps: int) -> list[float]:
+    return [a0 + (a1 - a0) * k / steps for k in range(steps + 1)]
 
 
 class MenuSystem(RenderProcessor):
@@ -105,6 +151,8 @@ class MenuSystem(RenderProcessor):
             self.render_combining_menu()
         elif mode == DisplayMode.CASTING:
             self.render_casting_menu()
+        elif mode == DisplayMode.SPELL_WHEEL:
+            self.render_spell_wheel()
         elif mode == DisplayMode.SHOPPING:
             self.render_shop_menu()
         elif mode == DisplayMode.SETTINGS:
@@ -280,6 +328,149 @@ class MenuSystem(RenderProcessor):
         self._row(
             content, 0, body_rows - 1, [('Arrows: Select | 1-9: Quick-cast | Enter: Target | S/Esc: Cancel', UI_GRAY)]
         )
+
+    # --- spell wheel ------------------------------------------------------------
+
+    def _spell_color(self, stype: SpellType) -> RGB:
+        """A wheel node's color: its spell's primary-effect color (white when it has none)."""
+        s_conf = get_spell_config(stype.value)
+        if s_conf and s_conf['effects']:
+            return EFFECT_COLORS.get(s_conf['effects'][0].type, UI_WHITE)
+        return UI_WHITE
+
+    def _wheel_center_lines(self, ui_state: UIState, spell_inv: SpellInventory) -> list[Message]:
+        """The wheel's center-hub readout: the selected spell's name and charge count (greyed
+        when depleted), or the empty message when the player knows no spells."""
+        spells = known_spells()
+        if not spells:
+            return [[('No spells known!', UI_RED)]]
+        stype = spells[ui_state.wheel_cursor % len(spells)]
+        charges = spell_inv.spells.get(stype, 0)
+        charge_text = f'{charges} charges' if charges > 0 else 'No charges'
+        return [
+            [(stype.name, UI_YELLOW)],
+            [(charge_text, UI_WHITE if charges > 0 else UI_GRAY)],
+        ]
+
+    def _blit_centered(self, text: str, cx: int, y: int, color: RGB, font: pygame.font.Font | None = None) -> None:
+        font = font or self.font
+        blit_text(self.surface, font, text, cx - font.size(text)[0] // 2, y, color)
+
+    def render_spell_wheel(self):
+        spell_inv = try_get_singleton(SpellInventory)
+        if spell_inv is None:
+            return
+        ui_state = get_singleton(UIState)
+        w, h = self.surface.get_width(), self.surface.get_height()
+        cx, cy = w // 2, h // 2
+        fill_alpha(self.surface, 0, 0, w, h, UI_BLACK, 0.55)  # dim the live map behind the wheel
+
+        spells = known_spells()
+        r_out = int(min(w, h) * 0.34)
+        r_in = int(r_out * 0.46)
+        if spells:
+            cursor = ui_state.wheel_cursor % len(spells)
+            self._draw_wheel_ring(spells, cursor, spell_inv, cx, cy, r_in, r_out)
+            self._draw_wheel_labels(spells, cursor, spell_inv, cx, cy, r_in, r_out)
+            self._draw_spell_detail(spells[cursor], cx, cy, r_out)
+
+        pygame.draw.circle(self.surface, WHEEL_HUB_COLOR, (cx, cy), max(1, r_in - 3))  # center hub
+        self._draw_wheel_hub(ui_state, spell_inv, cx, cy)
+
+    def _draw_wheel_ring(
+        self, spells: list[SpellType], cursor: int, spell_inv: SpellInventory, cx: int, cy: int, r_in: int, r_out: int
+    ) -> None:
+        """Draw the ring of spell wedges onto a supersampled layer (smooth arcs), then blit it
+        down centered. Each wedge is at most 1/WHEEL_MIN_SLOTS of the circle; slots past the spell
+        count are blank, and depleted spells are greyed. The selected wedge is brightened, pushed
+        out, and outlined."""
+        s = WHEEL_SUPERSAMPLE
+        span = (r_out + 18) * 2  # room for the selected wedge's explode + border
+        layer = pygame.Surface((span * s, span * s), pygame.SRCALPHA)
+        lc = span * s // 2
+        slots = max(len(spells), WHEEL_MIN_SLOTS)
+        seg = 2 * math.pi / slots
+        gap = min(0.04, seg * 0.08)  # a hair of space between wedges
+        for i in range(slots):
+            mid = -math.pi / 2 + i * seg
+            selected = i == cursor
+            if i >= len(spells):
+                fill, outer = WHEEL_BLANK_COLOR, r_out * s
+            elif spell_inv.spells.get(spells[i], 0) <= 0:
+                fill = WHEEL_DEPLETED_COLOR
+                outer = (r_out + 14 if selected else r_out) * s
+            else:
+                base = self._spell_color(spells[i])
+                fill = _lighten(base, 0.35) if selected else base
+                outer = (r_out + 14 if selected else r_out) * s
+            pts = _ring_wedge_points(lc, lc, r_in * s, outer, mid - seg / 2 + gap, mid + seg / 2 - gap)
+            pygame.draw.polygon(layer, fill, pts)
+            if selected and i < len(spells):
+                pygame.draw.polygon(layer, UI_WHITE, pts, 4 * s)  # selection border
+        scaled = pygame.transform.smoothscale(layer, (span, span))
+        self.surface.blit(scaled, (cx - span // 2, cy - span // 2))
+
+    def _draw_wheel_labels(
+        self, spells: list[SpellType], cursor: int, spell_inv: SpellInventory, cx: int, cy: int, r_in: int, r_out: int
+    ) -> None:
+        """Label each wedge with its spell's full name (word-wrapped) and charge count; a depleted
+        spell's label is greyed to match its wedge."""
+        slots = max(len(spells), WHEEL_MIN_SLOTS)
+        seg = 2 * math.pi / slots
+        lr = (r_in + r_out) / 2
+        font = self.asset_loader.font(WHEEL_LABEL_PX)
+        lh = font.get_height()
+        for i, stype in enumerate(spells):
+            mid = -math.pi / 2 + i * seg
+            lx, ly = cx + lr * math.cos(mid), cy + lr * math.sin(mid)
+            lines = stype.name.replace('_', ' ').title().split(' ')
+            lines.append(f'x{spell_inv.spells.get(stype, 0)}')
+            if spell_inv.spells.get(stype, 0) <= 0:
+                color = UI_GRAY
+            else:
+                base = self._spell_color(stype)
+                color = _contrast_text(_lighten(base, 0.35) if i == cursor else base)
+            top = int(ly - len(lines) * lh / 2)
+            for j, text in enumerate(lines):
+                self._blit_centered(text, int(lx), top + j * lh, color, font)
+
+    def _draw_spell_detail(self, stype: SpellType, cx: int, cy: int, r_out: int) -> None:
+        """The selected spell's stat block (mastery, damage, radius) and description, left-aligned
+        to the left of the wheel."""
+        s_conf = get_spell_config(stype.value)
+        if s_conf is None:
+            return
+        left = 30
+        max_width = cx - r_out - left - 40
+        if max_width < 140:
+            return  # window too narrow to fit a readable column
+        lines: list[Message] = [
+            [(stype.name.replace('_', ' ').title(), UI_YELLOW)],
+            [(f'Mastery {spell_rank(stype)}', UI_SKY)],
+        ]
+        damage = next((e.power for e in s_conf['effects'] if e.type == EffectType.DAMAGE), None)
+        if damage is not None:
+            lines.append([(f'Damage {damage}', UI_WHITE)])
+        lines.append([(f'Radius {s_conf.get("radius", 0)}', UI_WHITE)])
+        description = s_conf.get('description')
+        if description:
+            lines.append([('', UI_WHITE)])
+            lines.extend(wrap_message([(description, UI_GRAY)], max_width, self.measure))
+        top = cy - len(lines) * LINE_H // 2
+        for i, line in enumerate(lines):
+            x = left
+            for text, color in line:
+                x += blit_text(self.surface, self.font, text, x, top + i * LINE_H, color)
+
+    def _draw_wheel_hub(self, ui_state: UIState, spell_inv: SpellInventory, cx: int, cy: int) -> None:
+        """The center hub: the selected spell's charges/radius readout, plus the controls hint."""
+        lines = self._wheel_center_lines(ui_state, spell_inv)
+        top = cy - len(lines) * LINE_H // 2
+        for i, line in enumerate(lines):
+            text, color = line[0]
+            self._blit_centered(text, cx, top + i * LINE_H, color)
+        h = self.surface.get_height()
+        self._blit_centered('Move: Rotate | Enter: Cast | D/Esc: Close', cx, h - LINE_H * 2, UI_GRAY)
 
     # --- shop -------------------------------------------------------------------
 

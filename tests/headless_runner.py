@@ -7,6 +7,7 @@ from src.components import (
     EnemyConfig,
     Inventory,
     ItemType,
+    KnownRecipes,
     MessageLog,
     Point,
     Position,
@@ -167,6 +168,11 @@ class HeadlessRunner:
         """Grant the player charges of a spell."""
         spell_inv = esper.component_for_entity(self.player, SpellInventory)
         spell_inv.spells[SpellType(spell_id)] = charges
+
+    def learn_spell(self, spell_id: str):
+        """Mark a spell as a known recipe, so it appears in known_spells / the wheel."""
+        recipes = esper.component_for_entity(self.player, KnownRecipes)
+        recipes.recipes.setdefault(SpellType(spell_id), set())
 
     def spell_charges(self, spell_id: str) -> int:
         """The player's remaining charges of a spell (0 if none)."""

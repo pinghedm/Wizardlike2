@@ -165,6 +165,7 @@ class UIState:
     main_menu_cursor: int = 0
     crafting_cursor: int = 0
     casting_cursor: int = 0
+    wheel_cursor: int = 0  # the spell wheel's selection (over all known spells, not just charged)
     settings_cursor: int = 0
     remapping_action: InputAction | None = None
     selected_for_crafting: dict[ItemType, int] = field(default_factory=dict[ItemType, int])

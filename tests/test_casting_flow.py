@@ -31,6 +31,8 @@ from src.input_handlers import (
     handle_casting_input,
     handle_settings_input,
     handle_targeting_input,
+    handle_wheel_input,
+    known_spells,
 )
 from src.input_handlers.handlers import _adjust_preference, _step_target
 from src.map_objects import Map
@@ -79,6 +81,49 @@ def _enter_targeting(runner: HeadlessRunner, spell_id: str = SPELL):
     _ui().casting_cursor = available_spells().index(SpellType(spell_id))
     runner.simulate_key(pygame.K_RETURN)
     assert runner.display_mode == DisplayMode.TARGETING
+
+
+def test_wheel_opens_from_exploring_and_its_key_toggles_it_closed():
+    runner = HeadlessRunner(use_random_map=False)
+
+    runner.simulate_key(pygame.K_d)
+    assert runner.display_mode == DisplayMode.SPELL_WHEEL
+
+    runner.simulate_key(pygame.K_d)
+    assert runner.display_mode == DisplayMode.EXPLORING
+
+
+def test_wheel_rotation_moves_the_wheel_cursor():
+    runner = HeadlessRunner(use_random_map=False)
+    runner.learn_spell(SPELL)
+    runner.give_spell(SPELL, 3)
+    _ui().wheel_cursor = 0
+    n = len(known_spells())
+
+    assert handle_wheel_input(InputAction.MOVE_RIGHT) == DisplayMode.SPELL_WHEEL
+    assert _ui().wheel_cursor == 1 % n
+    assert handle_wheel_input(InputAction.MOVE_LEFT) == DisplayMode.SPELL_WHEEL
+    assert _ui().wheel_cursor == 0
+
+
+def test_wheel_confirm_enters_targeting_on_a_visible_enemy():
+    runner = HeadlessRunner(use_random_map=False)
+    runner.learn_spell(SPELL)
+    runner.give_spell(SPELL, 3)
+    px, py = runner.player_pos
+    _guardian(runner, px + 1, py)
+    _freeze_fov(runner, Point(px + 1, py))
+    _ui().wheel_cursor = known_spells().index(SpellType(SPELL))
+
+    assert handle_wheel_input(InputAction.CONFIRM) == DisplayMode.TARGETING
+
+
+def test_wheel_confirm_on_a_depleted_spell_stays_open():
+    runner = HeadlessRunner(use_random_map=False)
+    runner.learn_spell(SPELL)  # known, but no charges granted
+    _ui().wheel_cursor = known_spells().index(SpellType(SPELL))
+
+    assert handle_wheel_input(InputAction.CONFIRM) == DisplayMode.SPELL_WHEEL
 
 
 # (behavior, starting_charges) -> mode after one cast of the aimed (non-basic) bolt.
