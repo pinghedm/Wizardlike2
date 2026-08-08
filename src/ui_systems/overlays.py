@@ -6,13 +6,18 @@ import pygame
 
 from src.audio import SoundId, play_sfx
 from src.components import (
+    NPC,
     Actor,
     CastVisual,
+    FieldOfView,
     FloatingNumber,
+    InputAction,
     Particle,
     Position,
     Projectile,
     ScreenFlash,
+    Settings,
+    Shopkeeper,
     SpellInventory,
     SpellType,
     TargetingReticle,
@@ -20,6 +25,7 @@ from src.components import (
 )
 from src.constants import (
     TILE_PX,
+    UI_BLACK,
     UI_FONT_PX,
     UI_GRAY_DARK,
     UI_MAROON,
@@ -28,7 +34,7 @@ from src.constants import (
     UI_YELLOW,
     to_rgb,
 )
-from src.ecs_helpers import get_player_component, get_singleton, try_get_singleton
+from src.ecs_helpers import chebyshev_distance, get_player_component, get_singleton, try_get_singleton
 from src.map_objects import Map
 from src.render import RenderProcessor, Viewport, compute_viewport, map_viewport_rect
 from src.states import DisplayMode, GameState
@@ -109,6 +115,61 @@ class TargetingOverlaySystem(RenderProcessor):
             width = self.font.size(text)[0] + 12
             pygame.draw.rect(self.surface, UI_NAVY, (viewport.px_x, y, width, UI_FONT_PX))
             blit_text(self.surface, self.font, text, viewport.px_x + 6, y, UI_YELLOW)
+
+
+class InteractPromptSystem(RenderProcessor):
+    """Floats a small tag over each visible friendly (shopkeeper / story NPC) so they read as
+    talk-to characters rather than another enemy sprite. From afar it names them; step adjacent
+    and it becomes the action hint ('<Confirm>: Shop' / '<Confirm>: Talk'), mirroring the
+    Confirm-while-adjacent interaction in the exploring handler. The Confirm control is read from
+    the live keybindings, not hard-coded, so a remap keeps the hint accurate."""
+
+    _PAD = 3
+
+    def process(self):
+        if get_singleton(GameState).display_mode != DisplayMode.EXPLORING:
+            return
+        viewport = _viewport(self.surface)
+        player_pos = get_player_component(Position)
+        player_fov = get_player_component(FieldOfView)
+        if viewport is None or player_pos is None:
+            return
+        confirm = self._confirm_label()
+        for pos, name, verb in self._friendlies():
+            if player_fov is not None and pos.point not in player_fov.visible_tiles:
+                continue
+            adjacent = chebyshev_distance(pos, player_pos) <= 1
+            px, py = viewport.tile_to_px(pos.x, pos.y)
+            if not viewport.contains_px(px, py):
+                continue
+            self._draw_tag(px, py, f'{confirm}: {verb}' if adjacent else name, highlight=adjacent)
+
+    def _confirm_label(self) -> str:
+        """The keyboard key currently bound to Confirm, upper-cased like the Settings readout."""
+        bindings = get_singleton(Settings).keybindings.bindings
+        return pygame.key.name(bindings[InputAction.CONFIRM]).upper()
+
+    def _friendlies(self) -> Iterator[tuple[Position, str, str]]:
+        """Each interactable friendly as (position, far-off nameplate, adjacent action verb)."""
+        for _ent, (pos, _shop) in esper.get_components(Position, Shopkeeper):
+            yield pos, 'Merchant', 'Shop'
+        for _ent, (pos, npc) in esper.get_components(Position, NPC):
+            yield pos, npc.name, 'Talk'
+
+    def _draw_tag(self, px: int, py: int, text: str, highlight: bool) -> None:
+        """Center a pill of `text` just above the tile at (px, py) — a bright navy/yellow action
+        cue when adjacent, a subtle dark/sky nameplate otherwise."""
+        text_w = self.measure(text)
+        height = self.font.get_height()
+        x = px + TILE_PX // 2 - text_w // 2
+        y = py - height - 2
+        bg, fg = (UI_NAVY, UI_YELLOW) if highlight else (UI_BLACK, UI_SKY)
+        rect = (x - self._PAD, y - 1, text_w + 2 * self._PAD, height + 2)
+        if highlight:
+            pygame.draw.rect(self.surface, bg, rect)
+        else:
+            fill_alpha(self.surface, *rect, bg, 0.55)
+        blit_text(self.surface, self.font, text, x, y, fg)
 
 
 # The recharge bar that floats over the player while a cast cools: its width in pixels and a fill

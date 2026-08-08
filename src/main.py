@@ -67,6 +67,7 @@ from src.targeting import CycleTargetSystem
 from src.ui_systems import (
     EffectOverlaySystem,
     HUDSystem,
+    InteractPromptSystem,
     MapViewSystem,
     MenuSystem,
     MinimapSystem,
@@ -125,6 +126,7 @@ def add_render_systems(surface: pygame.Surface, asset_loader: AssetLoader) -> No
     esper.add_processor(RenderSystem(surface, asset_loader))
     esper.add_processor(TargetingOverlaySystem(surface, asset_loader))
     esper.add_processor(EffectOverlaySystem(surface, asset_loader))
+    esper.add_processor(InteractPromptSystem(surface, asset_loader))
     esper.add_processor(MinimapSystem(surface, asset_loader))
     esper.add_processor(HUDSystem(surface, asset_loader))
     esper.add_processor(MenuSystem(surface, asset_loader))
