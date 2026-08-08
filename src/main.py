@@ -35,7 +35,6 @@ from src.entities import (
 from src.input_handlers import (
     ControllerInput,
     connected_controllers,
-    handle_casting_input,
     handle_combining_input,
     handle_exploring_input,
     handle_game_over_input,
@@ -215,7 +214,6 @@ def dispatch_input(
 _MENU_MODES = (
     DisplayMode.MENU,
     DisplayMode.COMBINING,
-    DisplayMode.CASTING,
     DisplayMode.SPELL_WHEEL,
     DisplayMode.SHOPPING,
     DisplayMode.SETTINGS,
@@ -250,7 +248,6 @@ _MODE_HANDLERS: dict[DisplayMode, Callable[[InputAction | None], HandlerResult]]
     DisplayMode.EXPLORING: handle_exploring_input,
     DisplayMode.MENU: handle_menu_input,
     DisplayMode.COMBINING: handle_combining_input,
-    DisplayMode.CASTING: handle_casting_input,
     DisplayMode.SPELL_WHEEL: handle_wheel_input,
     DisplayMode.TARGETING: handle_targeting_input,
     DisplayMode.SHOPPING: handle_shop_input,

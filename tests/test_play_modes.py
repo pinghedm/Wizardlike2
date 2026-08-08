@@ -8,7 +8,7 @@ from tests.headless_runner import HeadlessRunner
 # Modes reachable from EXPLORING by a single key press, and the key that opens them.
 OPENABLE_MODES = [
     (pygame.K_c, DisplayMode.COMBINING),
-    (pygame.K_s, DisplayMode.CASTING),
+    (pygame.K_s, DisplayMode.SPELL_WHEEL),
     (pygame.K_ESCAPE, DisplayMode.MENU),
 ]
 

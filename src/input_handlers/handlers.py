@@ -135,8 +135,6 @@ def handle_exploring_input(action: InputAction | None):
         return DisplayMode.MENU
     elif action == InputAction.OPEN_CRAFTING:
         return DisplayMode.COMBINING
-    elif action == InputAction.OPEN_CASTING:
-        return DisplayMode.CASTING
     elif action == InputAction.OPEN_WHEEL:
         return DisplayMode.SPELL_WHEEL
     elif action == InputAction.OPEN_MAP:
@@ -564,32 +562,13 @@ def _resolve_after_cast(ret_ent: int, ui_state: UIState) -> DisplayMode:
     ui_state.active_targeting_spell_id = None
     if behavior == PostCastBehavior.EXPLORE:
         return DisplayMode.EXPLORING
-    return DisplayMode.CASTING
-
-
-def handle_casting_input(action: InputAction | None):
-    ui_state = get_singleton(UIState)
-    if get_player_component(SpellInventory) is None:
-        return DisplayMode.EXPLORING
-
-    if action in QUICK_CAST_ACTIONS:
-        return enter_targeting_for_slot(QUICK_CAST_ACTIONS.index(action))
-
-    spells = available_spells()
-    ui_state.casting_cursor = step_cursor(ui_state.casting_cursor, len(spells), action)
-
-    if action in (InputAction.CANCEL, InputAction.OPEN_CASTING, InputAction.OPEN_MENU):
-        return DisplayMode.EXPLORING
-    if action == InputAction.CONFIRM and spells:
-        return enter_targeting_for_slot(ui_state.casting_cursor)
-
-    return DisplayMode.CASTING
+    return DisplayMode.SPELL_WHEEL
 
 
 def handle_wheel_input(action: InputAction | None):
-    """The radial spell wheel: an alternative to the list picker, on its own button. It shows
-    every known spell (depleted ones greyed out); Left/right (or up/down) rotate, Confirm fires
-    the selected spell if it has charges, and the wheel key / Cancel / Menu close it."""
+    """The radial spell wheel — the spell picker. It shows every known spell (depleted ones greyed
+    out); Left/right (or up/down) rotate, Confirm fires the selected spell if it has charges, and
+    the wheel key / Cancel / Menu close it."""
     ui_state = get_singleton(UIState)
     spell_inv = get_player_component(SpellInventory)
     if spell_inv is None:
@@ -617,7 +596,7 @@ def handle_wheel_input(action: InputAction | None):
 def handle_targeting_input(action: InputAction | None):
     """Lock onto visible enemies while staying mobile: the arrows walk the caster, Tab
     cycles to the next target, Confirm casts at the locked one (the reticle follows it as
-    everyone moves), and cancel backs out to the picker."""
+    everyone moves), and cancel backs out to the wheel picker."""
     reticles = esper.get_component(TargetingReticle)
     if not reticles:
         return DisplayMode.EXPLORING
@@ -632,11 +611,11 @@ def handle_targeting_input(action: InputAction | None):
     if action in QUICK_CAST_ACTIONS:
         return enter_targeting_for_slot(QUICK_CAST_ACTIONS.index(action))
 
-    # Cancel, the casting action, or the menu key back out to the picker.
-    if action in (InputAction.CANCEL, InputAction.OPEN_CASTING, InputAction.OPEN_MENU):
+    # Cancel, the wheel key, or the menu key back out to the wheel picker.
+    if action in (InputAction.CANCEL, InputAction.OPEN_WHEEL, InputAction.OPEN_MENU):
         esper.delete_entity(ret_ent)
         ui_state.active_targeting_spell_id = None
-        return DisplayMode.CASTING
+        return DisplayMode.SPELL_WHEEL
 
     refresh_lock(reticle, player)
 
@@ -665,7 +644,7 @@ def handle_targeting_input(action: InputAction | None):
         spell_id = ui_state.active_targeting_spell_id
         if spell_id is None:
             esper.delete_entity(ret_ent)
-            return DisplayMode.CASTING
+            return DisplayMode.SPELL_WHEEL
         if reticle.target_ent is None:
             return DisplayMode.TARGETING  # nothing to hit; wait for one to wander in
         if not can_cast(player):

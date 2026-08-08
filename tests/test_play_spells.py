@@ -2,7 +2,7 @@ import esper
 import pygame
 import pytest
 
-from src.components import FieldOfView, Point, SpellInventory, SpellType, Stats, StatusEffects, StatusType, UIState
+from src.components import FieldOfView, Point, SpellInventory, SpellType, Stats, StatusEffects, StatusType
 from src.input_handlers import available_spells
 from src.states import DisplayMode
 from src.systems import cast_spell
@@ -22,39 +22,35 @@ def test_full_cast_cycle_applies_fixture_effects():
     enemy = runner.spawn_enemy(px + 2, py)
     _make_visible(runner, Point(px + 2, py))
 
-    runner.simulate_key(pygame.K_s)  # EXPLORING -> CASTING
-    assert runner.display_mode == DisplayMode.CASTING
-
-    esper.get_component(UIState)[0][1].casting_cursor = available_spells().index(SpellType('test_bolt'))
-    runner.simulate_key(pygame.K_RETURN)  # select test_bolt; locks the enemy -> TARGETING
+    slot = available_spells().index(SpellType('test_bolt'))
+    runner.simulate_key(getattr(pygame, f'K_{slot + 1}'))  # quick-cast; locks the enemy -> TARGETING
     assert runner.display_mode == DisplayMode.TARGETING
 
     runner.simulate_key(pygame.K_RETURN)  # cast at the locked enemy
 
-    # The bolt's last charge is spent, so it falls back to the picker to ready another spell
-    # (the always-castable basic attack means the picker is never empty).
-    assert runner.display_mode == DisplayMode.CASTING
+    # The bolt's last charge is spent, so it falls back to the wheel to ready another spell.
+    assert runner.display_mode == DisplayMode.SPELL_WHEEL
     assert esper.component_for_entity(runner.player, SpellInventory).spells[SpellType('test_bolt')] == 0
     assert esper.component_for_entity(enemy, Stats).hp == 30 - 12
     assert esper.component_for_entity(enemy, StatusEffects).active[StatusType.SLOW].duration == 40
 
 
 @pytest.mark.parametrize('cancel_key', [pygame.K_ESCAPE, pygame.K_s])
-def test_targeting_cancels_back_to_picker_without_casting(cancel_key):
-    # Both Esc and the casting key (S) back out of targeting to the spell picker,
-    # discarding the reticle and leaving the charge unspent.
+def test_targeting_cancels_back_to_the_wheel_without_casting(cancel_key):
+    # Both Esc and the wheel key back out of targeting to the wheel picker, discarding the
+    # reticle and leaving the charge unspent.
     runner = HeadlessRunner(use_random_map=False)
     runner.give_spell('test_bolt', 1)
     px, py = runner.player_pos
     runner.spawn_enemy(px + 1, py)
     _make_visible(runner, Point(px + 1, py))
 
-    runner.simulate_key(pygame.K_s)  # EXPLORING -> CASTING
-    runner.simulate_key(pygame.K_RETURN)  # locks the enemy -> TARGETING
+    slot = available_spells().index(SpellType('test_bolt'))
+    runner.simulate_key(getattr(pygame, f'K_{slot + 1}'))  # quick-cast; locks the enemy -> TARGETING
     assert runner.display_mode == DisplayMode.TARGETING
 
     runner.simulate_key(cancel_key)
-    assert runner.display_mode == DisplayMode.CASTING
+    assert runner.display_mode == DisplayMode.SPELL_WHEEL
     assert esper.component_for_entity(runner.player, SpellInventory).spells[SpellType('test_bolt')] == 1
 
 

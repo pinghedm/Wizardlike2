@@ -86,7 +86,7 @@ ROUTED_MODES = [
     DisplayMode.EXPLORING,
     DisplayMode.MENU,
     DisplayMode.COMBINING,
-    DisplayMode.CASTING,
+    DisplayMode.SPELL_WHEEL,
     DisplayMode.TARGETING,
     DisplayMode.SETTINGS,
 ]

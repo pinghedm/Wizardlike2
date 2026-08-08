@@ -1,7 +1,7 @@
 import esper
 import pygame
 
-from src.components import Configuration, EffectType, FieldOfView, Point, SpellInventory, SpellType, Stats, UIState
+from src.components import Configuration, EffectType, FieldOfView, Point, SpellInventory, SpellType, Stats
 from src.input_handlers import available_spells
 from src.states import DisplayMode
 from tests.headless_runner import HeadlessRunner
@@ -41,11 +41,9 @@ def test_full_gameplay_loop():
     assert SpellType('test_bolt') in player_spell_inv.spells
     assert player_spell_inv.spells[SpellType('test_bolt')] == 3
 
-    # 7. Cast
-    runner.simulate_key(pygame.K_s)
-    assert runner.display_mode == DisplayMode.CASTING
-    esper.get_component(UIState)[0][1].casting_cursor = available_spells().index(SpellType('test_bolt'))
-    runner.simulate_key(pygame.K_RETURN)  # select the spell; locks onto the foe
+    # 7. Cast — quick-cast the bolt's slot, which locks onto the foe and enters targeting.
+    slot = available_spells().index(SpellType('test_bolt'))
+    runner.simulate_key(getattr(pygame, f'K_{slot + 1}'))
     assert runner.display_mode == DisplayMode.TARGETING
 
     # 8. Fire at the locked enemy.

@@ -51,7 +51,6 @@ def _kb() -> Keybindings:
     [
         (ControllerButton.A, InputAction.CONFIRM),
         (ControllerButton.B, InputAction.CANCEL),
-        (ControllerButton.X, InputAction.OPEN_CASTING),
         (ControllerButton.Y, InputAction.OPEN_CRAFTING),
         (ControllerButton.RIGHTSHOULDER, InputAction.CYCLE_TAB),
     ],
@@ -275,12 +274,12 @@ def test_remapping_binds_a_pressed_controller_button():
 
 def test_remapping_binds_a_pulled_trigger():
     HeadlessRunner(use_random_map=False)
-    esper.get_component(UIState)[0][1].remapping_action = InputAction.OPEN_CASTING
+    esper.get_component(UIState)[0][1].remapping_action = InputAction.OPEN_CRAFTING
 
     assert try_capture_remap_axis(_axis(ControllerAxis.TRIGGERRIGHT, TRIGGER_ENGAGE)) is True
 
     keybindings = esper.get_component(Settings)[0][1].keybindings
-    assert keybindings.controller[InputAction.OPEN_CASTING] == ControllerAxis.TRIGGERRIGHT
+    assert keybindings.controller[InputAction.OPEN_CRAFTING] == ControllerAxis.TRIGGERRIGHT
 
 
 def test_start_is_not_rebindable():

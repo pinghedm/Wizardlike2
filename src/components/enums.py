@@ -84,8 +84,7 @@ class InputAction(enum.Enum):
     MOVE_LEFT = enum.auto()
     MOVE_RIGHT = enum.auto()
     OPEN_CRAFTING = enum.auto()
-    OPEN_CASTING = enum.auto()
-    OPEN_WHEEL = enum.auto()  # open the radial spell wheel (an alternative to the list picker)
+    OPEN_WHEEL = enum.auto()  # open the radial spell wheel (the spell picker)
     OPEN_MAP = enum.auto()  # open/close the full-screen map overview
     OPEN_MENU = enum.auto()  # open the pause menu (exploring); also backs out of a submenu
     CONFIRM = enum.auto()
@@ -163,8 +162,7 @@ DEFAULT_KEYBOARD_BINDINGS: dict[InputAction, int] = {
     InputAction.MOVE_LEFT: pygame.K_LEFT,
     InputAction.MOVE_RIGHT: pygame.K_RIGHT,
     InputAction.OPEN_CRAFTING: pygame.K_c,
-    InputAction.OPEN_CASTING: pygame.K_s,
-    InputAction.OPEN_WHEEL: pygame.K_d,
+    InputAction.OPEN_WHEEL: pygame.K_s,
     InputAction.OPEN_MAP: pygame.K_m,
     InputAction.OPEN_MENU: pygame.K_ESCAPE,
     InputAction.CONFIRM: pygame.K_RETURN,
@@ -176,7 +174,6 @@ DEFAULT_KEYBOARD_BINDINGS: dict[InputAction, int] = {
 DEFAULT_CONTROLLER_BINDINGS: dict[InputAction, ControllerBinding] = {
     InputAction.CONFIRM: ControllerButton.A,
     InputAction.CANCEL: ControllerButton.B,
-    InputAction.OPEN_CASTING: ControllerButton.X,
     InputAction.OPEN_WHEEL: ControllerButton.RIGHTSTICK,
     InputAction.OPEN_CRAFTING: ControllerButton.Y,
     InputAction.CYCLE_TAB: ControllerButton.RIGHTSHOULDER,

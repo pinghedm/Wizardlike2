@@ -134,7 +134,7 @@ class EffectOverlaySystem(RenderProcessor):
     casting picker or a modal is open; projectiles/particles freeze with game time.
     """
 
-    VISUAL_MODES = (DisplayMode.EXPLORING, DisplayMode.CASTING, DisplayMode.COMBINING, DisplayMode.TARGETING)
+    VISUAL_MODES = (DisplayMode.EXPLORING, DisplayMode.SPELL_WHEEL, DisplayMode.COMBINING, DisplayMode.TARGETING)
 
     def process(self):
         if get_singleton(GameState).display_mode not in self.VISUAL_MODES:

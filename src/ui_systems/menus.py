@@ -34,8 +34,6 @@ from src.constants import (
 )
 from src.ecs_helpers import get_singleton, try_get_singleton
 from src.input_handlers import (
-    QUICK_CAST_FACE_BUTTONS,
-    available_spells,
     connected_controller_name,
     controller_binding_label,
     known_spells,
@@ -63,16 +61,6 @@ from src.ui_helpers import format_recipe, format_spell_effects, scroll_window, w
 
 # A drawn row: its segments (each a (text, color)) and whether the list scrolls past it above/below.
 ScrolledRows = tuple[list[Message], bool, bool]
-
-
-def _quick_cast_label(slot: int, has_controller: bool) -> str:
-    """The quick-cast prefix for a spell row: its number key, plus the controller face
-    button (when a pad is connected) for the first four slots; blank past slot 9."""
-    if slot >= 9:
-        return '   '
-    if has_controller and slot < len(QUICK_CAST_FACE_BUTTONS):
-        return f'{slot + 1}/{QUICK_CAST_FACE_BUTTONS[slot].name}) '
-    return f'{slot + 1}) '
 
 
 # The spell wheel's wedges are drawn at this supersample factor and downscaled, so their arc
@@ -123,7 +111,6 @@ class MenuSystem(RenderProcessor):
     # Panel widths (px). Heights follow from each screen's row count via panel_height().
     MAIN_W = 320
     CRAFT_W = 920
-    CAST_W = 780
     SHOP_W = 660
     SETTINGS_W = 840
     GAMEOVER_W = 520
@@ -136,7 +123,6 @@ class MenuSystem(RenderProcessor):
     CRAFT_DETAIL_X = 400
     CRAFT_BODY_ROWS = 20
 
-    CAST_VISIBLE = 6  # spell rows shown (double-spaced) in the casting picker
     SHOP_VISIBLE = 8  # offer rows shown in the shop
 
     # Settings column x-offsets: the keyboard binding, then the controller binding.
@@ -149,8 +135,6 @@ class MenuSystem(RenderProcessor):
             self.render_main_menu()
         elif mode == DisplayMode.COMBINING:
             self.render_combining_menu()
-        elif mode == DisplayMode.CASTING:
-            self.render_casting_menu()
         elif mode == DisplayMode.SPELL_WHEEL:
             self.render_spell_wheel()
         elif mode == DisplayMode.SHOPPING:
@@ -291,43 +275,6 @@ class MenuSystem(RenderProcessor):
             text = f'{format_recipe(combo)}  (+{charges_by_combo.get(combo, 0)})'
             lines.extend(wrap_message([(text, UI_WHITE if affordable else UI_GRAY_DARK)], detail_px, self.measure))
         return lines
-
-    # --- casting picker ---------------------------------------------------------
-
-    def _casting_rows(
-        self, ui_state: UIState, spell_inv: SpellInventory, has_controller: bool, visible: int
-    ) -> ScrolledRows:
-        spells = available_spells()
-        if not spells:
-            return [[('No spells with charges!', UI_RED)]], False, False
-        cursor = ui_state.casting_cursor % len(spells)
-        start, end = scroll_window(len(spells), cursor, visible)
-        rows: list[Message] = []
-        for i in range(start, end):
-            stype = spells[i]
-            s_conf = get_spell_config(stype.value) or {}
-            charges = spell_inv.spells.get(stype, 0)
-            marker = f'{"> " if i == cursor else "  "}{_quick_cast_label(i, has_controller)}'
-            text = f'{marker}{stype.name}: {charges} charges (Radius: {s_conf.get("radius", 0)})'
-            rows.append([(text, UI_YELLOW if i == cursor else UI_WHITE)])
-        return rows, start > 0, end < len(spells)
-
-    def render_casting_menu(self):
-        spell_inv = try_get_singleton(SpellInventory)
-        if spell_inv is None:
-            return
-        body_rows = self.CAST_VISIBLE * 2 + 2
-        content = panel(self.surface, self.font, self.CAST_W, panel_height(body_rows), 'Select Spell to Cast')
-
-        has_controller = connected_controller_name() is not None
-        rows, up, down = self._casting_rows(get_singleton(UIState), spell_inv, has_controller, self.CAST_VISIBLE)
-        for i, row in enumerate(rows):
-            self._row(content, 0, i * 2, row)  # double-spaced
-        self._scroll(content, content.width - self.SCROLL_INSET, 0, (len(rows) - 1) * 2, up, down)
-
-        self._row(
-            content, 0, body_rows - 1, [('Arrows: Select | 1-9: Quick-cast | Enter: Target | S/Esc: Cancel', UI_GRAY)]
-        )
 
     # --- spell wheel ------------------------------------------------------------
 

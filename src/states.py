@@ -9,7 +9,6 @@ class DisplayMode(enum.Enum):
     EXPLORING = enum.auto()
     MENU = enum.auto()
     COMBINING = enum.auto()
-    CASTING = enum.auto()
     SPELL_WHEEL = enum.auto()
     TARGETING = enum.auto()
     SHOPPING = enum.auto()
@@ -34,12 +33,11 @@ class PendingTransition(enum.Enum):
 HandlerResult = DisplayMode | PendingTransition
 
 
-# Display modes that draw the dungeon view (map, entities, HUD). The crafting/casting/
+# Display modes that draw the dungeon view (map, entities, HUD). The crafting/wheel/
 # targeting/shop overlays all render on top of the live map, so the map and HUD draw
 # behind them too; the menu, settings, and game-over screens replace the view entirely.
 WORLD_VIEW_MODES = (
     DisplayMode.EXPLORING,
-    DisplayMode.CASTING,
     DisplayMode.SPELL_WHEEL,
     DisplayMode.COMBINING,
     DisplayMode.TARGETING,

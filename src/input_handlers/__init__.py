@@ -22,7 +22,6 @@ from src.input_handlers.controller import (
 )
 from src.input_handlers.handlers import (
     available_spells,
-    handle_casting_input,
     handle_combining_input,
     handle_exploring_input,
     handle_game_over_input,
@@ -45,7 +44,6 @@ __all__ = [
     'connected_controllers',
     'controller_binding_label',
     'available_spells',
-    'handle_casting_input',
     'handle_combining_input',
     'handle_exploring_input',
     'handle_game_over_input',

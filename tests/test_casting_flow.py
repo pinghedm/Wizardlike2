@@ -17,7 +17,6 @@ from src.components import (
     Modal,
     Point,
     Settings,
-    SpellInventory,
     SpellType,
     Stats,
     StatusEffects,
@@ -28,7 +27,6 @@ from src.components import (
 from src.ecs_helpers import spawn_item_entity
 from src.input_handlers import (
     available_spells,
-    handle_casting_input,
     handle_settings_input,
     handle_targeting_input,
     handle_wheel_input,
@@ -72,24 +70,21 @@ def _guardian(runner: HeadlessRunner, x: int, y: int) -> int:
 
 
 def _enter_targeting(runner: HeadlessRunner, spell_id: str = SPELL):
-    """Lock targeting onto a freshly spawned, visible enemy by selecting `spell_id`'s slot in
-    the picker (the only way to aim now)."""
+    """Enter targeting for `spell_id` by quick-casting its slot, locked onto a fresh visible enemy."""
     px, py = runner.player_pos
     _guardian(runner, px + 1, py)
     _freeze_fov(runner, Point(px + 1, py))
-    runner.game_state.display_mode = DisplayMode.CASTING
-    _ui().casting_cursor = available_spells().index(SpellType(spell_id))
-    runner.simulate_key(pygame.K_RETURN)
+    runner.simulate_key(_slot_key(spell_id))
     assert runner.display_mode == DisplayMode.TARGETING
 
 
 def test_wheel_opens_from_exploring_and_its_key_toggles_it_closed():
     runner = HeadlessRunner(use_random_map=False)
 
-    runner.simulate_key(pygame.K_d)
+    runner.simulate_key(pygame.K_s)
     assert runner.display_mode == DisplayMode.SPELL_WHEEL
 
-    runner.simulate_key(pygame.K_d)
+    runner.simulate_key(pygame.K_s)
     assert runner.display_mode == DisplayMode.EXPLORING
 
 
@@ -130,9 +125,9 @@ def test_wheel_confirm_on_a_depleted_spell_stays_open():
 POST_CAST_CASES = [
     # Stay readied while charges remain.
     ('stay_with_charges', PostCastBehavior.STAY, 3, DisplayMode.TARGETING),
-    # Stay, but the cast spent the bolt's last charge -> drop to the picker to ready another.
-    ('stay_last_charge', PostCastBehavior.STAY, 1, DisplayMode.CASTING),
-    ('reselect', PostCastBehavior.RESELECT, 3, DisplayMode.CASTING),
+    # Stay, but the cast spent the bolt's last charge -> drop to the wheel to ready another.
+    ('stay_last_charge', PostCastBehavior.STAY, 1, DisplayMode.SPELL_WHEEL),
+    ('reselect', PostCastBehavior.RESELECT, 3, DisplayMode.SPELL_WHEEL),
     ('explore', PostCastBehavior.EXPLORE, 3, DisplayMode.EXPLORING),
 ]
 
@@ -299,18 +294,6 @@ def test_settings_keybinding_row_ignores_unrelated_actions():
 )
 def test_step_target(targets, current, step, expected):
     assert _step_target(targets, current, step) == expected
-
-
-def test_casting_quick_cast_with_no_charged_spell_keeps_the_picker():
-    runner = HeadlessRunner(use_random_map=False)
-    esper.component_for_entity(runner.player, SpellInventory).spells.clear()  # spend everything, basic included
-    runner.game_state.display_mode = DisplayMode.CASTING
-    assert handle_casting_input(InputAction.QUICK_CAST_1) == DisplayMode.CASTING
-
-
-def test_casting_movement_stays_in_the_picker():
-    HeadlessRunner(use_random_map=False)
-    assert handle_casting_input(InputAction.MOVE_UP) == DisplayMode.CASTING
 
 
 def test_targeting_move_is_swallowed_while_slowed_on_cooldown():

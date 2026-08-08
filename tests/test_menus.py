@@ -22,7 +22,7 @@ from src.components import (
 from src.constants import UI_GRAY, UI_GRAY_DARK, UI_WHITE, UI_YELLOW
 from src.ecs_helpers import try_get_singleton
 from src.entities import create_game_state, create_ui_state
-from src.input_handlers import available_spells, known_spells
+from src.input_handlers import known_spells
 from src.states import PAUSE_MENU_OPTIONS, TITLE_MENU_OPTIONS, DisplayMode, MenuOption
 from src.ui_systems import MenuSystem
 from tests.headless_runner import HeadlessRunner
@@ -181,56 +181,6 @@ def test_spell_detail_collapses_duplicate_ingredients():
     assert '2x REAGENT_A' in '\n'.join(_texts(lines))
 
 
-# --- casting picker ---------------------------------------------------------
-
-
-def _casting_rows(runner, visible=6):
-    return _menu(runner)._casting_rows(_ui_state(runner), try_get_singleton(SpellInventory), False, visible)
-
-
-def test_casting_menu_lists_a_spell_with_metadata():
-    runner = HeadlessRunner(use_random_map=False)
-    runner.give_spell('test_bolt', 2)  # fixtures: radius 0
-
-    text = '\n'.join(_texts(_casting_rows(runner)[0]))
-    assert 'TEST_BOLT: 2 charges' in text
-    assert '(Radius: 0)' in text
-
-
-def test_casting_menu_windows_a_long_list():
-    runner = HeadlessRunner(use_random_map=False)
-    for sid in ('test_bolt', 'test_blast', 'test_rare', 'test_shove', 'test_soak', 'test_zap', 'test_quench'):
-        runner.give_spell(sid, 1)
-    available = available_spells()
-    _ui_state(runner).casting_cursor = len(available) - 1  # scrolled to the last spell
-
-    rows, up, _down = _casting_rows(runner)
-    text = '\n'.join(_texts(rows))
-    assert available[-1].name in text  # the cursor row stays in view
-    assert available[0].name not in text  # the top scrolled off
-    assert up  # ...and the up-arrow shows there's more above
-
-
-def test_casting_menu_lists_the_basic_attack_when_nothing_is_discovered():
-    runner = HeadlessRunner(use_random_map=False)
-    assert any('TEST_WAND: 2 charges' in t for t in _texts(_casting_rows(runner)[0]))
-
-
-def test_casting_menu_reports_empty_when_even_the_basic_is_spent():
-    runner = HeadlessRunner(use_random_map=False)
-    esper.component_for_entity(runner.player, SpellInventory).spells[SpellType('test_wand')] = 0
-    assert any('No spells with charges!' in t for t in _texts(_casting_rows(runner)[0]))
-
-
-def test_casting_menu_ignores_zero_charge_spells():
-    runner = HeadlessRunner(use_random_map=False)
-    esper.component_for_entity(runner.player, SpellInventory).spells[SpellType('test_bolt')] = 0
-
-    text = '\n'.join(_texts(_casting_rows(runner)[0]))
-    assert 'TEST_BOLT' not in text  # a depleted spell drops out
-    assert 'TEST_WAND' in text  # the basic attack remains
-
-
 # --- spell wheel ------------------------------------------------------------
 
 
@@ -376,7 +326,7 @@ def test_pygame_menu_renders_without_error():
     for mode in (
         DisplayMode.MENU,
         DisplayMode.COMBINING,
-        DisplayMode.CASTING,
+        DisplayMode.SPELL_WHEEL,
         DisplayMode.SHOPPING,
         DisplayMode.SETTINGS,
         DisplayMode.GAME_OVER,
