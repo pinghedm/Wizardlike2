@@ -1,6 +1,8 @@
 import esper
 
 from src.components import (
+    DEFAULT_CONTROLLER_BINDINGS,
+    DEFAULT_KEYBOARD_BINDINGS,
     Actor,
     Configuration,
     Experience,
@@ -23,7 +25,7 @@ from src.components import (
     StatusEffects,
     UIState,
 )
-from src.persistence import MetaData, load_meta
+from src.persistence import MetaData, apply_saved_bindings, load_meta
 from src.states import GameState
 
 
@@ -73,8 +75,9 @@ def create_settings():
     """
     settings = Settings()
     meta = load_meta()
-    settings.keybindings.bindings.update(meta['keybindings'].bindings)
-    settings.keybindings.controller.update(meta['keybindings'].controller)
+    saved = meta['keybindings']
+    settings.keybindings.bindings = apply_saved_bindings(DEFAULT_KEYBOARD_BINDINGS, saved.bindings)
+    settings.keybindings.controller = apply_saved_bindings(DEFAULT_CONTROLLER_BINDINGS, saved.controller)
     settings.post_cast = meta['post_cast']
     settings.music_volume = meta['music_volume']
     settings.sfx_volume = meta['sfx_volume']

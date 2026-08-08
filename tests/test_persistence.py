@@ -73,6 +73,7 @@ def test_meta_round_trips_settings():
     settings.post_cast = PostCastBehavior.EXPLORE
     settings.keybindings.bindings[InputAction.CONFIRM] = pygame.K_SPACE
     settings.keybindings.controller[InputAction.CONFIRM] = ControllerButton.Y
+    settings.keybindings.controller[InputAction.SCROLL_UP] = ControllerAxis.TRIGGERRIGHT  # a remap off its default
 
     persistence.save_meta()
     loaded = persistence.load_meta()['keybindings']
@@ -80,8 +81,27 @@ def test_meta_round_trips_settings():
     assert persistence.load_meta()['post_cast'] == PostCastBehavior.EXPLORE
     assert loaded.bindings[InputAction.CONFIRM] == pygame.K_SPACE
     assert loaded.controller[InputAction.CONFIRM] == ControllerButton.Y
-    # An axis binding (the trigger scroll) survives the button/axis-tagged round trip.
-    assert loaded.controller[InputAction.SCROLL_UP] == ControllerAxis.TRIGGERLEFT
+    # A remapped axis binding survives the button/axis-tagged round trip (only remaps persist).
+    assert loaded.controller[InputAction.SCROLL_UP] == ControllerAxis.TRIGGERRIGHT
+
+
+def test_apply_saved_bindings_drops_a_stale_colliding_binding():
+    # A stale save binds OPEN_CRAFTING to a key that is now a *different* action's default; the
+    # new default must win so controls don't collide after a defaults change.
+    defaults = {InputAction.OPEN_CRAFTING: pygame.K_c, InputAction.OPEN_MAP: pygame.K_m}
+    saved = {InputAction.OPEN_CRAFTING: pygame.K_m}
+
+    merged = persistence.apply_saved_bindings(defaults, saved)
+
+    assert merged[InputAction.OPEN_CRAFTING] == pygame.K_c  # stale colliding bind dropped
+    assert merged[InputAction.OPEN_MAP] == pygame.K_m
+
+
+def test_apply_saved_bindings_keeps_a_genuine_remap():
+    defaults = {InputAction.OPEN_CRAFTING: pygame.K_c}
+    saved = {InputAction.OPEN_CRAFTING: pygame.K_z}  # remapped to a free key -> kept
+
+    assert persistence.apply_saved_bindings(defaults, saved)[InputAction.OPEN_CRAFTING] == pygame.K_z
 
 
 def test_meta_round_trips_audio_volumes():

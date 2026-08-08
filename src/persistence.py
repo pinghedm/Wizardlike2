@@ -6,6 +6,8 @@ from typing import TypedDict
 import esper
 
 from src.components import (
+    DEFAULT_CONTROLLER_BINDINGS,
+    DEFAULT_KEYBOARD_BINDINGS,
     ControllerAxis,
     ControllerBinding,
     ControllerButton,
@@ -124,9 +126,19 @@ def _deserialize_control(control: _RawControl) -> ControllerBinding:
 
 
 def _serialize_keybindings(keybindings: Keybindings) -> _RawKeybindings:
+    # Persist only bindings the player actually changed from the defaults, so later default
+    # changes (new actions, relocated keys) take effect instead of being pinned by a stale save.
     return {
-        'bindings': {action.name: int(sym) for action, sym in keybindings.bindings.items()},
-        'controller': {action.name: _serialize_control(c) for action, c in keybindings.controller.items()},
+        'bindings': {
+            action.name: int(sym)
+            for action, sym in keybindings.bindings.items()
+            if DEFAULT_KEYBOARD_BINDINGS.get(action) != sym
+        },
+        'controller': {
+            action.name: _serialize_control(c)
+            for action, c in keybindings.controller.items()
+            if DEFAULT_CONTROLLER_BINDINGS.get(action) != c
+        },
     }
 
 
@@ -135,6 +147,20 @@ def _deserialize_keybindings(data: _RawKeybindings) -> Keybindings:
         bindings={InputAction[name]: value for name, value in data.get('bindings', {}).items()},
         controller={InputAction[name]: _deserialize_control(c) for name, c in data.get('controller', {}).items()},
     )
+
+
+def apply_saved_bindings[V](defaults: dict[InputAction, V], saved: dict[InputAction, V]) -> dict[InputAction, V]:
+    """Overlay the player's saved remaps onto the current defaults, but drop any saved entry whose
+    control now belongs to a *different* action's default. That keeps a stale full-binding save
+    (from before a defaults change) from pinning an old key or colliding with a new one — the new
+    default wins, and only genuine, non-colliding remaps carry over."""
+    default_owner = {control: action for action, control in defaults.items()}
+    merged = dict(defaults)
+    for action, control in saved.items():
+        owner = default_owner.get(control)
+        if owner is None or owner == action:
+            merged[action] = control
+    return merged
 
 
 def _read_meta_file() -> _RawMeta:
