@@ -327,13 +327,18 @@ class Enemy:
 
 @dataclass
 class TargetingReticle:
-    """Tracks the spell targeting reticle: the tile it sits on (and shows the AoE radius
-    of) and `target_ent`, the locked-on enemy it follows."""
+    """Tracks the spell targeting reticle: the tile it sits on (and shows the AoE radius of).
+
+    Two aiming modes share this component. When `locked`, the reticle auto-follows the
+    nearest visible enemy (`target_ent`) as everyone moves and the caster walks with the
+    arrows. When free, the arrows move the reticle itself over the map while the caster
+    stands still, and `target_ent` is just whatever enemy currently sits under the cursor."""
 
     x: int
     y: int
     radius: int
     target_ent: int | None = None
+    locked: bool = True
 
 
 @dataclass

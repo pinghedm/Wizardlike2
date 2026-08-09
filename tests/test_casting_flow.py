@@ -495,3 +495,142 @@ def test_self_cast_spell_skips_targeting_and_heals_caster():
     assert not esper.get_component(TargetingReticle)
     assert runner.spell_charges('test_heal') == 1
     assert stats.hp > 50
+
+
+# --- free-aim targeting -----------------------------------------------------
+
+AREA = 'test_blast'  # a radius-1 area spell in the fixtures
+
+
+def _reticle() -> TargetingReticle:
+    return esper.get_component(TargetingReticle)[0][1]
+
+
+def test_single_target_spell_opens_locked():
+    runner = HeadlessRunner(use_random_map=False)
+    runner.give_spell(SPELL, 1)  # test_bolt, radius 0
+    px, py = runner.player_pos
+    _guardian(runner, px + 1, py)
+    _freeze_fov(runner, Point(px + 1, py))
+
+    runner.simulate_key(_slot_key(SPELL))
+
+    assert _reticle().locked is True
+
+
+def test_area_spell_opens_in_free_aim_on_the_nearest_enemy():
+    runner = HeadlessRunner(use_random_map=False)
+    runner.give_spell(AREA, 1)  # radius 1 -> free by default
+    px, py = runner.player_pos
+    near = _guardian(runner, px + 1, py)
+    _freeze_fov(runner, Point(px + 1, py))
+
+    runner.simulate_key(_slot_key(AREA))
+
+    reticle = _reticle()
+    assert runner.display_mode == DisplayMode.TARGETING
+    assert reticle.locked is False
+    assert (reticle.x, reticle.y) == (px + 1, py)  # cursor seeds onto the nearest enemy
+    assert reticle.target_ent == near
+
+
+def test_area_spell_opens_free_over_open_ground_with_no_enemy():
+    runner = HeadlessRunner(use_random_map=False)
+    runner.give_spell(AREA, 1)
+    px, py = runner.player_pos
+
+    runner.simulate_key(_slot_key(AREA))  # no enemies in view, but area aim still opens
+
+    reticle = _reticle()
+    assert runner.display_mode == DisplayMode.TARGETING
+    assert reticle.locked is False
+    assert (reticle.x, reticle.y) == (px, py)  # cursor rests on the caster
+    assert reticle.target_ent is None
+
+
+def test_toggle_aim_flips_between_lock_and_free():
+    runner = HeadlessRunner(use_random_map=False)
+    runner.give_spell(SPELL, 1)
+    px, py = runner.player_pos
+    near = _guardian(runner, px + 1, py)
+    _freeze_fov(runner, Point(px + 1, py))
+    runner.simulate_key(_slot_key(SPELL))
+    assert _reticle().locked is True
+
+    runner.simulate_key(pygame.K_x)  # -> free, cursor left on the locked tile
+    assert _reticle().locked is False
+    assert _reticle().target_ent == near
+
+    runner.simulate_key(pygame.K_x)  # -> lock, re-snaps to the nearest enemy
+    assert _reticle().locked is True
+    assert _reticle().target_ent == near
+
+
+def test_free_aim_arrows_move_the_cursor_not_the_caster():
+    runner = HeadlessRunner(use_random_map=False)
+    runner.give_spell(AREA, 1)
+    px, py = runner.player_pos
+    _guardian(runner, px + 1, py)
+    _freeze_fov(runner, Point(px + 1, py), Point(px + 1, py + 1))  # both in sight
+    runner.simulate_key(_slot_key(AREA))  # free, cursor on the enemy at px+1
+
+    runner.simulate_key(pygame.K_DOWN)
+
+    assert runner.player_pos == Point(px, py)  # the caster held still
+    assert (_reticle().x, _reticle().y) == (px + 1, py + 1)  # the cursor slid
+    assert _reticle().target_ent is None  # no enemy under it now
+
+
+def test_free_aim_cursor_is_capped_to_sight():
+    runner = HeadlessRunner(use_random_map=False)
+    runner.give_spell(AREA, 1)
+    px, py = runner.player_pos
+    _guardian(runner, px + 1, py)
+    _freeze_fov(runner, Point(px + 1, py))  # only the enemy's tile is visible
+    runner.simulate_key(_slot_key(AREA))  # cursor seeds on it
+
+    runner.simulate_key(pygame.K_DOWN)  # (px+1, py+1) is unseen -> blocked
+
+    assert (_reticle().x, _reticle().y) == (px + 1, py)  # held at the edge of sight
+
+
+def test_free_aim_tab_snaps_cursor_to_the_next_enemy():
+    runner = HeadlessRunner(use_random_map=False)
+    runner.give_spell(AREA, 1)
+    px, py = runner.player_pos
+    _guardian(runner, px + 1, py)
+    far = _guardian(runner, px + 3, py)
+    _freeze_fov(runner, Point(px + 1, py), Point(px + 3, py))
+    runner.simulate_key(_slot_key(AREA))  # cursor seeds on the nearest enemy
+
+    runner.simulate_key(pygame.K_TAB)
+
+    reticle = _reticle()
+    assert reticle.locked is False  # still free-aiming
+    assert (reticle.x, reticle.y) == (px + 3, py)
+    assert reticle.target_ent == far
+
+
+def test_free_aim_confirm_casts_at_open_ground():
+    runner = HeadlessRunner(use_random_map=False)
+    runner.give_spell(AREA, 2)
+    px, py = runner.player_pos
+    _freeze_fov(runner, Point(px, py))
+    runner.simulate_key(_slot_key(AREA))  # free, no enemy -> cursor on the caster
+    assert _reticle().target_ent is None
+
+    runner.simulate_key(pygame.K_RETURN)
+
+    assert runner.spell_charges(AREA) == 1  # cast landed on the empty tile, unlike lock-aim
+
+
+def test_free_aim_persists_when_no_enemy_is_visible():
+    runner = HeadlessRunner(use_random_map=False)
+    runner.give_spell(AREA, 1)
+    runner.simulate_key(_slot_key(AREA))  # free aim over an empty room
+    assert runner.display_mode == DisplayMode.TARGETING
+
+    runner.tick(1)  # CycleTargetSystem must not drop free aim the way it drops an empty lock
+
+    assert runner.display_mode == DisplayMode.TARGETING
+    assert esper.get_component(TargetingReticle)

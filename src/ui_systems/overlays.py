@@ -52,6 +52,13 @@ def _viewport(surface: pygame.Surface) -> Viewport | None:
     return compute_viewport(surface, player_pos.x, player_pos.y, game_map.width, game_map.height)
 
 
+def _key_label(action: InputAction) -> str:
+    """The keyboard key currently bound to `action`, upper-cased for a control hint —
+    reads the live keybindings so a remap keeps every prompt accurate."""
+    bindings = get_singleton(Settings).keybindings.bindings
+    return pygame.key.name(bindings[action]).upper()
+
+
 def _tiles_in_radius(center_x: int, center_y: int, radius: int) -> Iterator[tuple[int, int]]:
     """Yield the map tiles in the bounding box of `radius` around (center_x, center_y)."""
     for map_y in range(center_y - radius, center_y + radius + 1):
@@ -73,11 +80,13 @@ class TargetingOverlaySystem(RenderProcessor):
 
         self._outline_aoe(viewport, reticle)
 
-        # Frame the locked tile with a bright outline instead of covering it, so the target's
-        # sprite and any status tint stay visible underneath.
+        # Frame the aimed tile with a bright outline instead of covering it, so the target's
+        # sprite and any status tint stay visible underneath. Color signals the mode: yellow
+        # for a lock-on, sky-blue for the free-moving cursor.
         tx, ty = viewport.tile_to_px(reticle.x, reticle.y)
         if viewport.contains_px(tx, ty):
-            pygame.draw.rect(self.surface, UI_YELLOW, (tx, ty, TILE_PX, TILE_PX), width=2)
+            color = UI_YELLOW if reticle.locked else UI_SKY
+            pygame.draw.rect(self.surface, color, (tx, ty, TILE_PX, TILE_PX), width=2)
 
         self._draw_label(viewport, reticle)
 
@@ -101,7 +110,8 @@ class TargetingOverlaySystem(RenderProcessor):
                 fill_alpha(self.surface, px, py, TILE_PX, TILE_PX, UI_MAROON, 0.6)
 
     def _draw_label(self, viewport: Viewport, reticle: TargetingReticle) -> None:
-        """Name the spell being aimed, its charges, and the controls, on a navy strip at the top."""
+        """Name the spell being aimed, its charges, and the mode-appropriate controls, on a navy
+        strip at the top. The toggle-aim and cast keys are read live, so a remap stays accurate."""
         spell_id = get_singleton(UIState).active_targeting_spell_id
         if spell_id is None:
             return
@@ -110,7 +120,12 @@ class TargetingOverlaySystem(RenderProcessor):
         label = f'Aiming: {SpellType(spell_id).name} ({charges} charges)'
         if reticle.target_ent is None:
             label += ' (no target)'
-        for row, text in enumerate((label, 'Move: arrows  Tab: switch  Enter: cast')):
+        toggle, cast = _key_label(InputAction.TOGGLE_AIM), _key_label(InputAction.CONFIRM)
+        if reticle.locked:
+            controls = f'Arrows: move  Tab: switch  {toggle}: free-aim  {cast}: cast'
+        else:
+            controls = f'Arrows: aim  Tab: nearest  {toggle}: lock  {cast}: cast'
+        for row, text in enumerate((label, controls)):
             y = viewport.px_y + row * UI_FONT_PX
             width = self.font.size(text)[0] + 12
             pygame.draw.rect(self.surface, UI_NAVY, (viewport.px_x, y, width, UI_FONT_PX))
@@ -146,8 +161,7 @@ class InteractPromptSystem(RenderProcessor):
 
     def _confirm_label(self) -> str:
         """The keyboard key currently bound to Confirm, upper-cased like the Settings readout."""
-        bindings = get_singleton(Settings).keybindings.bindings
-        return pygame.key.name(bindings[InputAction.CONFIRM]).upper()
+        return _key_label(InputAction.CONFIRM)
 
     def _friendlies(self) -> Iterator[tuple[Position, str, str]]:
         """Each interactable friendly as (position, far-off nameplate, adjacent action verb)."""

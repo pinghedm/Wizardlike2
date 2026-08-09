@@ -7,6 +7,7 @@ from src.components import (
     QUICK_CAST_ACTIONS,
     Configuration,
     Enemy,
+    FieldOfView,
     InputAction,
     Inventory,
     Item,
@@ -14,6 +15,7 @@ from src.components import (
     KnownRecipes,
     MessageLog,
     Modal,
+    Point,
     Position,
     RunStats,
     Settings,
@@ -71,7 +73,7 @@ from src.systems import (
     is_reagent,
     move_entity,
 )
-from src.targeting import refresh_lock, visible_enemies
+from src.targeting import enemy_at_tile, refresh_lock, visible_enemies
 
 
 def step_cursor(cursor: int, length: int, action: InputAction | None) -> int:
@@ -500,9 +502,10 @@ def enter_targeting_for_spell(stype: SpellType) -> DisplayMode:
     """Ready `stype` for casting.
 
     Self-cast spells (target: self, e.g. heals/buffs) resolve on the caster immediately,
-    with no targeting step. Otherwise the reticle locks onto the nearest visible enemy
-    (replacing any reticle already up, so quick-cast works mid-aim), or no-ops with a
-    message when none are in view.
+    with no targeting step. Otherwise the spell opens in the aiming mode its radius implies:
+    single-target spells lock onto the nearest visible enemy, area spells open in free-aim so
+    the cursor can be placed over open ground. Either way any reticle already up is replaced,
+    so quick-cast works mid-aim.
     """
     player = get_player()
     if player is None:
@@ -526,12 +529,21 @@ def enter_targeting_for_spell(stype: SpellType) -> DisplayMode:
         cast_spell(spell_id=stype.value, target_x=player_pos.x, target_y=player_pos.y)
         return DisplayMode.EXPLORING
 
-    reticle = TargetingReticle(x=player_pos.x, y=player_pos.y, radius=s_conf.get('radius', 0))
-    refresh_lock(reticle, player)
-    if reticle.target_ent is None:
-        get_singleton(MessageLog).add_simple_message('No visible targets.', color=UI_GRAY)
-        ui_state.active_targeting_spell_id = None
-        return DisplayMode.EXPLORING
+    radius = s_conf.get('radius', 0)
+    reticle = TargetingReticle(x=player_pos.x, y=player_pos.y, radius=radius, locked=radius <= 0)
+    if reticle.locked:
+        refresh_lock(reticle, player)
+        if reticle.target_ent is None:
+            get_singleton(MessageLog).add_simple_message('No visible targets.', color=UI_GRAY)
+            ui_state.active_targeting_spell_id = None
+            return DisplayMode.EXPLORING
+    else:
+        # Free-aim starts the cursor on the nearest enemy when there is one — a sensible default
+        # aim — but opens on open ground otherwise, since an area spell can be dropped anywhere.
+        nearest = visible_enemies(player)
+        if nearest:
+            enemy_pos = esper.component_for_entity(nearest[0], Position)
+            reticle.x, reticle.y, reticle.target_ent = enemy_pos.x, enemy_pos.y, nearest[0]
 
     ui_state.active_targeting_spell_id = stype.value
     esper.create_entity(reticle)
@@ -545,6 +557,28 @@ def _step_target(targets: list[int], current: int | None, step: int) -> int | No
     if current not in targets:
         return targets[0]
     return targets[(targets.index(current) + step) % len(targets)]
+
+
+def _move_cursor(reticle: TargetingReticle, player: int, dx: int, dy: int):
+    """Free-aim: slide the reticle one tile toward (dx, dy), the caster holding still, and re-read
+    the enemy now under it. The cursor is capped to the player's field of view — it won't cross
+    into an unseen tile (which also keeps it on the map), parity with lock-on only targeting
+    visible enemies. Game time keeps running, so lingering here still costs."""
+    fov = esper.component_for_entity(player, FieldOfView)
+    nx, ny = reticle.x + dx, reticle.y + dy
+    if Point(nx, ny) not in fov.visible_tiles:
+        return  # can't aim into the unseen; hold the cursor where it is
+    reticle.x, reticle.y = nx, ny
+    reticle.target_ent = enemy_at_tile(nx, ny, player)
+
+
+def _snap_cursor_to_next_enemy(reticle: TargetingReticle, player: int):
+    """Free-aim Tab: jump the cursor onto the next visible enemy, staying in free mode."""
+    nxt = _step_target(visible_enemies(player), reticle.target_ent, 1)
+    if nxt is None:
+        return
+    pos = esper.component_for_entity(nxt, Position)
+    reticle.x, reticle.y, reticle.target_ent = pos.x, pos.y, nxt
 
 
 def _resolve_after_cast(ret_ent: int, ui_state: UIState) -> DisplayMode:
@@ -593,10 +627,29 @@ def handle_wheel_input(action: InputAction | None):
     return DisplayMode.SPELL_WHEEL
 
 
+def _walk_caster_while_aiming(player: int, ret_ent: int, ui_state: UIState, dx: int, dy: int) -> DisplayMode:
+    """Lock-aim movement: the arrows walk the caster (the lock re-evaluates next tick). Stepping
+    onto the exit descends — signalled by _try_descend returning GAME_OVER or opening a Modal —
+    which drops out of targeting; otherwise keep aiming."""
+    if not can_act(player):
+        return DisplayMode.TARGETING
+    move_entity(player, dx, dy)
+    _pick_up_items(player)
+    result = _try_descend(get_singleton(GameState))
+    if result is DisplayMode.GAME_OVER or esper.get_component(Modal):
+        esper.delete_entity(ret_ent)
+        ui_state.active_targeting_spell_id = None
+        return result
+    return DisplayMode.TARGETING
+
+
 def handle_targeting_input(action: InputAction | None):
-    """Lock onto visible enemies while staying mobile: the arrows walk the caster, Tab
-    cycles to the next target, Confirm casts at the locked one (the reticle follows it as
-    everyone moves), and cancel backs out to the wheel picker."""
+    """Aim a spell in one of two modes, flipped live with the toggle-aim key. Locked: the arrows
+    walk the caster while the reticle auto-follows the nearest enemy and Tab switches targets.
+    Free: the arrows slide the reticle over the map while the caster holds still and Tab snaps it
+    to the next enemy. Confirm casts (at the locked enemy, or at the free cursor's tile); cancel
+    backs out to the wheel picker. A spell opens locked or free per its radius (see
+    enter_targeting_for_spell)."""
     reticles = esper.get_component(TargetingReticle)
     if not reticles:
         return DisplayMode.EXPLORING
@@ -617,27 +670,30 @@ def handle_targeting_input(action: InputAction | None):
         ui_state.active_targeting_spell_id = None
         return DisplayMode.SPELL_WHEEL
 
-    refresh_lock(reticle, player)
+    if action == InputAction.TOGGLE_AIM:
+        reticle.locked = not reticle.locked
+        if reticle.locked:
+            refresh_lock(reticle, player)  # snap back onto the nearest enemy
+        else:
+            reticle.target_ent = enemy_at_tile(reticle.x, reticle.y, player)
+        return DisplayMode.TARGETING
+
+    if reticle.locked:
+        refresh_lock(reticle, player)
 
     if action == InputAction.CYCLE_TAB:
-        reticle.target_ent = _step_target(visible_enemies(player), reticle.target_ent, 1)
-        refresh_lock(reticle, player)
+        if reticle.locked:
+            reticle.target_ent = _step_target(visible_enemies(player), reticle.target_ent, 1)
+            refresh_lock(reticle, player)
+        else:
+            _snap_cursor_to_next_enemy(reticle, player)
         return DisplayMode.TARGETING
 
     dx, dy = move_delta(action)
     if dx != 0 or dy != 0:
-        if not can_act(player):
-            return DisplayMode.TARGETING
-        move_entity(player, dx, dy)  # the lock re-evaluates next tick
-        _pick_up_items(player)
-        # Stepping onto the exit descends (victory screen, or the descend modal), which leaves
-        # targeting; otherwise keep aiming. _try_descend signals a descent via GAME_OVER or a
-        # freshly opened Modal — a plain EXPLORING means we're not on an exit.
-        result = _try_descend(get_singleton(GameState))
-        if result is DisplayMode.GAME_OVER or esper.get_component(Modal):
-            esper.delete_entity(ret_ent)
-            ui_state.active_targeting_spell_id = None
-            return result
+        if reticle.locked:
+            return _walk_caster_while_aiming(player, ret_ent, ui_state, dx, dy)
+        _move_cursor(reticle, player, dx, dy)
         return DisplayMode.TARGETING
 
     if action == InputAction.CONFIRM:
@@ -645,8 +701,8 @@ def handle_targeting_input(action: InputAction | None):
         if spell_id is None:
             esper.delete_entity(ret_ent)
             return DisplayMode.SPELL_WHEEL
-        if reticle.target_ent is None:
-            return DisplayMode.TARGETING  # nothing to hit; wait for one to wander in
+        if reticle.locked and reticle.target_ent is None:
+            return DisplayMode.TARGETING  # nothing to lock; wait for one to wander in
         if not can_cast(player):
             play_sfx(SoundId.MENU_CANCEL)  # still recovering from the last cast
             return DisplayMode.TARGETING

@@ -27,6 +27,15 @@ def visible_enemies(player: int) -> list[int]:
     return [ent for _dist, ent in ranked]
 
 
+def enemy_at_tile(x: int, y: int, player: int) -> int | None:
+    """The visible enemy standing on tile (x, y), if any — what the free-aim cursor is over."""
+    fov = esper.component_for_entity(player, FieldOfView)
+    for ent, (pos, _enemy) in esper.get_components(Position, Enemy):
+        if pos.x == x and pos.y == y and pos.point in fov.visible_tiles:
+            return ent
+    return None
+
+
 def refresh_lock(reticle: TargetingReticle, player: int) -> None:
     """Keep the lock valid and the reticle on it: a target that died or left the player's
     FOV is dropped for the nearest remaining one; the reticle then follows its tile."""
@@ -55,6 +64,11 @@ class CycleTargetSystem(esper.Processor):
 
         player = get_player()
         if player is None:
+            return
+
+        # Free-aim leaves the reticle wherever the player parked it (it may sit on an empty
+        # tile with no enemy in sight), so only lock-on is maintained here.
+        if not reticle.locked:
             return
 
         if not visible_enemies(player):

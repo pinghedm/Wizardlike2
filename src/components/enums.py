@@ -90,6 +90,7 @@ class InputAction(enum.Enum):
     CONFIRM = enum.auto()
     CANCEL = enum.auto()  # back out of a submenu; a no-op on the map (never opens the menu)
     CYCLE_TAB = enum.auto()
+    TOGGLE_AIM = enum.auto()  # while targeting, flip between lock-on and free-cursor aiming
     SCROLL_UP = enum.auto()
     SCROLL_DOWN = enum.auto()
     # Quick-cast a spell by its slot, skipping the picker (keyboard 1-9, controller LB + face).
@@ -167,6 +168,7 @@ DEFAULT_KEYBOARD_BINDINGS: dict[InputAction, int] = {
     InputAction.OPEN_MENU: pygame.K_ESCAPE,
     InputAction.CONFIRM: pygame.K_RETURN,
     InputAction.CYCLE_TAB: pygame.K_TAB,
+    InputAction.TOGGLE_AIM: pygame.K_x,
     InputAction.SCROLL_UP: pygame.K_PAGEUP,
     InputAction.SCROLL_DOWN: pygame.K_PAGEDOWN,
 }
@@ -177,6 +179,7 @@ DEFAULT_CONTROLLER_BINDINGS: dict[InputAction, ControllerBinding] = {
     InputAction.OPEN_WHEEL: ControllerButton.RIGHTSTICK,
     InputAction.OPEN_CRAFTING: ControllerButton.Y,
     InputAction.CYCLE_TAB: ControllerButton.RIGHTSHOULDER,
+    InputAction.TOGGLE_AIM: ControllerButton.X,
     InputAction.SCROLL_UP: ControllerAxis.TRIGGERLEFT,
     InputAction.SCROLL_DOWN: ControllerAxis.TRIGGERRIGHT,
 }
